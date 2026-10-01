@@ -67,9 +67,12 @@ acks, and acked rows are marked delivered. Messages arrive when both devices are
 time, which the relay makes almost always.
 
 **Phone app** (Kotlin/Compose):
-- Foreground service (type `remoteMessaging`) holds the iroh endpoint. Measure battery after a day.
-  The user rejected an adb autoconnect daemon over battery, so keep this lean: no polling, relay
-  keepalive only.
+- **Wake, then connect (battery).** When idle, the phone runs no endpoint and holds no connection.
+  The laptop wakes it with a content-free high-priority FCM data message. The phone then runs a
+  short foreground service (type `remoteMessaging`) that dials, syncs, and stops after about 60 s
+  with no traffic. It stays connected only while media is playing, the chat is open, or the app is
+  in the foreground (`StayConnected`). The phone sends its FCM token as `Frame::PushToken`.
+  Details are in CLAUDE.md. Check battery use after a day, under Settings → Battery for Tether.
 - Direct Share: `res/xml/shortcuts.xml` share-target + `ShortcutManagerCompat.pushDynamicShortcut`
   ("Laptop", long-lived, category `com.kivan.tether.SHARE`) + `ACTION_SEND/SEND_MULTIPLE` activity
   that queues files. Text shares go into the chat as messages.
@@ -80,6 +83,9 @@ time, which the relay makes almost always.
 - Receiving files saves them to Downloads/Tether via MediaStore and shows a notification.
 
 **Laptop daemon** (`tether daemon`, systemd user unit, `Restart=on-failure`):
+- FCM wake sender: FCM HTTP v1 API with OAuth from `~/.config/tether/fcm-service-account.json`
+  (0600). Look up the latest stable auth/HTTP crates before adding them. When there's no key or the
+  call fails, retry with backoff.
 - Received image → clipboard as image data (`wl-copy --type`, PNG/GIF as is, else convert to PNG with
   EXIF orientation via the `image` crate instead of magick) + `omarchy-notification-send -u normal
   --image file://… "Pixel 8 sent a file" <name> --exec xdg-open <path>`. Same for chat messages
@@ -130,6 +136,10 @@ time, which the relay makes almost always.
 - `cargo test` in the workspace; `./gradlew :app:testDebugUnitTest`.
 - Share a screenshot from the phone via the "Laptop" tile → toast appears under DND, `wl-paste -l`
   shows `image/png`, pasting in an app pastes the image.
+- Phone idle with the screen off for 10 min, then `tether msg hi` → it arrives within a few seconds
+  (FCM wake). `adb shell dumpsys deviceidle force-idle` (Doze) gives the same result.
+- After a day, Tether's battery use in Settings is small; on mobile data there are no wakeups
+  apart from real deliveries.
 - Airplane-mode the phone, send 3 laptop messages + a file → they show as queued. Turn the phone back
   on (mobile data, not Wi-Fi) → they arrive via relay, laptop shows ✓✓.
 - `omarchy-shell phonemedia status` shows phone track; play/pause/seek/volume from the bar work.

@@ -86,6 +86,11 @@ pub enum Frame {
     MediaCmd(MediaCmd),
     Notifs(Vec<PhoneNotif>),
     StopRing,
+    /// Phone → laptop: FCM registration token, used to wake the phone when it isn't connected.
+    PushToken(String),
+    /// Phone → laptop: whether the phone wants to stay connected (media playing, chat open).
+    /// When false, either side closes the connection after the idle timeout.
+    StayConnected(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -21,13 +21,27 @@ Rust is pinned in `mise.toml` (1.98.1). Run `cargo test` and `cargo build --rele
 - **Transport is iroh 1.3** with `presets::N0`, which includes n0's free public relay, chosen by the
   user. Traffic is end-to-end encrypted. Add `iroh-mdns-address-lookup` 0.6 for the LAN and bind a fixed UDP port
   (`bind_addr("0.0.0.0:47114")`) so nftables needs one rule. See `docs/iroh-1.3-notes.md`.
-- **Connections are on demand, not persistent.** iroh sends a QUIC heartbeat every 5 s while a
-  connection is open, which would drain the phone. The rules:
-  - Dial when there is something to send: an outbox item, a media state change, a media command,
-    a notification diff.
-  - Close after about 60 s with no traffic.
-  - The laptop retries queued items with backoff (30 s up to 5 min).
-  - The phone retries when its network changes and when the app starts.
+- **Battery: the phone has no connection of its own when idle; it is woken through FCM.** The user
+  agreed to this on 2026-10-01, and battery must be watched.
+  - Why: iroh sends a QUIC heartbeat every 5 s on an open connection. The home-relay link also pings
+    every 15 s, and that interval is a hard-coded constant (`iroh-1.3.0/src/socket/transports/relay/actor.rs:74`).
+    Doze cuts both anyway.
+  - Phone→laptop: the phone dials only when it has something to send. The laptop is always listening.
+  - Laptop→phone: if the phone isn't connected, the laptop sends a high-priority FCM data message
+    with **no content** (`{"t":"wake"}`). The phone wakes, starts its iroh endpoint, dials the laptop,
+    takes delivery of the queue, and then shuts the endpoint down. Google learns only that a ping
+    happened.
+  - The phone stays connected (endpoint up, connection open) only while it is cheap or needed:
+    while media is playing (so bar controls are instant), while the chat screen is open, or while the
+    app is in the foreground.
+  - Any connection closes after about 60 s with no traffic.
+  - Without FCM (no key, or Google is down) the laptop retries queued items with backoff (30 s up to
+    5 min), and the phone checks in when the app starts and when its network changes.
+  - High-priority FCM must lead to a visible notification, or Android throttles it. Chat, files,
+    pings and rings all show one. Media commands are only sent while the phone is already connected.
+  - FCM setup: a free Firebase project. The service-account JSON goes to
+    `~/.config/tether/fcm-service-account.json` (0600). The laptop calls the FCM HTTP v1 API.
+    The phone sends its registration token over the paired connection (`Frame::PushToken`).
   - The user rejected battery-costly background daemons on the phone before.
 - **If both sides dial at once**, keep the connection whose dialer has the smaller endpoint id. Both
   sides then agree.
