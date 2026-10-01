@@ -11,6 +11,10 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   written yet).
 - `crates/daemon`: the `tether` binary. It runs the daemon (systemd user unit) and the CLI, which talks
   to the daemon over `$XDG_RUNTIME_DIR/tether.sock`.
+- `crates/core/src/node.rs`: the iroh endpoint and the single link (pairing, dial race, outbox resend,
+  file resume, idle close). Its tests run two nodes over loopback (`Net::Loopback`).
+- `contrib/tether.service`: the systemd user unit. It isn't installed yet; KDE Connect stays live
+  until the Phase 5 cut-over.
 - Still to come: `crates/ffi`, `android/` (Kotlin/Compose, toolchain same as ~/Projects/chordhand),
   and `shell/` (Omarchy QML plugin `kivan.tether`).
 
