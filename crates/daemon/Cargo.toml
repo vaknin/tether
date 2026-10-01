@@ -12,9 +12,15 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-clap = { version = "4.6", features = ["derive"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 uuid.workspace = true
+# FCM wake (src/fcm.rs). All four are already built for iroh; only serde_urlencoded is new.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json", "form", "http2"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
+ring = "0.17.14"
+base64 = "0.23.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

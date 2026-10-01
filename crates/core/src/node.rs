@@ -308,6 +308,12 @@ impl Node {
         self.inner.db(|s| s.get_str("push_token"))
     }
 
+    /// Forgets the FCM token (FCM said it is no longer registered); the phone sends a fresh one on
+    /// its next connect.
+    pub fn clear_push_token(&self) -> Result<()> {
+        self.inner.db(|s| s.del_kv("push_token"))
+    }
+
     /// A one-time pairing code, valid for 5 minutes: `tether:1:<endpoint id>:<base32 token>`.
     pub fn pair_offer(&self) -> String {
         let token: [u8; 32] = rand::random();

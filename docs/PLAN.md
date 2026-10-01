@@ -83,9 +83,13 @@ time, which the relay makes almost always.
 - Receiving files saves them to Downloads/Tether via MediaStore and shows a notification.
 
 **Laptop daemon** (`tether daemon`, systemd user unit, `Restart=on-failure`):
-- FCM wake sender: FCM HTTP v1 API with OAuth from `~/.config/tether/fcm-service-account.json`
-  (0600). Look up the latest stable auth/HTTP crates before adding them. When there's no key or the
-  call fails, retry with backoff.
+- FCM wake sender (`crates/daemon/src/fcm.rs`, done): FCM HTTP v1 with a service-account JWT (ring
+  RS256, reqwest; both already built for iroh) from `--fcm-key`/`$TETHER_FCM_KEY`, default
+  `~/.config/tether/fcm-service-account.json` (0600). It wakes when an item is queued and the phone
+  isn't connected, at most once per 30 s, and once at start if the outbox isn't empty. The payload is
+  `data {t: wake}`, `android {priority: high, collapse_key: wake}`. `UNREGISTERED`/404 drops the
+  token. With no key or a failed send, the node's backoff redial still delivers.
+  Live auth check: `cargo test -p tether -- --ignored fcm_live`.
 - Received image → clipboard as image data (`wl-copy --type`, PNG/GIF as is, else convert to PNG with
   EXIF orientation via the `image` crate instead of magick) + `omarchy-notification-send -u normal
   --image file://… "Pixel 8 sent a file" <name> --exec xdg-open <path>`. Same for chat messages

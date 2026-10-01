@@ -57,6 +57,8 @@ Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linu
   - FCM setup: a free Firebase project. The service-account JSON goes to
     `~/.config/tether/fcm-service-account.json` (0600). The laptop calls the FCM HTTP v1 API.
     The phone sends its registration token over the paired connection (`Frame::PushToken`).
+    The sender is `crates/daemon/src/fcm.rs`: it sends at most one wake per 30 s, `--fcm-key` sets
+    the key path, and `cargo test -p tether -- --ignored fcm_live` checks auth against Google.
   - The user rejected battery-costly background daemons on the phone before.
 - **If both sides dial at once**, keep the connection whose dialer has the smaller endpoint id. Both
   sides then agree.

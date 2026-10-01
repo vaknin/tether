@@ -2,6 +2,7 @@
 
 mod daemon;
 mod desktop;
+mod fcm;
 mod ipc;
 
 use std::{path::PathBuf, process::ExitCode, time::Duration};
@@ -10,6 +11,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_json::Value;
 use tether_core::node::{Config, Net, Node, PORT};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::ipc::{Request, call};
@@ -43,6 +45,10 @@ enum Cmd {
         /// No toasts or clipboard (for a second test instance).
         #[arg(long)]
         no_desktop: bool,
+        /// Firebase service-account JSON for waking the phone (default
+        /// $XDG_CONFIG_HOME/tether/fcm-service-account.json). Without it the daemon only redials.
+        #[arg(long, env = "TETHER_FCM_KEY")]
+        fcm_key: Option<PathBuf>,
     },
     /// Show a pairing QR code and wait for the phone; or, given a code, pair with that device.
     Pair { code: Option<String> },
@@ -103,7 +109,7 @@ async fn main() -> ExitCode {
 
 async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
     match cmd {
-        Cmd::Daemon { state_dir, download_dir, name, port, no_desktop } => {
+        Cmd::Daemon { state_dir, download_dir, name, port, no_desktop, fcm_key } => {
             tracing_subscriber::fmt()
                 .with_env_filter(
                     EnvFilter::try_from_default_env()
@@ -117,6 +123,14 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             let node = Node::start(cfg).await?;
             if !no_desktop {
                 tokio::spawn(desktop::run(node.clone()));
+            }
+            let fcm_key = fcm_key.map_or_else(default_fcm_key, Ok)?;
+            match fcm::Fcm::load(&fcm_key) {
+                Ok(f) => {
+                    info!("FCM wake on ({})", fcm_key.display());
+                    tokio::spawn(fcm::run(node.clone(), f, node.events(), fcm::WAKE_GAP));
+                }
+                Err(e) => warn!("FCM wake off, relying on redial: {e:#}"),
             }
             let res = tokio::select! {
                 r = daemon::serve(node.clone(), &sock) => r,
@@ -235,6 +249,14 @@ fn s(v: &Value) -> &str {
 
 fn home() -> Result<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from).context("HOME is not set")
+}
+
+fn default_fcm_key() -> Result<PathBuf> {
+    let config = match std::env::var_os("XDG_CONFIG_HOME") {
+        Some(d) => PathBuf::from(d),
+        None => home()?.join(".config"),
+    };
+    Ok(config.join("tether/fcm-service-account.json"))
 }
 
 fn default_state_dir() -> Result<PathBuf> {
