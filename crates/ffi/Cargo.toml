@@ -1,0 +1,27 @@
+[package]
+name = "tether-ffi"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "tether_ffi"
+
+[[bin]]
+# Generates the Kotlin bindings from the built library: `cargo run -p tether-ffi --bin uniffi-bindgen`.
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+tether-core = { path = "../core" }
+uniffi = "0.32.2"
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true

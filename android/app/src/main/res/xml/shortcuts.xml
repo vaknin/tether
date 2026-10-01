@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Direct Share: the dynamic "Laptop" shortcut (Shortcuts.kt) carries this category, so the share
+     sheet shows it as a tile that opens ShareActivity. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="com.kivan.tether.ShareActivity">
+        <data android:mimeType="*/*" />
+        <category android:name="com.kivan.tether.SHARE" />
+    </share-target>
+</shortcuts>

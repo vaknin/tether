@@ -7,19 +7,26 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
 
 ## Layout
 - `crates/core`: protocol (`proto.rs`), SQLite chat log/outbox (`store.rs`), file helpers (`files.rs`).
-  There is no platform code here. The phone uses this same core through uniffi (`crates/ffi`, not
-  written yet).
+  There is no platform code here. The phone uses this same core through uniffi (`crates/ffi`).
+- `crates/ffi`: uniffi 0.32 bindings (`TetherNode`, records, `EventListener` callback) with its own
+  tokio runtime. Kotlin package `com.kivan.tether.core` (`uniffi.toml`).
 - `crates/daemon`: the `tether` binary. It runs the daemon (systemd user unit) and the CLI, which talks
   to the daemon over `$XDG_RUNTIME_DIR/tether.sock`.
 - `crates/core/src/node.rs`: the iroh endpoint and the single link (pairing, dial race, outbox resend,
   file resume, idle close). Its tests run two nodes over loopback (`Net::Loopback`).
 - `contrib/tether.service`: the systemd user unit. It isn't installed yet; KDE Connect stays live
   until the Phase 5 cut-over.
-- Still to come: `crates/ffi`, `android/` (Kotlin/Compose, toolchain same as ~/Projects/chordhand),
-  and `shell/` (Omarchy QML plugin `kivan.tether`).
+- `android/`: Kotlin/Compose app `com.kivan.tether` (toolchain copied from ~/Projects/chordhand).
+  Gradle runs cargo-ndk and uniffi-bindgen itself (`buildSrc/.../RustTasks.kt`). `Core.kt` owns the
+  node: it runs only while held (UI, `SyncService` after FCM wake or share, `OutboxWorker` retries)
+  or a link is open, then shuts down. FCM is configured from `fcm.*` in `android/local.properties`.
+  Release signing reads `~/.config/tether/keystore.properties`.
+- Still to come: `shell/` (Omarchy QML plugin `kivan.tether`).
 
 ## Build and test
 Rust is pinned in `mise.toml` (1.98.1). Run `cargo test` and `cargo build --release`.
+Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linux-android` target and
+`cargo-ndk`).
 
 ## Design decisions (keep these)
 - **Transport is iroh 1.3** with `presets::N0`, which includes n0's free public relay, chosen by the
