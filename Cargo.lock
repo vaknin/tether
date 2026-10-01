@@ -3547,6 +3547,8 @@ name = "tether-ffi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "iroh",
+ "jni-sys 0.4.1",
  "tether-core",
  "tokio",
  "tracing",

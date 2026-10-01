@@ -35,6 +35,7 @@ class ShareActivity : Activity() {
                     for (f in files) node.sendFile(f.path)
                     if (files.isEmpty()) node.sendText(text!!)
                     SyncService.start(this@ShareActivity, "share")
+                    Shortcuts.used(this@ShareActivity)
                     if (files.isEmpty()) "Sent to Laptop" else "Sending ${files.size} to Laptop"
                 }
             } catch (e: Exception) {

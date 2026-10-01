@@ -21,6 +21,10 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   node: it runs only while held (UI, `SyncService` after FCM wake or share, `OutboxWorker` retries)
   or a link is open, then shuts down. FCM is configured from `fcm.*` in `android/local.properties`.
   Release signing reads `~/.config/tether/keystore.properties`.
+  `Native.load` (in `TetherApp`) loads the .so through the JVM and hands iroh the app context, so it
+  reads the phone's DNS servers; it must run before the first node start. The phone's mDNS send
+  fails with EPERM (no `MulticastLock`). That's deferred on purpose: a lock costs battery, the home
+  Wi-Fi drops client-to-client multicast anyway, and relay plus hole-punching finds the direct path.
 - Still to come: `shell/` (Omarchy QML plugin `kivan.tether`).
 
 ## Build and test

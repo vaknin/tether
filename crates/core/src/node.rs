@@ -537,6 +537,10 @@ impl Inner {
         }
         debug!(serial = link.serial, dialer = %dialer, "link up");
         self.emit(Event::Connected);
+        // `set_stay` may have run while there was no link; the peer must hear it on this one.
+        if self.stay.load(Ordering::SeqCst) {
+            let _ = link.tx.send(Frame::StayConnected(true));
+        }
         if let Err(e) = self.resend(&link) {
             warn!("resend failed: {e:#}");
         }

@@ -442,3 +442,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+/// Gives iroh the JavaVM and application context, so it reads the phone's DNS servers and network
+/// interfaces over JNI instead of falling back to public resolvers. JNA loads this library with
+/// `dlopen`, so `JNI_OnLoad` never runs; the app calls `Native.init(context)` once, before the
+/// first [`start`].
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_kivan_tether_Native_init(
+    env: *mut jni_sys::JNIEnv,
+    _this: jni_sys::jobject,
+    context: jni_sys::jobject,
+) {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| unsafe {
+        let f = &(**env).v1_1;
+        let mut vm: *mut jni_sys::JavaVM = std::ptr::null_mut();
+        if (f.GetJavaVM)(env, &mut vm) != jni_sys::JNI_OK {
+            return;
+        }
+        // A global reference keeps the context valid for the life of the process.
+        let ctx = (f.NewGlobalRef)(env, context);
+        iroh::dns::install_android_jni_context(vm.cast(), ctx.cast());
+    });
+}

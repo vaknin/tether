@@ -32,12 +32,14 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -98,7 +100,8 @@ private fun PairScreen() {
         scope.launch {
             try {
                 Core.withNode { it.pair(c.trim()) }
-                Core.connect()
+                // Pairing swaps this screen for the chat, which cancels `scope`; the dial must outlive it.
+                Core.scope.launch { Core.connect() }
             } catch (e: Exception) {
                 error = e.message ?: "Pairing failed"
             } finally {
@@ -221,6 +224,7 @@ private fun Bubble(m: ChatMessage, progress: Pair<Long, Long>?) {
     val ctx = LocalContext.current
     val mine = m.fromMe
     val bg = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+    val fg = if (mine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Column(
             Modifier.widthIn(max = 300.dp).clip(RoundedCornerShape(14.dp)).background(bg)
@@ -233,7 +237,7 @@ private fun Bubble(m: ChatMessage, progress: Pair<Long, Long>?) {
                     }
                 }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
+        ) { CompositionLocalProvider(LocalContentColor provides fg) {
             when (m.kind) {
                 MsgKind.TEXT -> Text(m.text.orEmpty())
                 MsgKind.PING -> Text("🔔 ${m.text.orEmpty()}", fontStyle = FontStyle.Italic)
@@ -261,9 +265,9 @@ private fun Bubble(m: ChatMessage, progress: Pair<Long, Long>?) {
             Text(
                 time + tick,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = fg.copy(alpha = 0.7f),
                 modifier = Modifier.align(Alignment.End),
             )
-        }
+        } }
     }
 }

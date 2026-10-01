@@ -182,6 +182,25 @@ async fn idle_link_closes_unless_asked_to_stay() {
 }
 
 #[tokio::test]
+async fn stay_set_before_connecting_reaches_the_peer() {
+    let d = tempfile::tempdir().unwrap();
+    let mut ca = config(d.path(), "a");
+    ca.idle_timeout = Duration::from_millis(800);
+    let a = Node::start(ca).await.unwrap();
+    let b = start(d.path(), "b").await;
+    introduce(&a, &b);
+    b.pair(&a.pair_offer()).await.unwrap();
+
+    // The phone app sets stay when it starts the node, before there is any link.
+    b.set_stay(true);
+    let mut ea = a.events();
+    b.connect().await.unwrap();
+    wait_for(&mut ea, |e| matches!(e, Event::Connected)).await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    assert!(a.is_connected(), "b asked to stay connected before dialing");
+}
+
+#[tokio::test]
 async fn simultaneous_dials_settle_on_one_link() {
     let d = tempfile::tempdir().unwrap();
     let (a, b) = paired(d.path()).await;

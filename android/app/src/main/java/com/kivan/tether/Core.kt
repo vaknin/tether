@@ -14,6 +14,7 @@ import com.kivan.tether.core.TetherNode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,8 +78,12 @@ object Core {
         scope.launch {
             lock.withLock {
                 if (!holds.remove(reason)) return@withLock
+                node?.setStay(UI in holds)
+            }
+            // A hold is often handed on (a share to SyncService); don't restart the endpoint in between.
+            delay(STOP_GRACE_MS)
+            lock.withLock {
                 val n = node ?: return@withLock
-                n.setStay(UI in holds)
                 if (holds.isEmpty() && !n.isConnected()) stopLocked()
             }
         }
@@ -176,4 +181,5 @@ object Core {
     }
 
     const val UI = "ui"
+    private const val STOP_GRACE_MS = 2_000L
 }

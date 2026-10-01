@@ -4,3 +4,4 @@
 -keep class * implements com.sun.jna.** { *; }
 -keep class com.kivan.tether.core.** { *; }
 -dontwarn java.awt.**
+-keep class com.kivan.tether.Native { native <methods>; }

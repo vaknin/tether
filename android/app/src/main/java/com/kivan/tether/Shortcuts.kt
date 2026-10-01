@@ -10,8 +10,10 @@ import androidx.core.graphics.drawable.IconCompat
 object Shortcuts {
     private const val SHARE_CATEGORY = "com.kivan.tether.SHARE"
 
+    private const val ID = "laptop"
+
     fun publish(context: Context) {
-        val shortcut = ShortcutInfoCompat.Builder(context, "laptop")
+        val shortcut = ShortcutInfoCompat.Builder(context, ID)
             .setShortLabel("Laptop")
             .setLongLabel("Send to Laptop")
             .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
@@ -21,4 +23,7 @@ object Shortcuts {
             .build()
         ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
     }
+
+    /** The share sheet ranks direct-share tiles by reported use; without it ours sits below others. */
+    fun used(context: Context) = ShortcutManagerCompat.reportShortcutUsed(context, ID)
 }
