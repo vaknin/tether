@@ -1,0 +1,927 @@
+//! The iroh endpoint and the single link to the paired peer: pairing, dialing on demand, the
+//! outbox resend, acks, file streams that resume from an offset, and the idle close.
+//!
+//! Only one link is kept. If both sides dial at once, the connection whose dialer has the smaller
+//! endpoint id wins, so both sides keep the same one.
+
+use std::{
+    collections::HashSet,
+    io::SeekFrom,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
+use anyhow::{Context, Result, anyhow, bail};
+use data_encoding::BASE32_NOPAD;
+use iroh::{
+    Endpoint, EndpointAddr, EndpointId, PublicKey, RelayMode, SecretKey,
+    address_lookup::memory::MemoryLookup,
+    endpoint::{Connection, RecvStream, presets},
+};
+use iroh_mdns_address_lookup::MdnsAddressLookup;
+use serde::Serialize;
+use tokio::{
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+    sync::{Notify, broadcast, mpsc},
+    time::timeout,
+};
+use tracing::{debug, info, warn};
+use uuid::Uuid;
+
+use crate::{
+    files,
+    proto::{
+        ALPN, Body, FileHeader, Frame, MediaCmd, MediaState, PAIR_ALPN, PairReply, PairRequest,
+        PhoneNotif, read_msg, write_msg,
+    },
+    store::{Message, State, Store, now_ms},
+};
+
+/// The fixed UDP port the laptop listens on, so the firewall needs one rule.
+pub const PORT: u16 = 47114;
+const PAIR_TTL: Duration = Duration::from_secs(300);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const CHUNK: usize = 256 * 1024;
+
+const CLOSE_BYE: u32 = 0;
+const CLOSE_NOT_PAIRED: u32 = 1;
+const CLOSE_DUPLICATE: u32 = 2;
+const CLOSE_IDLE: u32 = 3;
+
+pub enum Net {
+    /// n0 relays and DNS lookup plus mDNS on the LAN. `port` pins the IPv4 socket.
+    Internet { port: Option<u16> },
+    /// 127.0.0.1 only, no relay and no lookup; peers are found through [`Node::add_hint`]. For tests.
+    Loopback,
+}
+
+pub struct Config {
+    /// Holds `tether.db` (chat log, outbox, keys).
+    pub state_dir: PathBuf,
+    /// Received files land here; partial ones as hidden `.part` files.
+    pub download_dir: PathBuf,
+    /// Shown to the peer ("Laptop", "Pixel 8").
+    pub name: String,
+    pub net: Net,
+    /// Close the link after this long without traffic, unless either side asked to stay connected.
+    pub idle_timeout: Duration,
+    /// Redial with this backoff (min, max) while the outbox has items. The laptop does this as the
+    /// fallback when FCM can't wake the phone; the phone leaves it off and dials on demand.
+    pub redial: Option<(Duration, Duration)>,
+}
+
+impl Config {
+    pub fn new(state_dir: PathBuf, download_dir: PathBuf, name: impl Into<String>) -> Self {
+        Self {
+            state_dir,
+            download_dir,
+            name: name.into(),
+            net: Net::Internet { port: Some(PORT) },
+            idle_timeout: Duration::from_secs(60),
+            redial: Some((Duration::from_secs(30), Duration::from_secs(300))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PeerInfo {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Status {
+    pub id: String,
+    pub name: String,
+    pub peer: Option<PeerInfo>,
+    pub connected: bool,
+    pub queued: usize,
+    pub unread: u64,
+}
+
+/// What UIs get from [`Node::events`]; also the JSON lines of `tether watch`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum Event {
+    Connected,
+    Disconnected,
+    Paired { peer: PeerInfo },
+    Unpaired,
+    /// A message was added or changed state (queued → delivered, incoming → received, …).
+    Message(Message),
+    /// File transfer progress, either direction.
+    Progress { id: Uuid, done: u64, total: u64 },
+    Media { state: Option<MediaState> },
+    MediaCmd { cmd: MediaCmd },
+    Notifs { list: Vec<PhoneNotif> },
+    StopRing,
+}
+
+#[derive(Clone)]
+pub struct Node {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
+    cfg: Config,
+    ep: Endpoint,
+    hints: MemoryLookup,
+    store: Mutex<Store>,
+    events: broadcast::Sender<Event>,
+    link: Mutex<Option<Link>>,
+    next_serial: AtomicU64,
+    offer: Mutex<Option<([u8; 32], Instant)>>,
+    dialing: tokio::sync::Mutex<()>,
+    kick: Notify,
+    stay: AtomicBool,
+    receiving: Mutex<HashSet<Uuid>>,
+    media: Mutex<Option<MediaState>>,
+    notifs: Mutex<Vec<PhoneNotif>>,
+}
+
+#[derive(Clone)]
+struct Link {
+    serial: u64,
+    conn: Connection,
+    dialer: EndpointId,
+    tx: mpsc::UnboundedSender<Frame>,
+    activity: Arc<Activity>,
+}
+
+struct Activity {
+    last: Mutex<Instant>,
+    transfers: AtomicUsize,
+    peer_stay: AtomicBool,
+}
+
+impl Activity {
+    fn touch(&self) {
+        *self.last.lock().unwrap() = Instant::now();
+    }
+
+    fn transfer(self: &Arc<Self>) -> TransferGuard {
+        self.transfers.fetch_add(1, Ordering::SeqCst);
+        TransferGuard(self.clone())
+    }
+}
+
+struct TransferGuard(Arc<Activity>);
+
+impl Drop for TransferGuard {
+    fn drop(&mut self) {
+        self.0.transfers.fetch_sub(1, Ordering::SeqCst);
+        self.0.touch();
+    }
+}
+
+impl Node {
+    pub async fn start(cfg: Config) -> Result<Node> {
+        std::fs::create_dir_all(&cfg.state_dir)?;
+        std::fs::create_dir_all(&cfg.download_dir)?;
+        let store = Store::open(&cfg.state_dir.join("tether.db"))?;
+        let sk = match store.get_kv("secret_key")? {
+            Some(b) => SecretKey::from_bytes(
+                &b.try_into().map_err(|_| anyhow!("stored secret key is corrupt"))?,
+            ),
+            None => {
+                let k = SecretKey::generate();
+                store.set_kv("secret_key", &k.to_bytes())?;
+                k
+            }
+        };
+        let hints = MemoryLookup::new();
+        let alpns = vec![ALPN.to_vec(), PAIR_ALPN.to_vec()];
+        let ep = match cfg.net {
+            Net::Internet { port } => {
+                let mut b = Endpoint::builder(presets::N0)
+                    .secret_key(sk)
+                    .alpns(alpns)
+                    .address_lookup(hints.clone())
+                    .address_lookup(MdnsAddressLookup::builder());
+                if let Some(p) = port {
+                    b = b.bind_addr(SocketAddr::from(([0, 0, 0, 0], p)))?;
+                }
+                b.bind().await?
+            }
+            Net::Loopback => {
+                Endpoint::builder(presets::Minimal)
+                    .relay_mode(RelayMode::Disabled)
+                    .clear_ip_transports()
+                    .bind_addr("127.0.0.1:0")?
+                    .secret_key(sk)
+                    .alpns(alpns)
+                    .address_lookup(hints.clone())
+                    .bind()
+                    .await?
+            }
+        };
+        info!(id = %ep.id(), "endpoint up");
+        let redial = cfg.redial;
+        let inner = Arc::new(Inner {
+            cfg,
+            ep,
+            hints,
+            store: Mutex::new(store),
+            events: broadcast::channel(256).0,
+            link: Mutex::new(None),
+            next_serial: AtomicU64::new(1),
+            offer: Mutex::new(None),
+            dialing: tokio::sync::Mutex::new(()),
+            kick: Notify::new(),
+            stay: AtomicBool::new(false),
+            receiving: Mutex::new(HashSet::new()),
+            media: Mutex::new(None),
+            notifs: Mutex::new(Vec::new()),
+        });
+        tokio::spawn(inner.clone().accept_loop());
+        if let Some((min, max)) = redial {
+            tokio::spawn(inner.clone().redial_loop(min, max));
+        }
+        Ok(Node { inner })
+    }
+
+    pub fn events(&self) -> broadcast::Receiver<Event> {
+        self.inner.events.subscribe()
+    }
+
+    pub fn id(&self) -> EndpointId {
+        self.inner.ep.id()
+    }
+
+    pub fn addr(&self) -> EndpointAddr {
+        self.inner.ep.addr()
+    }
+
+    /// Tells the endpoint where a peer can be reached, in addition to lookup.
+    pub fn add_hint(&self, addr: EndpointAddr) {
+        self.inner.hints.add_endpoint_info(addr);
+    }
+
+    pub fn peer(&self) -> Option<PeerInfo> {
+        self.inner.peer()
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.inner.current().is_some()
+    }
+
+    pub fn status(&self) -> Result<Status> {
+        let i = &self.inner;
+        let (queued, unread) = i.db(|s| Ok((s.outbox()?.0.len(), s.unread()?)))?;
+        Ok(Status {
+            id: i.ep.id().to_string(),
+            name: i.cfg.name.clone(),
+            peer: i.peer(),
+            connected: self.is_connected(),
+            queued,
+            unread,
+        })
+    }
+
+    pub fn recent(&self, limit: usize) -> Result<Vec<Message>> {
+        self.inner.db(|s| s.recent(limit))
+    }
+
+    pub fn unread(&self) -> Result<u64> {
+        self.inner.db(|s| s.unread())
+    }
+
+    pub fn mark_read(&self) -> Result<()> {
+        self.inner.db(|s| s.mark_read())
+    }
+
+    pub fn media(&self) -> Option<MediaState> {
+        self.inner.media.lock().unwrap().clone()
+    }
+
+    pub fn notifs(&self) -> Vec<PhoneNotif> {
+        self.inner.notifs.lock().unwrap().clone()
+    }
+
+    /// The FCM token the phone sent, used to wake it.
+    pub fn push_token(&self) -> Result<Option<String>> {
+        self.inner.db(|s| s.get_str("push_token"))
+    }
+
+    /// A one-time pairing code, valid for 5 minutes: `tether:1:<endpoint id>:<base32 token>`.
+    pub fn pair_offer(&self) -> String {
+        let token: [u8; 32] = rand::random();
+        *self.inner.offer.lock().unwrap() = Some((token, Instant::now() + PAIR_TTL));
+        format!("tether:1:{}:{}", self.id(), BASE32_NOPAD.encode(&token))
+    }
+
+    /// Pairs with the device that showed `code`.
+    pub async fn pair(&self, code: &str) -> Result<PeerInfo> {
+        self.inner.pair(code).await
+    }
+
+    pub fn unpair(&self) -> Result<()> {
+        let i = &self.inner;
+        i.db(|s| {
+            s.del_kv("peer_id")?;
+            s.del_kv("peer_name")?;
+            s.del_kv("push_token")
+        })?;
+        i.drop_link(CLOSE_NOT_PAIRED, b"unpaired");
+        i.emit(Event::Unpaired);
+        Ok(())
+    }
+
+    pub fn send_text(&self, text: impl Into<String>) -> Result<Message> {
+        self.inner.send(Body::Text(text.into()), None, None)
+    }
+
+    pub fn send_ping(&self, text: impl Into<String>) -> Result<Message> {
+        self.inner.send(Body::Ping(text.into()), None, None)
+    }
+
+    /// Rings the phone; dropped if it can't be delivered within `ttl`.
+    pub fn ring(&self, ttl: Duration) -> Result<Message> {
+        self.inner.send(Body::Ring, None, Some(ttl))
+    }
+
+    pub async fn send_file(&self, path: &Path) -> Result<Message> {
+        let path = std::path::absolute(path)?;
+        let (sha256, size) = files::sha256_file(&path).await?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".into());
+        self.inner.send(Body::File { name, size, sha256 }, Some(path), None)
+    }
+
+    /// Sends live state (media, notifications, StopRing, …). Never queued: returns false when
+    /// there is no link.
+    pub fn send_live(&self, frame: Frame) -> bool {
+        match self.inner.current() {
+            Some(l) => l.tx.send(frame).is_ok(),
+            None => false,
+        }
+    }
+
+    /// Keeps the link open past the idle timeout (media playing, chat open) and tells the peer.
+    pub fn set_stay(&self, stay: bool) {
+        self.inner.stay.store(stay, Ordering::SeqCst);
+        self.send_live(Frame::StayConnected(stay));
+    }
+
+    /// Dials the peer unless already connected.
+    pub async fn connect(&self) -> Result<()> {
+        self.inner.connect().await
+    }
+
+    pub fn disconnect(&self) {
+        self.inner.drop_link(CLOSE_BYE, b"bye");
+    }
+
+    pub async fn shutdown(&self) {
+        self.disconnect();
+        self.inner.ep.close().await;
+        self.inner.kick.notify_one();
+    }
+}
+
+impl Inner {
+    fn db<R>(&self, f: impl FnOnce(&Store) -> Result<R>) -> Result<R> {
+        f(&self.store.lock().unwrap())
+    }
+
+    fn emit(&self, e: Event) {
+        let _ = self.events.send(e);
+    }
+
+    fn peer_id(&self) -> Option<EndpointId> {
+        let b = self.db(|s| s.get_kv("peer_id")).ok()??;
+        PublicKey::from_bytes(&b.try_into().ok()?).ok()
+    }
+
+    fn peer(&self) -> Option<PeerInfo> {
+        let id = self.peer_id()?;
+        let name = self.db(|s| s.get_str("peer_name")).ok().flatten().unwrap_or_default();
+        Some(PeerInfo { id: id.to_string(), name })
+    }
+
+    fn set_peer(&self, id: EndpointId, name: &str) -> Result<PeerInfo> {
+        if self.peer_id().is_some_and(|old| old != id) {
+            self.drop_link(CLOSE_NOT_PAIRED, b"unpaired");
+            self.db(|s| s.del_kv("push_token"))?;
+        }
+        self.db(|s| {
+            s.set_kv("peer_id", id.as_bytes())?;
+            s.set_kv("peer_name", name.as_bytes())
+        })?;
+        let peer = PeerInfo { id: id.to_string(), name: name.to_string() };
+        self.emit(Event::Paired { peer: peer.clone() });
+        Ok(peer)
+    }
+
+    fn current(&self) -> Option<Link> {
+        self.link.lock().unwrap().clone().filter(|l| l.conn.close_reason().is_none())
+    }
+
+    fn drop_link(&self, code: u32, reason: &[u8]) {
+        let old = self.link.lock().unwrap().take();
+        if let Some(l) = old {
+            l.conn.close(code.into(), reason);
+            self.emit(Event::Disconnected);
+        }
+    }
+
+    fn send(&self, body: Body, path: Option<PathBuf>, ttl: Option<Duration>) -> Result<Message> {
+        let expires = ttl.map(|d| now_ms() + d.as_millis() as i64);
+        let m = self.db(|s| s.enqueue(body, path, expires))?;
+        self.emit(Event::Message(m.clone()));
+        match self.current() {
+            Some(l) => {
+                let _ = l.tx.send(Frame::Item(m.item()));
+            }
+            None => self.kick.notify_one(),
+        }
+        Ok(m)
+    }
+
+    async fn accept_loop(self: Arc<Self>) {
+        while let Some(incoming) = self.ep.accept().await {
+            let me = self.clone();
+            tokio::spawn(async move {
+                let conn = match incoming.await {
+                    Ok(c) => c,
+                    Err(e) => return debug!("incoming connection failed: {e}"),
+                };
+                let remote = conn.remote_id();
+                if conn.alpn() == PAIR_ALPN {
+                    if let Err(e) = me.serve_pair(conn).await {
+                        warn!("pairing from {remote} failed: {e:#}");
+                    }
+                } else if me.peer_id() == Some(remote) {
+                    me.start_link(conn, remote);
+                } else {
+                    info!("refused unpaired endpoint {remote}");
+                    conn.close(CLOSE_NOT_PAIRED.into(), b"not paired");
+                }
+            });
+        }
+    }
+
+    async fn redial_loop(self: Arc<Self>, min: Duration, max: Duration) {
+        let mut backoff = min;
+        loop {
+            tokio::select! {
+                _ = self.kick.notified() => {}
+                _ = tokio::time::sleep(backoff) => {}
+            }
+            if self.ep.is_closed() {
+                return;
+            }
+            let queued = self.db(|s| Ok(s.outbox()?.0.len())).unwrap_or(0);
+            if self.current().is_some() || self.peer_id().is_none() || queued == 0 {
+                backoff = min;
+                continue;
+            }
+            match self.connect().await {
+                Ok(()) => backoff = min,
+                Err(e) => {
+                    debug!("redial failed: {e:#}");
+                    backoff = (backoff * 2).min(max);
+                }
+            }
+        }
+    }
+
+    async fn connect(self: &Arc<Self>) -> Result<()> {
+        if self.current().is_some() {
+            return Ok(());
+        }
+        let _dialing = self.dialing.lock().await;
+        if self.current().is_some() {
+            return Ok(());
+        }
+        let peer = self.peer_id().context("not paired")?;
+        let conn = timeout(CONNECT_TIMEOUT, self.ep.connect(peer, ALPN))
+            .await
+            .context("connect timed out")??;
+        self.start_link(conn, self.ep.id());
+        Ok(())
+    }
+
+    /// Makes `conn` the link (or drops it if the current one wins) and starts serving it.
+    fn start_link(self: &Arc<Self>, conn: Connection, dialer: EndpointId) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let link = Link {
+            serial: self.next_serial.fetch_add(1, Ordering::SeqCst),
+            conn,
+            dialer,
+            tx,
+            activity: Arc::new(Activity {
+                last: Mutex::new(Instant::now()),
+                transfers: AtomicUsize::new(0),
+                peer_stay: AtomicBool::new(false),
+            }),
+        };
+        {
+            let mut slot = self.link.lock().unwrap();
+            if let Some(old) = slot.as_ref() {
+                let old_alive = old.conn.close_reason().is_none();
+                if old_alive && old.dialer.as_bytes() < link.dialer.as_bytes() {
+                    link.conn.close(CLOSE_DUPLICATE.into(), b"duplicate");
+                    return;
+                }
+                old.conn.close(CLOSE_DUPLICATE.into(), b"duplicate");
+            }
+            *slot = Some(link.clone());
+        }
+        debug!(serial = link.serial, dialer = %dialer, "link up");
+        self.emit(Event::Connected);
+        if let Err(e) = self.resend(&link) {
+            warn!("resend failed: {e:#}");
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = me.drive(&link, rx).await {
+                debug!(serial = link.serial, "link ended: {e:#}");
+            }
+            link.conn.close(CLOSE_BYE.into(), b"bye");
+            let was_current = {
+                let mut slot = me.link.lock().unwrap();
+                let cur = slot.as_ref().is_some_and(|l| l.serial == link.serial);
+                if cur {
+                    *slot = None;
+                }
+                cur
+            };
+            if was_current {
+                me.emit(Event::Disconnected);
+                // Anything enqueued while the link was dying goes out on the next one.
+                me.kick.notify_one();
+            }
+        });
+    }
+
+    fn resend(&self, link: &Link) -> Result<()> {
+        let (live, expired) = self.db(|s| s.outbox())?;
+        for m in expired {
+            self.emit(Event::Message(m));
+        }
+        for m in live {
+            let _ = link.tx.send(Frame::Item(m.item()));
+        }
+        Ok(())
+    }
+
+    async fn drive(self: &Arc<Self>, link: &Link, mut rx: mpsc::UnboundedReceiver<Frame>) -> Result<()> {
+        // The dialer opens the control stream; it becomes visible to the peer with the first write.
+        let (mut send, mut recv) = if link.dialer == self.ep.id() {
+            link.conn.open_bi().await?
+        } else {
+            link.conn.accept_bi().await?
+        };
+        write_msg(&mut send, &Frame::Hello { name: self.cfg.name.clone() }).await?;
+        let act = &link.activity;
+
+        let writer = async {
+            while let Some(f) = rx.recv().await {
+                write_msg(&mut send, &f).await?;
+                act.touch();
+            }
+            anyhow::Ok(())
+        };
+        let reader = async {
+            while let Some(f) = read_msg::<Frame>(&mut recv).await? {
+                act.touch();
+                self.on_frame(link, f).await?;
+            }
+            anyhow::Ok(())
+        };
+        let unis = async {
+            loop {
+                let r = link.conn.accept_uni().await?;
+                tokio::spawn(self.clone().receive_file(link.clone(), r));
+            }
+        };
+        let idle = async {
+            let tick = (self.cfg.idle_timeout / 4).min(Duration::from_secs(5));
+            loop {
+                tokio::time::sleep(tick).await;
+                let busy = self.stay.load(Ordering::SeqCst)
+                    || act.peer_stay.load(Ordering::SeqCst)
+                    || act.transfers.load(Ordering::SeqCst) > 0;
+                if !busy && act.last.lock().unwrap().elapsed() >= self.cfg.idle_timeout {
+                    debug!(serial = link.serial, "closing idle link");
+                    link.conn.close(CLOSE_IDLE.into(), b"idle");
+                    return anyhow::Ok(());
+                }
+            }
+        };
+        tokio::select! {
+            r = writer => r,
+            r = reader => r,
+            r = unis => r,
+            r = idle => r,
+        }
+    }
+
+    async fn on_frame(self: &Arc<Self>, link: &Link, f: Frame) -> Result<()> {
+        match f {
+            Frame::Hello { name } => {
+                if let Some(id) = self.peer_id()
+                    && self.peer().is_some_and(|p| p.name != name)
+                {
+                    self.set_peer(id, &name)?;
+                }
+            }
+            Frame::Item(item) => {
+                let (msg, new) = self.db(|s| s.receive(&item))?;
+                if msg.from_me {
+                    return Ok(());
+                }
+                if new {
+                    self.emit(Event::Message(msg.clone()));
+                }
+                if msg.state == State::Incoming {
+                    if !self.receiving.lock().unwrap().contains(&msg.id) {
+                        let offset = self.part_len(msg.id).await;
+                        let _ = link.tx.send(Frame::FileWant { id: msg.id, offset });
+                    }
+                } else {
+                    let _ = link.tx.send(Frame::Ack { id: msg.id });
+                }
+            }
+            Frame::Ack { id } => {
+                if let Some(m) = self.db(|s| s.ack(id))? {
+                    self.emit(Event::Message(m));
+                }
+            }
+            Frame::FileWant { id, offset } => {
+                let (me, link) = (self.clone(), link.clone());
+                tokio::spawn(async move {
+                    if let Err(e) = me.stream_file(&link, id, offset).await {
+                        warn!("sending file {id} failed: {e:#}");
+                    }
+                });
+            }
+            Frame::Media(state) => {
+                *self.media.lock().unwrap() = state.clone();
+                self.emit(Event::Media { state });
+            }
+            Frame::MediaCmd(cmd) => self.emit(Event::MediaCmd { cmd }),
+            Frame::Notifs(list) => {
+                *self.notifs.lock().unwrap() = list.clone();
+                self.emit(Event::Notifs { list });
+            }
+            Frame::StopRing => self.emit(Event::StopRing),
+            Frame::PushToken(t) => self.db(|s| s.set_kv("push_token", t.as_bytes()))?,
+            Frame::StayConnected(b) => link.activity.peer_stay.store(b, Ordering::SeqCst),
+        }
+        Ok(())
+    }
+
+    async fn part_len(&self, id: Uuid) -> u64 {
+        let part = files::part_path(&self.cfg.download_dir, id);
+        tokio::fs::metadata(&part).await.map(|m| m.len()).unwrap_or(0)
+    }
+
+    /// Sender side of a file: a uni stream with a [`FileHeader`], then the bytes from `offset`.
+    async fn stream_file(&self, link: &Link, id: Uuid, offset: u64) -> Result<()> {
+        let msg = self
+            .db(|s| s.get(id))?
+            .filter(|m| m.from_me && m.kind == "file" && m.state == State::Queued)
+            .context("not a queued file of mine")?;
+        let path = msg.path.clone().context("file has no local path")?;
+        let size = msg.file_size.unwrap_or(0);
+        let mut f = match tokio::fs::File::open(&path).await {
+            Ok(f) => f,
+            Err(e) => {
+                if let Some(m) = self.db(|s| s.set_state(id, State::Expired))? {
+                    self.emit(Event::Message(m));
+                }
+                return Err(e).with_context(|| format!("open {}", path.display()));
+            }
+        };
+        let offset = offset.min(size);
+        f.seek(SeekFrom::Start(offset)).await?;
+        let _transfer = link.activity.transfer();
+        let mut s = link.conn.open_uni().await?;
+        write_msg(&mut s, &FileHeader { id, offset }).await?;
+        let mut meter = Meter::new(id, size);
+        let mut done = offset;
+        meter.tick(self, done);
+        let mut buf = vec![0u8; CHUNK];
+        while done < size {
+            let want = buf.len().min((size - done) as usize);
+            let n = f.read(&mut buf[..want]).await?;
+            if n == 0 {
+                bail!("{} shrank while sending", path.display());
+            }
+            s.write_all(&buf[..n]).await?;
+            done += n as u64;
+            link.activity.touch();
+            meter.tick(self, done);
+        }
+        s.finish()?;
+        s.stopped().await?;
+        Ok(())
+    }
+
+    async fn receive_file(self: Arc<Self>, link: Link, mut r: RecvStream) {
+        let mut id = None;
+        let res = self.try_receive(&link, &mut r, &mut id).await;
+        let Some(id) = id else {
+            if let Err(e) = res {
+                warn!("bad file stream: {e:#}");
+            }
+            return;
+        };
+        if let Err(e) = res {
+            warn!("receiving file {id} stopped: {e:#}");
+            // The link may still be fine (e.g. a duplicate stream lost the race); ask again.
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let still_incoming = self
+                .db(|s| s.get(id))
+                .ok()
+                .flatten()
+                .is_some_and(|m| m.state == State::Incoming);
+            let current = self.current().is_some_and(|l| l.serial == link.serial);
+            if still_incoming && current && !self.receiving.lock().unwrap().contains(&id) {
+                let offset = self.part_len(id).await;
+                let _ = link.tx.send(Frame::FileWant { id, offset });
+            }
+        }
+    }
+
+    async fn try_receive(&self, link: &Link, r: &mut RecvStream, id_out: &mut Option<Uuid>) -> Result<()> {
+        let hdr: FileHeader = read_msg(r).await?.context("empty file stream")?;
+        let msg = self
+            .db(|s| s.get(hdr.id))?
+            .filter(|m| !m.from_me && m.state == State::Incoming)
+            .context("file stream for an unknown item")?;
+        if !self.receiving.lock().unwrap().insert(hdr.id) {
+            let _ = r.stop(0u32.into());
+            return Ok(());
+        }
+        let _receiving = ReceivingGuard(self, hdr.id);
+        *id_out = Some(hdr.id);
+        let _transfer = link.activity.transfer();
+
+        let size = msg.file_size.unwrap_or(0);
+        let part = files::part_path(&self.cfg.download_dir, hdr.id);
+        let mut f = tokio::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&part)
+            .await?;
+        let have = f.metadata().await?.len();
+        if have < hdr.offset {
+            bail!("sender resumed at {} but only {have} bytes are here", hdr.offset);
+        }
+        f.set_len(hdr.offset).await?;
+        f.seek(SeekFrom::Start(hdr.offset)).await?;
+
+        let mut meter = Meter::new(hdr.id, size);
+        let mut done = hdr.offset;
+        meter.tick(self, done);
+        let mut buf = vec![0u8; CHUNK];
+        while done < size {
+            let want = buf.len().min((size - done) as usize);
+            let Some(n) = r.read(&mut buf[..want]).await? else { break };
+            f.write_all(&buf[..n]).await?;
+            done += n as u64;
+            link.activity.touch();
+            meter.tick(self, done);
+        }
+        f.flush().await?;
+        drop(f);
+        if done < size {
+            bail!("stream ended at {done} of {size} bytes");
+        }
+
+        let (hash, len) = files::sha256_file(&part).await?;
+        if Some(hash) != msg.sha256 || len != size {
+            // Start over on the next connect, when the sender offers the item again.
+            tokio::fs::remove_file(&part).await.ok();
+            warn!("file {} failed its checksum; discarded", hdr.id);
+            return Ok(());
+        }
+        let dest = files::unique_path(&self.cfg.download_dir, msg.file_name.as_deref().unwrap_or("file"));
+        tokio::fs::rename(&part, &dest).await?;
+        let m = self.db(|s| {
+            s.set_path(hdr.id, &dest)?;
+            s.set_state(hdr.id, State::Received)
+        })?;
+        if let Some(m) = m {
+            self.emit(Event::Message(m));
+        }
+        let _ = link.tx.send(Frame::Ack { id: hdr.id });
+        Ok(())
+    }
+
+    async fn serve_pair(&self, conn: Connection) -> Result<()> {
+        let (mut send, mut recv) = timeout(Duration::from_secs(10), conn.accept_bi()).await??;
+        let req = timeout(Duration::from_secs(10), read_msg::<PairRequest>(&mut recv))
+            .await??
+            .context("no pairing request")?;
+        let PairRequest::Hello { token, name } = req;
+        let ok = {
+            let mut offer = self.offer.lock().unwrap();
+            match *offer {
+                Some((t, until)) if Instant::now() < until && ct_eq(&t, &token) => {
+                    *offer = None;
+                    true
+                }
+                _ => false,
+            }
+        };
+        // Store the peer before replying, so its first dial after pairing is accepted.
+        let reply = if ok {
+            let peer = self.set_peer(conn.remote_id(), &name)?;
+            info!("paired with {} ({})", peer.name, peer.id);
+            PairReply::Accepted { name: self.cfg.name.clone() }
+        } else {
+            PairReply::Rejected
+        };
+        write_msg(&mut send, &reply).await?;
+        send.finish()?;
+        // Let the reply arrive; the dialer closes once it has read it.
+        let _ = timeout(Duration::from_secs(5), conn.closed()).await;
+        if !ok {
+            bail!("wrong or expired pairing code");
+        }
+        Ok(())
+    }
+
+    async fn pair(&self, code: &str) -> Result<PeerInfo> {
+        let (id, token) = parse_code(code)?;
+        let conn = timeout(CONNECT_TIMEOUT, self.ep.connect(id, PAIR_ALPN))
+            .await
+            .context("connect timed out")??;
+        let res = async {
+            let (mut send, mut recv) = conn.open_bi().await?;
+            write_msg(&mut send, &PairRequest::Hello { token, name: self.cfg.name.clone() }).await?;
+            send.finish()?;
+            timeout(Duration::from_secs(10), read_msg::<PairReply>(&mut recv))
+                .await??
+                .context("no pairing reply")
+        }
+        .await;
+        conn.close(CLOSE_BYE.into(), b"done");
+        match res? {
+            PairReply::Accepted { name } => self.set_peer(id, &name),
+            PairReply::Rejected => bail!("pairing code rejected (expired or already used)"),
+        }
+    }
+}
+
+struct ReceivingGuard<'a>(&'a Inner, Uuid);
+
+impl Drop for ReceivingGuard<'_> {
+    fn drop(&mut self) {
+        self.0.receiving.lock().unwrap().remove(&self.1);
+    }
+}
+
+/// Throttles progress events to a few per second.
+struct Meter {
+    id: Uuid,
+    total: u64,
+    last: Option<Instant>,
+}
+
+impl Meter {
+    fn new(id: Uuid, total: u64) -> Self {
+        Self { id, total, last: None }
+    }
+
+    fn tick(&mut self, inner: &Inner, done: u64) {
+        let due = self.last.is_none_or(|t| t.elapsed() >= Duration::from_millis(250));
+        if due || done == self.total {
+            self.last = Some(Instant::now());
+            inner.emit(Event::Progress { id: self.id, done, total: self.total });
+        }
+    }
+}
+
+fn ct_eq(a: &[u8; 32], b: &[u8; 32]) -> bool {
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+pub fn parse_code(code: &str) -> Result<(EndpointId, [u8; 32])> {
+    let parts: Vec<&str> = code.trim().split(':').collect();
+    let ["tether", "1", id, token] = parts[..] else {
+        bail!("not a tether pairing code");
+    };
+    let id: EndpointId = id.parse().context("bad endpoint id in pairing code")?;
+    let token = BASE32_NOPAD
+        .decode(token.as_bytes())
+        .ok()
+        .and_then(|t| <[u8; 32]>::try_from(t).ok())
+        .context("bad token in pairing code")?;
+    Ok((id, token))
+}
+
+#[cfg(test)]
+mod tests;

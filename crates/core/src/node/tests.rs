@@ -1,0 +1,200 @@
+use std::path::Path;
+
+use tokio::sync::broadcast::Receiver;
+
+use super::*;
+
+const WAIT: Duration = Duration::from_secs(15);
+
+fn config(dir: &Path, name: &str) -> Config {
+    let mut cfg = Config::new(dir.join(name).join("state"), dir.join(name).join("dl"), name);
+    cfg.net = Net::Loopback;
+    cfg.redial = Some((Duration::from_millis(100), Duration::from_millis(400)));
+    cfg
+}
+
+async fn start(dir: &Path, name: &str) -> Node {
+    Node::start(config(dir, name)).await.unwrap()
+}
+
+async fn paired(dir: &Path) -> (Node, Node) {
+    let a = start(dir, "a").await;
+    let b = start(dir, "b").await;
+    introduce(&a, &b);
+    b.pair(&a.pair_offer()).await.unwrap();
+    (a, b)
+}
+
+fn introduce(a: &Node, b: &Node) {
+    a.add_hint(b.addr());
+    b.add_hint(a.addr());
+}
+
+async fn wait_for(rx: &mut Receiver<Event>, f: impl Fn(&Event) -> bool) -> Event {
+    timeout(WAIT, async {
+        loop {
+            let e = rx.recv().await.unwrap();
+            if f(&e) {
+                return e;
+            }
+        }
+    })
+    .await
+    .expect("event did not arrive")
+}
+
+fn msg_in(e: &Event, id: Uuid, state: State) -> bool {
+    matches!(e, Event::Message(m) if m.id == id && m.state == state)
+}
+
+#[tokio::test]
+async fn pairs_then_chats_both_ways() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    assert_eq!(a.peer().unwrap().id, b.id().to_string());
+    assert_eq!(a.peer().unwrap().name, "b");
+    assert_eq!(b.peer().unwrap().name, "a");
+
+    let (mut ea, mut eb) = (a.events(), b.events());
+    let m = a.send_text("hi").unwrap();
+    let got = wait_for(&mut eb, |e| msg_in(e, m.id, State::Received)).await;
+    let Event::Message(got) = got else { unreachable!() };
+    assert_eq!(got.text.as_deref(), Some("hi"));
+    wait_for(&mut ea, |e| msg_in(e, m.id, State::Delivered)).await;
+
+    let r = b.send_text("back").unwrap();
+    wait_for(&mut ea, |e| msg_in(e, r.id, State::Received)).await;
+    assert_eq!(a.unread().unwrap(), 1);
+    assert!(a.is_connected() && b.is_connected());
+}
+
+#[tokio::test]
+async fn pairing_code_is_single_use() {
+    let d = tempfile::tempdir().unwrap();
+    let a = start(d.path(), "a").await;
+    let b = start(d.path(), "b").await;
+    let c = start(d.path(), "c").await;
+    introduce(&a, &b);
+    introduce(&a, &c);
+
+    let code = a.pair_offer();
+    b.pair(&code).await.unwrap();
+    assert!(c.pair(&code).await.is_err());
+
+    let forged = format!("tether:1:{}:{}", a.id(), BASE32_NOPAD.encode(&[7u8; 32]));
+    a.pair_offer();
+    assert!(c.pair(&forged).await.is_err());
+    assert_eq!(a.peer().unwrap().id, b.id().to_string());
+}
+
+#[tokio::test]
+async fn unpaired_endpoint_is_refused() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, _b) = paired(d.path()).await;
+    let c = start(d.path(), "c").await;
+    c.add_hint(a.addr());
+    let conn = c.inner.ep.connect(a.id(), ALPN).await.unwrap();
+    let err = timeout(WAIT, conn.closed()).await.unwrap();
+    match err {
+        iroh::endpoint::ConnectionError::ApplicationClosed(close) => {
+            assert_eq!(close.error_code, CLOSE_NOT_PAIRED.into());
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert!(c.connect().await.is_err(), "c has no peer to dial");
+}
+
+#[tokio::test]
+async fn queued_while_offline_is_delivered_later() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    b.shutdown().await;
+
+    let file = d.path().join("shot.png");
+    std::fs::write(&file, b"not really a png").unwrap();
+    let t = a.send_text("one").unwrap();
+    let f = a.send_file(&file).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(a.status().unwrap().queued, 2);
+
+    // b comes back on a new port, with its old state.
+    let b = start(d.path(), "b").await;
+    let (mut ea, mut eb) = (a.events(), b.events());
+    introduce(&a, &b);
+    // The phone checks in when it starts; a's own redial may still be stuck on b's old address.
+    b.connect().await.unwrap();
+    wait_for(&mut eb, |e| msg_in(e, f.id, State::Received)).await;
+    let got = b.recent(10).unwrap();
+    assert!(got.iter().any(|m| m.id == t.id && m.text.as_deref() == Some("one")));
+    let saved = got.iter().find(|m| m.id == f.id).unwrap().path.clone().unwrap();
+    assert_eq!(saved, d.path().join("b/dl/shot.png"));
+    assert_eq!(std::fs::read(saved).unwrap(), b"not really a png");
+
+    wait_for(&mut ea, |e| msg_in(e, f.id, State::Delivered)).await;
+    assert_eq!(a.status().unwrap().queued, 0);
+}
+
+#[tokio::test]
+async fn file_resumes_from_partial_download() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    b.shutdown().await;
+
+    let data: Vec<u8> = (0..1_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    let file = d.path().join("big.bin");
+    std::fs::write(&file, &data).unwrap();
+    let f = a.send_file(&file).await.unwrap();
+
+    // An earlier attempt got 300 kB across before the link dropped.
+    let dl = d.path().join("b/dl");
+    std::fs::write(files::part_path(&dl, f.id), &data[..300_000]).unwrap();
+
+    let b = start(d.path(), "b").await;
+    let mut eb = b.events();
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    let first = wait_for(&mut eb, |e| matches!(e, Event::Progress { id, .. } if *id == f.id)).await;
+    assert!(matches!(first, Event::Progress { done: 300_000, total: 1_000_000, .. }));
+    wait_for(&mut eb, |e| msg_in(e, f.id, State::Received)).await;
+    assert_eq!(std::fs::read(dl.join("big.bin")).unwrap(), data);
+    assert!(!files::part_path(&dl, f.id).exists());
+}
+
+#[tokio::test]
+async fn idle_link_closes_unless_asked_to_stay() {
+    let d = tempfile::tempdir().unwrap();
+    let mut ca = config(d.path(), "a");
+    ca.idle_timeout = Duration::from_millis(800);
+    let a = Node::start(ca).await.unwrap();
+    let b = start(d.path(), "b").await;
+    introduce(&a, &b);
+    b.pair(&a.pair_offer()).await.unwrap();
+
+    let mut ea = a.events();
+    b.connect().await.unwrap();
+    b.set_stay(true);
+    wait_for(&mut ea, |e| matches!(e, Event::Connected)).await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    assert!(a.is_connected(), "b asked to stay connected");
+
+    b.set_stay(false);
+    wait_for(&mut ea, |e| matches!(e, Event::Disconnected)).await;
+}
+
+#[tokio::test]
+async fn simultaneous_dials_settle_on_one_link() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    let (ra, rb) = tokio::join!(a.connect(), b.connect());
+    ra.unwrap();
+    rb.unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(a.is_connected() && b.is_connected());
+    let smaller = if a.id().as_bytes() < b.id().as_bytes() { a.id() } else { b.id() };
+    assert_eq!(a.inner.current().unwrap().dialer, smaller);
+    assert_eq!(b.inner.current().unwrap().dialer, smaller);
+
+    let mut eb = b.events();
+    let m = a.send_text("after the race").unwrap();
+    wait_for(&mut eb, |e| msg_in(e, m.id, State::Received)).await;
+}
