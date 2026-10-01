@@ -1,0 +1,23 @@
+[package]
+name = "tether-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+iroh.workspace = true
+iroh-mdns-address-lookup.workspace = true
+tokio.workspace = true
+rusqlite.workspace = true
+postcard.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+rand.workspace = true
+data-encoding.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,161 @@
+//! Wire format: every frame on the control stream is a big-endian u32 length followed by a
+//! postcard-encoded [`Frame`]. File bytes travel on their own uni streams, each starting with a
+//! length-prefixed [`FileHeader`].
+
+use anyhow::{Context, Result, bail};
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use uuid::Uuid;
+
+/// ALPN for the paired data connection.
+pub const ALPN: &[u8] = b"tether/1";
+/// ALPN used once, while pairing.
+pub const PAIR_ALPN: &[u8] = b"tether/pair/1";
+
+/// Largest control frame we accept. Notification snapshots are the big ones.
+const MAX_FRAME: u32 = 4 << 20;
+
+/// Something one device wants the other to get, even if it is offline right now.
+/// Items are stored in the sender's outbox until the receiver acks them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Item {
+    pub id: Uuid,
+    pub seq: u64,
+    pub ts_ms: i64,
+    /// Drop instead of delivering after this time (rings go stale fast).
+    pub expires_ms: Option<i64>,
+    pub body: Body,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Body {
+    Text(String),
+    File { name: String, size: u64, sha256: [u8; 32] },
+    /// A one-line alert ("Suspend blocked: …"); shown as a notification, kept in the chat.
+    Ping(String),
+    /// Make the phone ring until stopped.
+    Ring,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaState {
+    pub player: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub playing: bool,
+    pub position_ms: i64,
+    pub duration_ms: i64,
+    /// 0–100, `None` when the phone can't change it.
+    pub volume: Option<u8>,
+    pub can_seek: bool,
+    pub can_next: bool,
+    pub can_previous: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum MediaCmd {
+    Play,
+    Pause,
+    PlayPause,
+    Next,
+    Previous,
+    Seek { position_ms: i64 },
+    Volume(u8),
+}
+
+/// One active notification on the phone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PhoneNotif {
+    pub key: String,
+    pub app: String,
+    pub title: String,
+    pub text: String,
+    pub posted_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Frame {
+    Hello { name: String },
+    Item(Item),
+    Ack { id: Uuid },
+    /// Ask the sender to stream a file from `offset` (resume).
+    FileWant { id: Uuid, offset: u64 },
+    /// Live state, never queued. `None` = nothing playing.
+    Media(Option<MediaState>),
+    MediaCmd(MediaCmd),
+    Notifs(Vec<PhoneNotif>),
+    StopRing,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileHeader {
+    pub id: Uuid,
+    pub offset: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PairRequest {
+    Hello { token: [u8; 32], name: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PairReply {
+    Accepted { name: String },
+    Rejected,
+}
+
+pub async fn write_msg<T: Serialize>(w: &mut (impl AsyncWrite + Unpin), msg: &T) -> Result<()> {
+    let bytes = postcard::to_stdvec(msg)?;
+    w.write_all(&(bytes.len() as u32).to_be_bytes()).await?;
+    w.write_all(&bytes).await?;
+    Ok(())
+}
+
+/// Reads one message; `Ok(None)` on a clean end of stream between frames.
+pub async fn read_msg<T: for<'de> Deserialize<'de>>(
+    r: &mut (impl AsyncRead + Unpin),
+) -> Result<Option<T>> {
+    let mut len = [0u8; 4];
+    match r.read_exact(&mut len).await {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
+        Err(e) => return Err(e.into()),
+    }
+    let len = u32::from_be_bytes(len);
+    if len > MAX_FRAME {
+        bail!("frame of {len} bytes is too large");
+    }
+    let mut buf = vec![0u8; len as usize];
+    r.read_exact(&mut buf).await.context("truncated frame")?;
+    Ok(Some(postcard::from_bytes(&buf)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn frames_round_trip() {
+        let frames = vec![
+            Frame::Hello { name: "Laptop".into() },
+            Frame::Item(Item {
+                id: Uuid::new_v4(),
+                seq: 7,
+                ts_ms: 1,
+                expires_ms: None,
+                body: Body::File { name: "a.png".into(), size: 3, sha256: [9; 32] },
+            }),
+            Frame::MediaCmd(MediaCmd::Seek { position_ms: 1234 }),
+        ];
+        let mut buf = Vec::new();
+        for f in &frames {
+            write_msg(&mut buf, f).await.unwrap();
+        }
+        let mut r = buf.as_slice();
+        for f in &frames {
+            assert_eq!(read_msg::<Frame>(&mut r).await.unwrap().as_ref(), Some(f));
+        }
+        assert_eq!(read_msg::<Frame>(&mut r).await.unwrap(), None);
+    }
+}
