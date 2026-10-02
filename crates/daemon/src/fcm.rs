@@ -180,8 +180,18 @@ fn unix_now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
+/// Whether a queued item is worth waking the phone for. A view only when it carries `notify`: an
+/// app republishes its view on every small change, and the rest can wait for the next link.
+fn wakes(view: bool, data: Option<&str>) -> bool {
+    !view
+        || data
+            .and_then(|d| serde_json::from_str::<Value>(d).ok())
+            .is_some_and(|v| v.get("notify").is_some_and(|n| !n.is_null()))
+}
+
 /// What the wake loop needs from the node.
 pub trait Phone: Send + 'static {
+    /// Queued items worth a wake (see [`wakes`]).
     fn connected(&self) -> bool;
     fn queued(&self) -> usize;
     fn token(&self) -> Option<String>;
@@ -193,7 +203,7 @@ impl Phone for Node {
         self.is_connected()
     }
     fn queued(&self) -> usize {
-        self.status().map_or(0, |s| s.queued)
+        self.outbox().map_or(0, |o| o.iter().filter(|m| wakes(m.kind == "view", m.text.as_deref())).count())
     }
     fn token(&self) -> Option<String> {
         self.push_token().ok().flatten()
@@ -233,6 +243,11 @@ pub async fn run(
         tokio::select! {
             ev = rx.recv() => match ev {
                 Ok(Event::Message(m)) if m.from_me && m.state == State::Queued && !phone.connected() => {
+                    due = schedule(due);
+                }
+                Ok(Event::App { id: Some(_), from_me: true, view, data, .. })
+                    if !phone.connected() && wakes(view, Some(&data)) =>
+                {
                     due = schedule(due);
                 }
                 Ok(_) | Err(RecvError::Lagged(_)) => {}
@@ -330,7 +345,12 @@ mod tests {
             path: None,
             state: State::Queued,
             read: false,
+            channel: None,
         })
+    }
+
+    fn app_queued(data: &str, view: bool) -> Event {
+        Event::App { id: Some(Uuid::new_v4()), channel: "teen".into(), data: data.into(), from_me: true, view }
     }
 
     struct Rig {
@@ -379,6 +399,37 @@ mod tests {
         assert_eq!(r.calls(), 2, "one deferred wake for both items");
         advance(120).await;
         assert_eq!(r.calls(), 2, "no repeats without new items");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_app_item_wakes_too() {
+        let r = Rig::new(0, false);
+        r.phone.0.lock().unwrap().queued += 1;
+        r.tx.send(app_queued(r#"{"post":{"text":"hi"}}"#, false)).unwrap();
+        advance(1).await;
+        assert_eq!(r.calls(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_view_wakes_only_with_notify() {
+        let r = Rig::new(0, false);
+        r.tx.send(app_queued(r#"{"v":1,"blocks":[]}"#, true)).unwrap();
+        advance(60).await;
+        assert_eq!(r.calls(), 0, "a silent view waits for the next link");
+        r.phone.0.lock().unwrap().queued += 1;
+        r.tx.send(app_queued(r#"{"v":1,"blocks":[],"notify":{"title":"t","text":"x"}}"#, true)).unwrap();
+        advance(1).await;
+        assert_eq!(r.calls(), 1);
+    }
+
+    #[test]
+    fn which_items_wake() {
+        assert!(wakes(false, Some("not json")));
+        assert!(wakes(false, None));
+        assert!(!wakes(true, Some(r#"{"v":1}"#)));
+        assert!(!wakes(true, Some(r#"{"v":1,"notify":null}"#)));
+        assert!(!wakes(true, Some(r#"{"blocks":[{"notify":1}]}"#)), "top level only");
+        assert!(wakes(true, Some(r#"{"notify":{"title":"t"}}"#)));
     }
 
     #[tokio::test(start_paused = true)]

@@ -3654,6 +3654,7 @@ dependencies = [
  "tempfile",
  "tether-core",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
  "uuid",

@@ -3,6 +3,11 @@
 // Badge.qml), or centered over a scrim (`omarchy-shell tether toggle|open`, SUPER+M, and a click
 // on a chat toast). Both take the keyboard, since an xdg popup can't be typed into reliably.
 //
+// App channels (docs/PLAN.md, "App channels") share the window: a strip above the card switches
+// between the chat and each channel (Ctrl+1…9, Ctrl+K), and a channel shows Channel.qml, its app's
+// view drawn from blocks (`omarchy-shell tether channel <name>`; SUPER+N opens חפיפה). The list
+// and views come from `tether channels --json`, read again on each change notice from the watch.
+//
 // It stays loaded (keepLoaded) so the IPC target exists from shell start. The messages come from
 // `tether json` once, then from a long-running `tether watch` (JSON lines); sending runs
 // `tether msg` and `tether send`, whose own events bring the new rows in.
@@ -22,7 +27,19 @@ Item {
 
   readonly property string cli: Quickshell.env("HOME") + "/.cargo/bin/tether"
 
+  // A test run puts the panel on that output and never takes the keyboard.
+  readonly property string testOutput: Quickshell.env("TETHER_PANEL_OUTPUT") || ""
+
   property bool opened: false
+  property string channel: ""               // "" is the chat
+  property var channels: []                 // `tether channels --json`
+  property var threadItems: []              // the open thread channel's items
+  property var pending: ({})                // "<channel>/<compose id>" → [{uid, text}] not in a view yet
+  property bool switcher: false             // the Ctrl+K list
+  readonly property var current: {
+    for (var i = 0; i < channels.length; i++) if (channels[i].name === channel) return channels[i]
+    return null
+  }
   property string mode: "center"            // or "dropdown"
   property int anchorX: -1                  // dropdown: the badge's centre on screen
   property string reopenMode: ""            // set while the file chooser has the panel hidden
@@ -54,8 +71,30 @@ Item {
     mode = m
     anchorX = x === undefined || x === "" ? -1 : Number(x)
     opened = true
-    markRead()
-    Qt.callLater(function() { card.focusInput(); card.scrollToEnd() })
+    switcher = false
+    if (channel === "") markRead()
+    reloadChannels()
+    Qt.callLater(focusCard)
+  }
+
+  function focusCard() {
+    if (channel === "") { card.focusInput(); card.scrollToEnd() }
+    else chanCard.focusFirst()
+  }
+
+  // `name` "" is the chat. An unknown channel opens anyway: its view may be on the way.
+  function switchTo(name) {
+    channel = name
+    switcher = false
+    threadItems = []
+    if (name === "") markRead()
+    else reloadThread()
+    Qt.callLater(focusCard)
+  }
+
+  function showChannel(name) {
+    switchTo(name)
+    show("center")
   }
 
   IpcHandler {
@@ -65,6 +104,10 @@ Item {
     function close(): void { root.close() }
     function dropdown(x: string): void { if (root.opened) root.close(); else root.show("dropdown", x) }
     function isOpen(): bool { return root.opened }
+    function channel(name: string): void { root.showChannel(name) }
+    function toggleChannel(name: string): void {
+      if (root.opened && root.channel === name) root.close(); else root.showChannel(name)
+    }
   }
 
   Component.onCompleted: reload()
@@ -138,7 +181,7 @@ Item {
     running: true
     stdout: SplitParser { onRead: function(line) { root.onEvent(line) } }
     // Catch up on whatever happened while the watch wasn't running.
-    onRunningChanged: if (running) root.reload()
+    onRunningChanged: if (running) { root.reload(); root.reloadChannels() }
     onExited: { root.daemonUp = false; rewatch.start() }
   }
 
@@ -160,6 +203,11 @@ Item {
     var e
     try { e = JSON.parse(line) } catch (err) { return }
     daemonUp = true
+    if (e.type === "app") {
+      reloadChannels()
+      if (e.channel === channel) reloadThread()
+      return
+    }
     if (e.event === "message") {
       upsert(e)
       if (!e.from_me && opened && (e.state === "received" || e.state === "incoming")) markRead()
@@ -172,6 +220,69 @@ Item {
     } else if (e.event === "connected" || e.event === "disconnected" || e.event === "read") {
       statusSoon.restart()
     }
+  }
+
+  // --- Channels ---------------------------------------------------------------------------------
+
+  function reloadChannels() { chanSoon.restart() }
+  function reloadThread() { if (current && current.kind === "thread") threadSoon.restart() }
+
+  Timer { id: chanSoon; interval: 80; onTriggered: if (!chanProc.running) chanProc.running = true }
+  Timer { id: threadSoon; interval: 80; onTriggered: if (!threadProc.running && root.channel) threadProc.running = true }
+
+  Process {
+    id: chanProc
+    command: [root.cli, "channels", "--json"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var list
+        try { list = JSON.parse(text) } catch (e) { return }
+        if (!Array.isArray(list)) return
+        root.channels = list
+        root.prunePending()
+        root.reloadThread()
+      }
+    }
+  }
+
+  Process {
+    id: threadProc
+    command: [root.cli, "thread", root.channel, "--json"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: { try { root.threadItems = JSON.parse(text) } catch (e) {} }
+    }
+  }
+
+  function act(name, obj) {
+    Quickshell.execDetached([cli, "action", name, JSON.stringify(obj)])
+  }
+
+  function pendingFor(name, id) { return pending[name + "/" + id] || [] }
+
+  function addPending(name, id, uid, text) {
+    var p = Object.assign({}, pending), k = name + "/" + id   // a new object, so bindings notice
+    p[k] = (p[k] || []).concat([{ uid: uid, text: text }])
+    pending = p
+  }
+
+  // An echo goes once a view lists an item with its uid.
+  function prunePending() {
+    var p = ({}), changed = false
+    for (var k in pending) {
+      var name = k.slice(0, k.indexOf("/")), ids = ({})
+      for (var i = 0; i < channels.length; i++) {
+        if (channels[i].name !== name || !channels[i].view || !channels[i].view.blocks) continue
+        var bs = channels[i].view.blocks
+        for (var j = 0; j < bs.length; j++)
+          for (var n = 0; bs[j].items && n < bs[j].items.length; n++) ids[bs[j].items[n].id] = true
+      }
+      var left = pending[k].filter(function(e) { return !ids[e.uid] })
+      if (left.length !== pending[k].length) changed = true
+      if (left.length) p[k] = left
+    }
+    if (changed) pending = p
   }
 
   // --- Actions ----------------------------------------------------------------------------------
@@ -258,7 +369,13 @@ Item {
     color: "transparent"
     WlrLayershell.namespace: "omarchy-tether"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: !root.opened ? WlrKeyboardFocus.None
+      // A test run must never take the keyboard: Hyprland gives even OnDemand layers focus on map.
+      : root.testOutput ? WlrKeyboardFocus.None : WlrKeyboardFocus.Exclusive
+    Binding on screen {
+      when: root.testOutput !== ""
+      value: Quickshell.screens.find(function(s) { return s.name === root.testOutput }) || null
+    }
     // The dropdown keeps clear of the bar, so its top edge is just under it; the centered
     // panel covers the whole screen with its scrim.
     exclusionMode: root.mode === "dropdown" ? ExclusionMode.Normal : ExclusionMode.Ignore
@@ -273,18 +390,175 @@ Item {
 
     MouseArea { anchors.fill: parent; onClicked: root.close() }
 
+    // The strip (only with channels) sits above the card and moves it down by its height.
+    readonly property int stripH: root.channels.length > 0 ? Style.space(28) + Style.space(4) : 0
+    readonly property int cardW: Math.min(panel.dropdown ? 330 : 440, panel.width - panel.gap * 2)
+    readonly property int cardH: Math.min(panel.dropdown ? 400 : 470, panel.height - panel.gap * 2 - stripH)
+    readonly property int cardX: panel.dropdown && root.anchorX >= 0
+      ? Math.max(panel.gap, Math.min(root.anchorX - cardW / 2, panel.width - cardW - panel.gap))
+      : Math.round((panel.width - cardW) / 2)
+    readonly property int cardY: (panel.dropdown ? panel.gap : Math.round((panel.height - cardH - stripH) / 2)) + stripH
+
+    Strip {
+      id: strip
+      visible: root.channels.length > 0
+      x: panel.cardX
+      y: panel.cardY - panel.stripH
+      width: panel.cardW
+      height: Style.space(28)
+    }
+
     Chat {
       id: card
+      visible: root.channel === ""
       ui: root
       roomy: !panel.dropdown
-      width: Math.min(panel.dropdown ? 330 : 440, panel.width - panel.gap * 2)
-      height: Math.min(panel.dropdown ? 400 : 470, panel.height - panel.gap * 2)
-      x: panel.dropdown && root.anchorX >= 0
-        ? Math.max(panel.gap, Math.min(root.anchorX - width / 2, panel.width - width - panel.gap))
-        : Math.round((panel.width - width) / 2)
-      y: panel.dropdown ? panel.gap : Math.round((panel.height - height) / 2)
+      width: panel.cardW
+      height: panel.cardH
+      x: panel.cardX
+      y: panel.cardY
 
       MouseArea { anchors.fill: parent; z: -1; onClicked: card.focusInput() }
+    }
+
+    Channel {
+      id: chanCard
+      visible: root.channel !== ""
+      ui: root
+      channel: root.current || (root.channel ? { name: root.channel, title: root.channel, glyph: root.channel.charAt(0).toUpperCase(), dir: "ltr", kind: "app", view: null } : null)
+      roomy: !panel.dropdown
+      width: panel.cardW
+      height: panel.cardH
+      x: panel.cardX
+      y: panel.cardY
+
+      MouseArea { anchors.fill: parent; z: -1; onClicked: chanCard.focusFirst() }
+    }
+
+    Switcher {
+      visible: root.switcher
+      x: panel.cardX + Math.round((panel.cardW - width) / 2)
+      y: panel.cardY + Style.space(40)
+      width: Math.min(260, panel.cardW - Style.space(20))
+    }
+
+    // Ctrl+1 is the chat, Ctrl+2… the channels in the strip's order; Ctrl+K picks by name.
+    Shortcut { sequence: "Ctrl+K"; enabled: root.opened; onActivated: root.switcher = !root.switcher }
+    Repeater {
+      model: 9
+      Item {
+        required property int index
+        Shortcut {
+          sequence: "Ctrl+" + (index + 1)
+          enabled: root.opened && index <= root.channels.length
+          onActivated: root.switchTo(index === 0 ? "" : root.channels[index - 1].name)
+        }
+      }
+    }
+  }
+
+  // The tabs above the card: the chat, then each channel with its glyph and badge.
+  component Strip: Row {
+    spacing: Style.space(4)
+    Tab { name: ""; glyph: "󰭹"; title: "Chat"; badge: root.status.unread || 0; tint: Color.accent }
+    Repeater {
+      model: root.channels
+      Tab {
+        required property var modelData
+        name: modelData.name
+        glyph: modelData.glyph
+        title: modelData.title
+        badge: modelData.badge || 0
+        tint: modelData.accent || Color.accent
+      }
+    }
+  }
+
+  component Tab: Rectangle {
+    id: tab
+    property string name: ""
+    property string glyph: ""
+    property string title: ""
+    property int badge: 0
+    property color tint: Color.accent
+    readonly property bool on: root.channel === name
+    width: tabRow.implicitWidth + Style.space(16)
+    height: Style.space(28)
+    radius: Math.max(4, Style.cornerRadius)
+    color: on ? Color.popups.background : Util.alpha(Color.popups.background, tabHover.hovered ? 0.85 : 0.6)
+    border.color: on ? tint : Util.alpha(Color.popups.text, 0.15)
+    Row {
+      id: tabRow
+      anchors.centerIn: parent
+      spacing: Style.space(5)
+      Text { text: tab.glyph; color: tab.on ? tab.tint : Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; anchors.verticalCenter: parent.verticalCenter }
+      Text { text: tab.title; color: Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.caption; font.bold: tab.on; anchors.verticalCenter: parent.verticalCenter }
+      Rectangle {
+        visible: tab.badge > 0
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.max(height, badgeText.implicitWidth + Style.space(8)); height: Style.space(16); radius: height / 2
+        color: tab.tint
+        Text { id: badgeText; anchors.centerIn: parent; text: tab.badge; color: Color.popups.background; font.pixelSize: Style.font.caption; font.bold: true }
+      }
+    }
+    HoverHandler { id: tabHover; cursorShape: Qt.PointingHandCursor }
+    TapHandler { onTapped: root.switchTo(tab.name) }
+  }
+
+  // Ctrl+K: type to filter, Enter opens the first match, Esc goes back.
+  component Switcher: Rectangle {
+    id: sw
+    readonly property var all: [{ name: "", title: "Chat", glyph: "󰭹" }].concat(root.channels)
+    readonly property var shown: all.filter(function(c) {
+      var q = filter.text.trim().toLowerCase()
+      return !q || c.title.toLowerCase().indexOf(q) >= 0 || c.name.indexOf(q) >= 0
+    })
+    height: swCol.implicitHeight + Style.space(12)
+    radius: Math.max(4, Style.cornerRadius)
+    color: Color.popups.background
+    border.color: Color.accent
+    z: 20
+    onVisibleChanged: if (visible) { filter.text = ""; filter.forceActiveFocus() } else Qt.callLater(root.focusCard)
+
+    Column {
+      id: swCol
+      anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.space(6) }
+      spacing: Style.space(3)
+      TextInput {
+        id: filter
+        width: parent.width
+        color: Color.popups.text
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        Keys.onPressed: function(event) {
+          if (event.key === Qt.Key_Escape) { event.accepted = true; root.switcher = false }
+          else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            event.accepted = true
+            if (sw.shown.length) root.switchTo(sw.shown[0].name)
+          }
+        }
+        Text { visible: !filter.text; text: "Go to channel…"; color: Util.alpha(Color.popups.text, 0.45); font: filter.font }
+      }
+      Repeater {
+        model: sw.shown
+        Rectangle {
+          required property var modelData
+          required property int index
+          width: swCol.width
+          height: Style.space(24)
+          radius: 4
+          color: index === 0 ? Util.alpha(Color.accent, 0.25) : (swHover.hovered ? Util.alpha(Color.popups.text, 0.08) : "transparent")
+          Text {
+            anchors { left: parent.left; leftMargin: Style.space(6); verticalCenter: parent.verticalCenter }
+            text: modelData.glyph + "  " + modelData.title
+            color: Color.popups.text
+            font.family: Style.font.family
+            font.pixelSize: Style.font.bodySmall
+          }
+          HoverHandler { id: swHover; cursorShape: Qt.PointingHandCursor }
+          TapHandler { onTapped: root.switchTo(modelData.name) }
+        }
+      }
     }
   }
 }

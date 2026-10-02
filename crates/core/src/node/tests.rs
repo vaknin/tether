@@ -299,3 +299,70 @@ async fn media_state_is_dropped_with_the_link() {
     wait_for(&mut el, |e| matches!(e, Event::Media { state: None })).await;
     assert_eq!(laptop.media(), None);
 }
+
+fn app_ev(e: &Event) -> bool {
+    matches!(e, Event::App { .. })
+}
+
+#[tokio::test]
+async fn app_views_replace_and_items_reach_the_channel_not_the_chat() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    b.shutdown().await;
+
+    // Offline: two views queued, the newer replaces the older; a post queues beside them.
+    a.send_app("teen", "old".into(), true).unwrap();
+    let v = a.send_app("teen", "new".into(), true).unwrap();
+    let post = a.send_app("teen", "post".into(), false).unwrap();
+    assert_eq!(a.status().unwrap().queued, 2);
+    assert_eq!(a.app_view("teen").unwrap().as_deref(), Some("new"));
+
+    let b = start(d.path(), "b").await;
+    let mut eb = b.events();
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    let got = wait_for(&mut eb, app_ev).await;
+    let Event::App { id, channel, data, from_me, view } = got else { unreachable!() };
+    assert_eq!((id, channel.as_str(), data.as_str(), from_me, view), (Some(v), "teen", "new", false, true));
+    let got = wait_for(&mut eb, app_ev).await;
+    assert!(matches!(got, Event::App { id: Some(id), view: false, .. } if id == post));
+    assert!(b.recent(10).unwrap().is_empty(), "not in the chat");
+    assert_eq!(b.unread().unwrap(), 0);
+    assert_eq!(b.app_view("teen").unwrap().as_deref(), Some("new"));
+    assert_eq!(b.app_pending("teen").unwrap(), vec![(post, "post".to_string())], "views aren't pending");
+    b.app_done(post).unwrap();
+    assert!(b.app_pending("teen").unwrap().is_empty());
+
+    // Online: a newer view replaces the delivered one on the receiving side too.
+    let v2 = a.send_app("teen", "newer".into(), true).unwrap();
+    wait_for(&mut eb, |e| matches!(e, Event::App { id: Some(id), .. } if *id == v2)).await;
+    assert_eq!(b.app_view("teen").unwrap().as_deref(), Some("newer"));
+    assert!(b.inner.db(|s| s.get(v)).unwrap().is_none(), "the old view is gone");
+    assert!(a.inner.db(|s| s.get(v)).unwrap().is_none());
+
+    // A reply both ways makes the thread; views stay out of it.
+    let mut ea = a.events();
+    let reply = b.send_app("teen", "reply".into(), false).unwrap();
+    wait_for(&mut ea, |e| matches!(e, Event::App { id: Some(id), .. } if *id == reply)).await;
+    let h = a.app_history("teen", 10).unwrap();
+    let h: Vec<_> = h.iter().map(|m| (m.text.as_deref().unwrap(), m.from_me)).collect();
+    assert_eq!(h, vec![("post", true), ("reply", false)]);
+    assert_eq!(a.app_channels().unwrap(), vec!["teen".to_string()]);
+
+    assert!(b.send_app_live("teen", "progress".into()));
+    let got = wait_for(&mut ea, app_ev).await;
+    assert!(matches!(got, Event::App { id: None, ref data, view: false, .. } if data == "progress"));
+}
+
+#[tokio::test]
+async fn a_local_app_item_is_pending_and_emitted() {
+    let d = tempfile::tempdir().unwrap();
+    let a = start(d.path(), "a").await;
+    let mut ea = a.events();
+    let id = a.app_local("teen", "tap".into()).unwrap();
+    let got = wait_for(&mut ea, app_ev).await;
+    assert!(matches!(got, Event::App { id: Some(i), from_me: false, view: false, .. } if i == id));
+    assert_eq!(a.app_pending("teen").unwrap(), vec![(id, "tap".to_string())]);
+    assert_eq!(a.status().unwrap().queued, 0, "nothing to send");
+    assert_eq!(a.status().unwrap().unread, 0);
+}

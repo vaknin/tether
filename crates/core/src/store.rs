@@ -75,7 +75,11 @@ pub struct Message {
     /// Local file: the source for files I send, the saved file for files I receive.
     pub path: Option<PathBuf>,
     pub state: State,
+    /// Theirs: seen. For app items: taken by the channel's client.
     pub read: bool,
+    /// App items (kind `app`) and views (kind `view`) only: the app channel (`text` holds its data).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
 }
 
 impl Message {
@@ -84,6 +88,11 @@ impl Message {
             "text" => Body::Text(self.text.clone().unwrap_or_default()),
             "ping" => Body::Ping(self.text.clone().unwrap_or_default()),
             "ring" => Body::Ring,
+            "app" | "view" => Body::App {
+                channel: self.channel.clone().unwrap_or_default(),
+                data: self.text.clone().unwrap_or_default(),
+                replace: self.kind == "view",
+            },
             _ => Body::File {
                 name: self.file_name.clone().unwrap_or_default(),
                 size: self.file_size.unwrap_or(0),
@@ -115,7 +124,11 @@ pub struct Store {
 }
 
 const COLS: &str =
-    "id, seq, from_me, ts_ms, expires_ms, kind, text, file_name, file_size, sha256, path, state, read";
+    "id, seq, from_me, ts_ms, expires_ms, kind, text, file_name, file_size, sha256, path, state, read, channel";
+/// App items and views aren't chat: the chat views and the unread count leave them out.
+const CHAT: &str = "kind NOT IN ('app', 'view')";
+/// Taken or delivered app items are dropped after this long.
+const APP_KEEP_MS: i64 = 30 * 24 * 3600 * 1000;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -153,7 +166,26 @@ impl Store {
              CREATE INDEX IF NOT EXISTS messages_ts ON messages (ts_ms);
              CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value BLOB NOT NULL);",
         )?;
-        Ok(Self { db })
+        let has_channel: bool = db.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'channel'",
+            [],
+            |r| r.get::<_, i64>(0).map(|n| n > 0),
+        )?;
+        if !has_channel {
+            db.execute_batch("ALTER TABLE messages ADD COLUMN channel TEXT")?;
+        }
+        let s = Self { db };
+        s.prune_apps(now_ms() - APP_KEEP_MS)?;
+        Ok(s)
+    }
+
+    /// Drops app items from before `before` that are done with: mine delivered, theirs taken.
+    fn prune_apps(&self, before: i64) -> Result<usize> {
+        Ok(self.db.execute(
+            "DELETE FROM messages WHERE kind = 'app' AND ts_ms < ?1
+             AND ((from_me = 1 AND state = 'delivered') OR (from_me = 0 AND read = 1))",
+            [before],
+        )?)
     }
 
     pub fn get_kv(&self, key: &str) -> Result<Option<Vec<u8>>> {
@@ -191,6 +223,7 @@ impl Store {
         let item = Item { id: Uuid::new_v4(), seq: seq as u64, ts_ms: now_ms(), expires_ms, body };
         let msg = to_message(&item, true, path, State::Queued, true);
         self.insert(&msg)?;
+        self.drop_old_views(&msg)?;
         Ok(msg)
     }
 
@@ -205,12 +238,37 @@ impl Store {
         };
         let msg = to_message(item, false, None, state, false);
         self.insert(&msg)?;
+        self.drop_old_views(&msg)?;
         Ok((msg, true))
+    }
+
+    /// After storing a view: only the newest matters, so the same sender's other views of that
+    /// channel go, whatever their state (a queued one is then never sent).
+    fn drop_old_views(&self, m: &Message) -> Result<()> {
+        if m.kind == "view" {
+            self.db.execute(
+                "DELETE FROM messages WHERE kind = 'view' AND channel = ?1 AND from_me = ?2 AND id != ?3",
+                params![m.channel, m.from_me, m.id.to_string()],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// An app item from a local UI (the laptop's panel): stored as if the peer sent it, so the
+    /// channel's client takes it from [`Store::app_pending`] like any other.
+    pub fn app_local(&self, channel: &str, data: String) -> Result<Message> {
+        let body = Body::App { channel: channel.into(), data, replace: false };
+        let item = Item { id: Uuid::new_v4(), seq: 0, ts_ms: now_ms(), expires_ms: None, body };
+        let msg = to_message(&item, false, None, State::Received, false);
+        self.insert(&msg)?;
+        Ok(msg)
     }
 
     fn insert(&self, m: &Message) -> Result<()> {
         self.db.execute(
-            &format!("INSERT INTO messages ({COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"),
+            &format!(
+                "INSERT INTO messages ({COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"
+            ),
             params![
                 m.id.to_string(),
                 m.seq as i64,
@@ -225,6 +283,7 @@ impl Store {
                 m.path.as_ref().map(|p| p.to_string_lossy().into_owned()),
                 m.state.as_str(),
                 m.read,
+                m.channel,
             ],
         )?;
         Ok(())
@@ -304,7 +363,7 @@ impl Store {
     /// The most recent `limit` messages, oldest first.
     pub fn recent(&self, limit: usize) -> Result<Vec<Message>> {
         let mut stmt = self.db.prepare(&format!(
-            "SELECT * FROM (SELECT {COLS} FROM messages ORDER BY ts_ms DESC, seq DESC LIMIT ?1)
+            "SELECT * FROM (SELECT {COLS} FROM messages WHERE {CHAT} ORDER BY ts_ms DESC, seq DESC LIMIT ?1)
              ORDER BY ts_ms, seq"
         ))?;
         Ok(stmt.query_map([limit as i64], row)?.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -312,24 +371,82 @@ impl Store {
 
     pub fn unread(&self) -> Result<u64> {
         Ok(self.db.query_row(
-            "SELECT COUNT(*) FROM messages WHERE from_me = 0 AND read = 0",
+            &format!("SELECT COUNT(*) FROM messages WHERE from_me = 0 AND read = 0 AND {CHAT}"),
             [],
             |r| r.get::<_, i64>(0),
         )? as u64)
     }
 
     pub fn mark_read(&self) -> Result<()> {
-        self.db.execute("UPDATE messages SET read = 1 WHERE read = 0", [])?;
+        self.db.execute(&format!("UPDATE messages SET read = 1 WHERE read = 0 AND {CHAT}"), [])?;
         Ok(())
+    }
+
+    /// The channel's items (not views) from the peer that its client hasn't taken yet, oldest first.
+    pub fn app_pending(&self, channel: &str) -> Result<Vec<Message>> {
+        let mut stmt = self.db.prepare(&format!(
+            "SELECT {COLS} FROM messages WHERE kind = 'app' AND from_me = 0 AND read = 0 AND channel = ?1
+             ORDER BY ts_ms, seq"
+        ))?;
+        Ok(stmt.query_map([channel], row)?.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// The channel's client took this item.
+    pub fn app_done(&self, id: Uuid) -> Result<()> {
+        self.db.execute(
+            "UPDATE messages SET read = 1 WHERE id = ?1 AND kind = 'app' AND from_me = 0",
+            [id.to_string()],
+        )?;
+        Ok(())
+    }
+
+    /// The newest view of the channel, from either side.
+    pub fn app_view(&self, channel: &str) -> Result<Option<Message>> {
+        Ok(self
+            .db
+            .query_row(
+                &format!(
+                    "SELECT {COLS} FROM messages WHERE kind = 'view' AND channel = ?1
+                     ORDER BY ts_ms DESC, rowid DESC LIMIT 1"
+                ),
+                [channel],
+                row,
+            )
+            .optional()?)
+    }
+
+    /// The channel's last `limit` items (not views), both ways, oldest first. Ties within a
+    /// millisecond go by arrival (the two sides' `seq`s don't compare).
+    pub fn app_history(&self, channel: &str, limit: usize) -> Result<Vec<Message>> {
+        let mut stmt = self.db.prepare(&format!(
+            "SELECT * FROM (SELECT {COLS}, rowid AS r FROM messages WHERE kind = 'app' AND channel = ?1
+                            ORDER BY ts_ms DESC, r DESC LIMIT ?2)
+             ORDER BY ts_ms, r"
+        ))?;
+        Ok(stmt.query_map(params![channel, limit as i64], row)?.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Every channel that has an item or a view, by name.
+    pub fn app_channels(&self) -> Result<Vec<String>> {
+        let mut stmt = self.db.prepare(
+            "SELECT DISTINCT channel FROM messages WHERE kind IN ('app', 'view') AND channel IS NOT NULL
+             ORDER BY channel",
+        )?;
+        Ok(stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 }
 
 fn to_message(item: &Item, from_me: bool, path: Option<PathBuf>, state: State, read: bool) -> Message {
+    let mut channel = None;
     let (kind, text, file_name, file_size, sha256) = match &item.body {
         Body::Text(t) => ("text", Some(t.clone()), None, None, None),
         Body::Ping(t) => ("ping", Some(t.clone()), None, None, None),
         Body::Ring => ("ring", None, None, None, None),
         Body::File { name, size, sha256 } => ("file", None, Some(name.clone()), Some(*size), Some(*sha256)),
+        Body::App { channel: c, data, replace } => {
+            channel = Some(c.clone());
+            (if *replace { "view" } else { "app" }, Some(data.clone()), None, None, None)
+        }
     };
     Message {
         id: item.id,
@@ -345,6 +462,7 @@ fn to_message(item: &Item, from_me: bool, path: Option<PathBuf>, state: State, r
         path,
         state,
         read,
+        channel,
     }
 }
 
@@ -366,6 +484,8 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
             "text" => "text",
             "ping" => "ping",
             "ring" => "ring",
+            "app" => "app",
+            "view" => "view",
             _ => "file",
         },
         text: r.get(6)?,
@@ -375,6 +495,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         path: r.get::<_, Option<String>>(10)?.map(PathBuf::from),
         state: State::parse(&state).map_err(conv)?,
         read: r.get(12)?,
+        channel: r.get(13)?,
     })
 }
 
@@ -402,6 +523,105 @@ mod tests {
         assert!(a.ack(m1.id).unwrap().is_none());
         let (out, _) = a.outbox().unwrap();
         assert_eq!(out.iter().map(|m| m.id).collect::<Vec<_>>(), vec![m2.id]);
+    }
+
+    fn app(d: &str, replace: bool) -> Body {
+        Body::App { channel: "teen".into(), data: d.into(), replace }
+    }
+
+    #[test]
+    fn app_items_stay_out_of_the_chat() {
+        let a = Store::open_in_memory().unwrap();
+        let b = Store::open_in_memory().unwrap();
+        a.enqueue(Body::Text("hi".into()), None, None).unwrap();
+        let post = a.enqueue(app("post", false), None, None).unwrap();
+        a.enqueue(app("view", true), None, None).unwrap();
+        let (out, _) = a.outbox().unwrap();
+        assert_eq!(out.len(), 3);
+        for o in &out {
+            b.receive(&o.item()).unwrap();
+        }
+        assert_eq!(b.recent(10).unwrap().len(), 1);
+        assert_eq!(b.unread().unwrap(), 1);
+        b.mark_read().unwrap();
+        let pending = b.app_pending("teen").unwrap();
+        assert_eq!(pending.len(), 1, "views aren't pending");
+        assert_eq!(pending[0].body(), app("post", false));
+        assert_eq!(pending[0].id, post.id);
+        b.app_done(post.id).unwrap();
+        assert!(b.app_pending("teen").unwrap().is_empty());
+        assert_eq!(b.app_view("teen").unwrap().unwrap().body(), app("view", true));
+        assert_eq!(b.app_channels().unwrap(), vec!["teen".to_string()]);
+    }
+
+    fn views(s: &Store) -> i64 {
+        s.db.query_row("SELECT COUNT(*) FROM messages WHERE kind = 'view'", [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn a_view_replaces_the_older_ones_on_both_sides() {
+        let a = Store::open_in_memory().unwrap();
+        let b = Store::open_in_memory().unwrap();
+        let v1 = a.enqueue(app("1", true), None, None).unwrap();
+        b.receive(&v1.item()).unwrap();
+        a.ack(v1.id).unwrap();
+        a.enqueue(app("2", true), None, None).unwrap();
+        let v3 = a.enqueue(app("3", true), None, None).unwrap();
+        let other = Body::App { channel: "other".into(), data: "x".into(), replace: true };
+        a.enqueue(other, None, None).unwrap();
+        assert_eq!(views(&a), 2, "one per channel, delivered or queued");
+        let (out, _) = a.outbox().unwrap();
+        assert_eq!(out.iter().filter(|m| m.channel.as_deref() == Some("teen")).count(), 1);
+
+        // The peer's own view of the channel stays: only the same sender's are replaced.
+        let mine = b.enqueue(app("b", true), None, None).unwrap();
+        b.receive(&v3.item()).unwrap();
+        assert_eq!(views(&b), 2);
+        assert!(b.get(v1.id).unwrap().is_none());
+        assert!(b.get(mine.id).unwrap().is_some());
+    }
+
+    #[test]
+    fn local_items_are_pending_and_history_is_both_ways() {
+        let a = Store::open_in_memory().unwrap();
+        let mine = a.enqueue(app("post", false), None, None).unwrap();
+        a.enqueue(app("view", true), None, None).unwrap();
+        let local = a.app_local("teen", "tap".into()).unwrap();
+        assert!(!local.from_me);
+        assert_eq!(a.app_pending("teen").unwrap().iter().map(|m| m.id).collect::<Vec<_>>(), vec![local.id]);
+        let h = a.app_history("teen", 10).unwrap();
+        assert_eq!(h.iter().map(|m| m.id).collect::<Vec<_>>(), vec![mine.id, local.id]);
+        assert_eq!(a.app_history("teen", 1).unwrap()[0].id, local.id, "the newest");
+        assert_eq!(a.unread().unwrap(), 0);
+    }
+
+    #[test]
+    fn old_done_app_items_are_pruned() {
+        let a = Store::open_in_memory().unwrap();
+        let old = now_ms() - APP_KEEP_MS - 1;
+        let at = |m: Message| {
+            a.db.execute("UPDATE messages SET ts_ms = ?2 WHERE id = ?1", params![m.id.to_string(), old]).unwrap();
+            m.id
+        };
+        let delivered = at(a.enqueue(app("d", false), None, None).unwrap());
+        a.ack(delivered).unwrap();
+        let queued = at(a.enqueue(app("q", false), None, None).unwrap());
+        let taken = at(a.app_local("teen", "t".into()).unwrap());
+        a.app_done(taken).unwrap();
+        let waiting = at(a.app_local("teen", "w".into()).unwrap());
+        let view = at(a.enqueue(app("v", true), None, None).unwrap());
+        let chat = at(a.enqueue(Body::Text("hi".into()), None, None).unwrap());
+        a.ack(view).unwrap();
+        a.ack(chat).unwrap();
+        let recent = a.enqueue(app("r", false), None, None).unwrap();
+        a.ack(recent.id).unwrap();
+
+        assert_eq!(a.prune_apps(now_ms() - APP_KEEP_MS).unwrap(), 2);
+        for id in [queued, waiting, view, chat, recent.id] {
+            assert!(a.get(id).unwrap().is_some());
+        }
+        assert!(a.get(delivered).unwrap().is_none());
+        assert!(a.get(taken).unwrap().is_none());
     }
 
     #[test]

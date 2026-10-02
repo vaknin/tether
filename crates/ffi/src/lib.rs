@@ -238,6 +238,26 @@ pub enum Event {
     Progress { id: String, done: u64, total: u64 },
     MediaCmd { cmd: MediaCmd },
     StopRing,
+    /// From the laptop on an app channel: a queued item (`id` set; mark it with `app_done`), a
+    /// view (`view`, `id` set: the channel's new state, nothing to mark; read it with `app_view`),
+    /// or a live message (`id` none).
+    App { id: Option<String>, channel: String, data: String, view: bool },
+}
+
+/// A received app item its handler hasn't marked done.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AppItem {
+    pub id: String,
+    pub data: String,
+}
+
+/// One item of a channel's thread, either way.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AppHistoryItem {
+    pub id: String,
+    pub data: String,
+    pub from_me: bool,
+    pub ts_ms: i64,
 }
 
 impl Event {
@@ -253,6 +273,10 @@ impl Event {
             }
             node::Event::MediaCmd { cmd } => Event::MediaCmd { cmd: cmd.into() },
             node::Event::StopRing => Event::StopRing,
+            node::Event::App { id, channel, data, from_me: false, view } => {
+                Event::App { id: id.map(|i| i.to_string()), channel, data, view }
+            }
+            node::Event::App { from_me: true, .. } => return None,
             node::Event::Media { .. } | node::Event::Notifs { .. } | node::Event::Read => return None,
         })
     }
@@ -372,6 +396,48 @@ impl TetherNode {
         let m = on_rt(async move { node.send_file(std::path::Path::new(&path)).await }).await?;
         self.dial_soon();
         Ok(m.into())
+    }
+
+    /// Queues an item for the laptop on an app channel (with `replace`, a view) and dials if not
+    /// connected; returns its id.
+    pub fn send_app(&self, channel: String, data: String, replace: bool) -> Res<String> {
+        let id = self.node.send_app(&channel, data, replace)?;
+        self.dial_soon();
+        Ok(id.to_string())
+    }
+
+    /// A live app message; false when there is no link.
+    pub fn send_app_live(&self, channel: String, data: String) -> bool {
+        self.node.send_app_live(&channel, data)
+    }
+
+    pub fn app_pending(&self, channel: String) -> Res<Vec<AppItem>> {
+        let items = self.node.app_pending(&channel)?;
+        Ok(items.into_iter().map(|(id, data)| AppItem { id: id.to_string(), data }).collect())
+    }
+
+    pub fn app_done(&self, id: String) -> Res<()> {
+        let id = id.parse().map_err(|e: uuid::Error| TetherError::Failed { reason: e.to_string() })?;
+        Ok(self.node.app_done(id)?)
+    }
+
+    /// The channel's newest view (the laptop app's state, JSON), if any.
+    pub fn app_view(&self, channel: String) -> Res<Option<String>> {
+        Ok(self.node.app_view(&channel)?)
+    }
+
+    /// The channel's last `limit` items both ways (a thread), oldest first; no views.
+    pub fn app_history(&self, channel: String, limit: u32) -> Res<Vec<AppHistoryItem>> {
+        let items = self.node.app_history(&channel, limit as usize)?;
+        Ok(items
+            .into_iter()
+            .map(|m| AppHistoryItem {
+                id: m.id.to_string(),
+                data: m.text.unwrap_or_default(),
+                from_me: m.from_me,
+                ts_ms: m.ts_ms,
+            })
+            .collect())
     }
 
     /// Sends the FCM registration token; false when not connected.

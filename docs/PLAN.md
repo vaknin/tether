@@ -150,3 +150,99 @@ time, which the relay makes almost always.
 - `tether ping test` from a scheduled job arrives; `tether ring` rings; rami-login gets the SMS code.
 - After cut-over: `ss -ulpn` shows only Tether, nft rules listed, nothing references kdeconnect
   (`grep -r kdeconnect ~/.config ~/.local/bin ~/.claude/skills`).
+
+## App channels (2026-10-02; branch `teen-channel`)
+Apps built on Tether get their own channel instead of the chat. The owner wants this general
+("like IRC, but better"), with teen-app's חפיפה as the first user. Decided with the owner on
+2026-10-02 (design: https://claude.ai/artifact/D4342Ja8c9GSVi3XvkXuZw): declarative blocks drawn
+natively on the phone and in the panel; laptop input through the panel's channel mode (SUPER+N);
+a channel list as the phone's root screen; a TOML manifest per channel; generic first.
+
+**Built so far (Rust side, 2026-10-02):** everything under "Wire and store", "Manifest" and
+"Daemon and CLI" below except the panel and the phone. Core: `Body::App{channel, data, replace}`,
+kinds `app`/`view` (both out of the chat and the unread count), view replace on enqueue and receive,
+`Event::App{…, view}`, `app_view`, `app_history`, `app_local`, `app_channels`, the 30-day prune.
+Daemon: manifests (`apps.rs`, `toml` crate; a bad file is logged and skipped), `exec` through
+`sh -c` with `~` expanded (30 s relaunch gap; at start, for channels with items waiting),
+`_channels` published at start and on reload when it differs from the stored one, socket
+`app_action` (fills `from:"laptop"`, `uid`, `ts` when missing), `channels`, `channels_reload`,
+`thread`, and the watch notice. Socket sends refuse `_`-names (the daemon's own). FCM: a queued view
+wakes only with a non-null top-level `notify`. CLI: `post`, `channels`, `view`, `action`, `thread`.
+ffi: `Event::App.view`, `app_view`, `app_history` (`AppHistoryItem`); `send_app` now dials too.
+Manifest defaults: `title` = name, `glyph` = its first letter, `dir` ltr, `kind` app with `exec`
+else thread, `share` false, `notify` true; channels list order is by name.
+
+### Model
+A channel is a room with one live **view** (state) plus a timeline of **items**, as Matrix keeps
+room state apart from the timeline. The laptop app owns the data and publishes its view; the phone
+and the panel draw it and send back **actions**, which are queued items, so offline taps merge
+without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether post`).
+
+### Wire and store
+- `Body::App { channel, data, replace: bool }`. `replace = true` is a view: stored with kind
+  `view` (else `app`). Storing a view, on either side, deletes the older views of that channel from
+  the same sender, whatever their state (only the newest matters; also bounds the DB).
+- `Event::App { id, channel, data, from_me, view }`.
+- `app_pending` lists only kind `app` (actions, posts, replies), never views.
+- `Node::app_view(channel)`: the newest view on the channel (mine on the laptop, the peer's on the
+  phone; in practice: the newest view row of that channel).
+- `Node::app_history(channel, limit)`: kind `app` items both ways, oldest first (threads).
+- `Node::app_local(channel, data)`: an item from a local UI (the panel), stored as if received
+  (from_me false, kind `app`) and emitted, so the subscribed app (or a start on demand) takes it.
+- Taken/delivered `app` items older than 30 days are pruned when the store opens.
+
+### Data (JSON in `data`; Tether reads only what it draws)
+- View (app → phone/panel, `replace`): `{"v":1, "blocks":[…], "badge":N?, "notify":{"title","text"}?}`.
+  `notify` is shown as a notification when that view arrives on the phone (if the channel's
+  manifest allows it); `badge` is the channel's count in the list and the panel strip.
+  A queued view wakes the phone (FCM) only when it has `notify`; otherwise it waits for the next
+  connection, since apps republish their view on every small change.
+- Action (phone/panel → app, queued): `{"action":"<id>", "from":"phone"|"laptop", "uid":"<uuid>",
+  "ts":<sender's clock, ms since epoch>, "value":…?, "fields":{…}?}`. `uid` is made by the sender; an app that turns it into a list item
+  uses it as the item id, so the sender can drop its pending echo.
+- Live (`Frame::App`): `{"patch":{"<block id>":{…fields to replace}}}` (progress text, say).
+- Thread post (laptop → phone, queued): `{"post":{"text":"…","actions":[{"id","label"}]?}}`;
+  a reply is `{"text":"…","from":…}` or an action.
+- Channel `_channels` (daemon → phone, a view): `{"v":1,"channels":[{name,title,glyph,accent,dir,kind,share,notify}]}`.
+
+### Blocks (`{"type":…, "id":…?}` plus the fields below; unknown types are skipped)
+- `header {title, subtitle?}`
+- `notice {text, tone: info|ok|warn|error}`
+- `text {text, mono?}`: multi-line, selectable (a report, say).
+- `list {items:[{id, title?, text, meta?, chips?:[str], actions?:[{id,label,confirm?}]}], empty?}`:
+  an item action sends `{"action":<action id>,"value":{"item":<item id>}}`.
+- `checklist {items:[{id,label,checked}]}`: a tap sends `{"action":<block id>,"value":{"item","checked"}}`.
+- `compose {id, placeholder, submit, chips?:[{id,label}], multi?}`: sends
+  `{"action":<id>,"uid","value":{"text","chips":[ids]}}`. Until a view lists an item with that
+  uid, the renderer shows the text as a pending (⏳) item at the end of the list before it.
+- `form {id, fields:[{id,label,multi?,placeholder?,value?}], submit}`: sends `{"action":<id>,"fields":{…}}`.
+- `progress {id, text, cancel?:{id,label}}`: indeterminate; live patches change `text`.
+- `buttons {items:[{id,label,style?:primary|danger|plain,confirm?}]}`: sends `{"action":<id>}`.
+- `web`: reserved (a webxdc-style bundle, later).
+
+### Manifest `~/.config/tether/apps/<name>.toml` (name: `[a-z0-9_-]+`)
+`title`, `glyph` (one emoji or letter), `accent` (`#rrggbb`), `dir` (`ltr`|`rtl`), `kind`
+(`app`|`thread`), `exec` (a shell command; `~` expanded; started on demand as before), `share`
+(accept Android share text into the compose), `notify` (bool). It replaces the earlier bare
+executable. The daemon reads the folder at start and on `tether channels --reload`, and publishes
+`_channels` when the list changed. A channel with items but no manifest shows as a thread.
+
+### Daemon and CLI
+- Socket: `app_send` (replace = view), `app_subscribe`, `app_action{channel,data}` (local route),
+  `channels` (manifests + newest view + badge each), `channels_reload`, `thread{channel,limit}`.
+  `watch` also streams `{"type":"app","channel","view":bool}` change notices (no data) for views and
+  thread items, so the panel can re-read.
+- CLI: `tether post <ch> <text…> [--action id:label]…`, `tether channels [--json] [--reload]`,
+  `tether view <ch> [<file>|-]` (publish a view), `tether action <ch> <json>`, `tether thread <ch> [--json]`.
+- Panel (QML): **built 2026-10-02, not live yet** (the live plugin links to the main checkout).
+  `Channel.qml` draws the blocks (RTL by mirroring; drafts kept by block/field across view
+  reloads; ⏳ echo until a view lists the uid; confirm = second press within 4 s); `Panel.qml`
+  has the strip (Chat + channels with badges), Ctrl+1…9, Ctrl+K switcher, reload on watch `app`
+  notices, and IPC `channel <name>` / `toggleChannel <name>` (`open` keeps no argument, since chat
+  toasts call it bare and `qs ipc` rejects a wrong arg count). SUPER+N → `omarchy-shell tether
+  toggleChannel teen`, to bind after merge. `TETHER_PANEL_OUTPUT=<output>` is the test mode: that
+  output, keyboard focus None (OnDemand took the owner's keystrokes once on a headless output).
+  Checked in an isolated `qs -p` with a fake CLI: rendering of every block, RTL, the action JSON.
+  Not checked: real clicks/keys, Exclusive focus, dropdown with the strip, a real watch notice.
+  Live progress patches don't reach the panel (watch drops id-less `Event::App`). Phone (Compose, later): a channel list as root,
+  a block renderer, pinned/app shortcuts and share targets, one notification channel per Tether channel.

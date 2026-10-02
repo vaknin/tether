@@ -49,6 +49,10 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   Starting the service from the listener needs battery "Unrestricted" (granted on the Pixel via
   `dumpsys deviceidle whitelist +com.kivan.tether`); without it the hold still dials, unprotected
   from Doze. `Ringer` + `RingActivity`: alarm stream at max, full-screen Stop, 5 min cap.
+- App channels (`docs/PLAN.md`, "App channels"): `apps.rs` reads the manifests
+  `~/.config/tether/apps/<name>.toml` (at start and `tether channels --reload`), publishes the list
+  as the `_channels` view, and starts a channel's app on demand (`exec` via `sh -c`). Channel data
+  never enters the chat; the socket has `app_send/app_subscribe/app_action/channels/thread`.
 - Daemon Phase 3: `mpris.rs` (zbus) holds `org.mpris.MediaPlayer2.tether.pixel` only while the
   phone reports a session. `tether notifications --fresh` wakes the phone (FCM), waits for the
   snapshot and keeps the link up 2 min (rami-login polls it). `tether ring --stop`.

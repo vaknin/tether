@@ -35,6 +35,10 @@ pub enum Body {
     Ping(String),
     /// Make the phone ring until stopped.
     Ring,
+    /// For an app built on top of Tether (the teen channel, say), not the chat. `data` is the
+    /// app's own JSON; Tether only carries it. With `replace` it is the channel's view (its whole
+    /// state): storing it, on either side, drops that sender's older views of the channel.
+    App { channel: String, data: String, replace: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,6 +97,8 @@ pub enum Frame {
     StayConnected(bool),
     /// A file item, either way: its sender stopped it, or its receiver confirms it dropped it.
     Cancel { id: Uuid },
+    /// An app channel's live message (progress, say), never queued.
+    App { channel: String, data: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -155,6 +161,14 @@ mod tests {
             }),
             Frame::MediaCmd(MediaCmd::Seek { position_ms: 1234 }),
             Frame::Cancel { id: Uuid::new_v4() },
+            Frame::Item(Item {
+                id: Uuid::new_v4(),
+                seq: 8,
+                ts_ms: 2,
+                expires_ms: None,
+                body: Body::App { channel: "teen".into(), data: "{\"v\":1}".into(), replace: true },
+            }),
+            Frame::App { channel: "teen".into(), data: "{}".into() },
         ];
         let mut buf = Vec::new();
         for f in &frames {

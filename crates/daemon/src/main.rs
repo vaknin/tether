@@ -1,5 +1,6 @@
 //! `tether`: the laptop daemon and the CLI that talks to it.
 
+mod apps;
 mod daemon;
 mod desktop;
 mod fcm;
@@ -114,6 +115,35 @@ enum Cmd {
     Connect,
     /// Stream events as JSON lines.
     Watch,
+    /// Post to a channel's thread on the phone (queued, like `msg`), ntfy-style.
+    Post {
+        channel: String,
+        #[arg(required = true)]
+        text: Vec<String>,
+        /// A button under the post; the phone's tap comes back to the channel as that action.
+        #[arg(long = "action", value_name = "ID:LABEL")]
+        actions: Vec<String>,
+    },
+    /// The app channels: manifests in ~/.config/tether/apps and channels that only have posts.
+    Channels {
+        #[arg(long)]
+        json: bool,
+        /// Read the manifests again first (and send the phone the list if it changed).
+        #[arg(long)]
+        reload: bool,
+    },
+    /// Publish a channel's view (its JSON state) from a file, or from stdin without one or with `-`.
+    View { channel: String, file: Option<PathBuf> },
+    /// Send the channel's app an action, as the panel would (e.g. '{"action":"refresh"}').
+    Action { channel: String, json: String },
+    /// A channel's posts, replies and actions, oldest first.
+    Thread {
+        channel: String,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
 }
 
 #[tokio::main]
@@ -160,8 +190,14 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
                     None
                 }
             };
+            let clients = daemon::Clients::default();
+            let apps = apps::Apps::new(apps::default_dir()?);
+            if let Err(e) = apps.publish(&node) {
+                warn!("publishing the channel list: {e:#}");
+            }
+            tokio::spawn(apps::run(node.clone(), clients.clone(), apps.clone()));
             let res = tokio::select! {
-                r = daemon::serve(daemon::Ctx::new(node.clone(), wake), &sock) => r,
+                r = daemon::serve(daemon::Ctx::new(node.clone(), wake, clients, apps), &sock) => r,
                 _ = shutdown_signal() => Ok(()),
             };
             node.shutdown().await;
@@ -239,7 +275,84 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             }
             Ok(())
         }
+        Cmd::Post { channel, text, actions } => {
+            let data = post(text.join(" "), &actions)?.to_string();
+            call(&sock, &Request::AppSend { channel, data, live: false, replace: false }).await?;
+            println!("queued");
+            Ok(())
+        }
+        Cmd::Channels { json, reload } => {
+            let list = call(&sock, &if reload { Request::ChannelsReload } else { Request::Channels }).await?;
+            if json {
+                println!("{list}");
+            } else {
+                for c in list.as_array().into_iter().flatten() {
+                    let badge = c["badge"].as_u64().map(|b| format!("  ({b})")).unwrap_or_default();
+                    println!("{} {:<14} {} [{}]{badge}", s(&c["glyph"]), s(&c["name"]), s(&c["title"]), s(&c["kind"]));
+                }
+            }
+            Ok(())
+        }
+        Cmd::View { channel, file } => {
+            let data = match file {
+                Some(f) if f.as_os_str() != "-" => {
+                    std::fs::read_to_string(&f).with_context(|| format!("read {}", f.display()))?
+                }
+                _ => std::io::read_to_string(std::io::stdin()).context("read stdin")?,
+            };
+            let v: Value = serde_json::from_str(&data).context("a view is JSON")?;
+            anyhow::ensure!(v.is_object(), "a view is a JSON object");
+            let data = v.to_string();
+            call(&sock, &Request::AppSend { channel, data, live: false, replace: true }).await?;
+            println!("queued");
+            Ok(())
+        }
+        Cmd::Action { channel, json } => call(&sock, &Request::AppAction { channel, data: json }).await.map(drop),
+        Cmd::Thread { channel, json, limit } => {
+            let items = call(&sock, &Request::Thread { channel, limit }).await?;
+            if json {
+                println!("{items}");
+            } else {
+                for i in items.as_array().into_iter().flatten() {
+                    println!("{}", thread_line(i));
+                }
+            }
+            Ok(())
+        }
     }
+}
+
+/// A thread post: `{"post":{"text","actions":[{"id","label"}]?}}` from `ID:LABEL` pairs.
+fn post(text: String, actions: &[String]) -> Result<Value> {
+    let mut p = serde_json::json!({ "text": text });
+    if !actions.is_empty() {
+        let list = actions
+            .iter()
+            .map(|a| {
+                let (id, label) = a.split_once(':').filter(|(i, l)| !i.is_empty() && !l.is_empty()).with_context(
+                    || format!("--action {a:?}: expected ID:LABEL"),
+                )?;
+                Ok(serde_json::json!({ "id": id, "label": label }))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        p["actions"] = Value::Array(list);
+    }
+    Ok(serde_json::json!({ "post": p }))
+}
+
+/// `who: what` for one thread item: a post, a reply's text, or an action and its value.
+fn thread_line(i: &Value) -> String {
+    let d = &i["data"];
+    let who = d["from"].as_str().unwrap_or(if i["from_me"] == true { "laptop" } else { "phone" });
+    let what = if let Some(t) = d["post"]["text"].as_str().or(d["text"].as_str()) {
+        t.to_string()
+    } else if let Some(a) = d["action"].as_str() {
+        let v = d.get("value").or(d.get("fields")).map(|v| format!(" {v}")).unwrap_or_default();
+        format!("[{a}]{}", v.chars().take(200).collect::<String>())
+    } else {
+        d.to_string()
+    };
+    format!("{who}: {what}")
 }
 
 async fn pair_interactive(sock: &std::path::Path) -> Result<()> {
@@ -295,12 +408,16 @@ fn home() -> Result<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from).context("HOME is not set")
 }
 
-fn default_fcm_key() -> Result<PathBuf> {
-    let config = match std::env::var_os("XDG_CONFIG_HOME") {
+/// `$XDG_CONFIG_HOME`, or `~/.config`.
+fn config_dir() -> Result<PathBuf> {
+    Ok(match std::env::var_os("XDG_CONFIG_HOME") {
         Some(d) => PathBuf::from(d),
         None => home()?.join(".config"),
-    };
-    Ok(config.join("tether/fcm-service-account.json"))
+    })
+}
+
+fn default_fcm_key() -> Result<PathBuf> {
+    Ok(config_dir()?.join("tether/fcm-service-account.json"))
 }
 
 fn default_state_dir() -> Result<PathBuf> {
@@ -316,5 +433,25 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {}
         _ = term.recv() => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn posts_and_thread_lines() {
+        let p = post("hi".into(), &["ok:OK".into(), "no:Not now".into()]).unwrap();
+        assert_eq!(p, json!({"post": {"text": "hi", "actions": [{"id": "ok", "label": "OK"}, {"id": "no", "label": "Not now"}]}}));
+        assert_eq!(post("hi".into(), &[]).unwrap(), json!({"post": {"text": "hi"}}));
+        assert!(post("hi".into(), &["nolabel".into()]).is_err());
+
+        assert_eq!(thread_line(&json!({"from_me": true, "data": p})), "laptop: hi");
+        assert_eq!(thread_line(&json!({"from_me": false, "data": {"text": "yes"}})), "phone: yes");
+        let tap = json!({"from_me": false, "data": {"action": "ok", "from": "laptop", "value": {"item": 3}}});
+        assert_eq!(thread_line(&tap), r#"laptop: [ok] {"item":3}"#);
     }
 }

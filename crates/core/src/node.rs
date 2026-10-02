@@ -125,6 +125,10 @@ pub enum Event {
     StopRing,
     /// Received messages were marked read (the laptop's unread badge clears).
     Read,
+    /// An app channel's item or view (`id` set, queued) or live message (`id` none). It is not
+    /// chat, and only that channel's client handles it. Mine are emitted when queued, so a wake
+    /// can follow. `view`: the channel's whole state, replacing the sender's previous one.
+    App { id: Option<Uuid>, channel: String, data: String, from_me: bool, view: bool },
 }
 
 #[derive(Clone)]
@@ -368,6 +372,56 @@ impl Node {
         self.inner.send(Body::File { name, size, sha256 }, Some(path), None)
     }
 
+    /// Queues an item on an app channel. With `replace` it is the channel's view, and my older
+    /// views of it are dropped, delivered or not (only the newest matters).
+    pub fn send_app(&self, channel: &str, data: String, replace: bool) -> Result<Uuid> {
+        Ok(self.inner.send(Body::App { channel: channel.into(), data, replace }, None, None)?.id)
+    }
+
+    /// An item from a local UI (the laptop's panel): stored and emitted as if the peer sent it,
+    /// so the channel's client (or a start on demand) takes it.
+    pub fn app_local(&self, channel: &str, data: String) -> Result<Uuid> {
+        let m = self.inner.db(|s| s.app_local(channel, data))?;
+        let id = m.id;
+        self.inner.emit_msg(m, true);
+        Ok(id)
+    }
+
+    /// The channel's newest view (the app's state), from either side.
+    pub fn app_view(&self, channel: &str) -> Result<Option<String>> {
+        Ok(self.inner.db(|s| s.app_view(channel))?.and_then(|m| m.text))
+    }
+
+    /// The channel's last `limit` items both ways (posts, replies, actions), oldest first; no views.
+    pub fn app_history(&self, channel: &str, limit: usize) -> Result<Vec<Message>> {
+        self.inner.db(|s| s.app_history(channel, limit))
+    }
+
+    /// Every channel that has an item or a view.
+    pub fn app_channels(&self) -> Result<Vec<String>> {
+        self.inner.db(|s| s.app_channels())
+    }
+
+    /// My items not yet delivered, oldest first (the outbox).
+    pub fn outbox(&self) -> Result<Vec<Message>> {
+        Ok(self.inner.db(|s| s.outbox())?.0)
+    }
+
+    /// An app channel's live message; false when there is no link.
+    pub fn send_app_live(&self, channel: &str, data: String) -> bool {
+        self.send_live(Frame::App { channel: channel.into(), data })
+    }
+
+    /// The channel's received items its client hasn't taken (marked with [`Node::app_done`]).
+    pub fn app_pending(&self, channel: &str) -> Result<Vec<(Uuid, String)>> {
+        let items = self.inner.db(|s| s.app_pending(channel))?;
+        Ok(items.into_iter().map(|m| (m.id, m.text.unwrap_or_default())).collect())
+    }
+
+    pub fn app_done(&self, id: Uuid) -> Result<()> {
+        self.inner.db(|s| s.app_done(id))
+    }
+
     /// Stops a file I'm sending, mid-stream or still waiting. The peer drops what it has, and every
     /// new link repeats the cancel until it confirms. False if it isn't a queued file of mine
     /// (already delivered, say).
@@ -418,6 +472,21 @@ impl Inner {
         let _ = self.events.send(e);
     }
 
+    /// A message changed: chat goes out as `Message`, an app item as `App` (only when it is new;
+    /// its later states mean nothing to the app).
+    fn emit_msg(&self, m: Message, new: bool) {
+        match m.channel {
+            Some(channel) if matches!(m.kind, "app" | "view") => {
+                if new {
+                    let data = m.text.unwrap_or_default();
+                    let view = m.kind == "view";
+                    self.emit(Event::App { id: Some(m.id), channel, data, from_me: m.from_me, view });
+                }
+            }
+            _ => self.emit(Event::Message(m)),
+        }
+    }
+
     fn peer_id(&self) -> Option<EndpointId> {
         let b = self.db(|s| s.get_kv("peer_id")).ok()??;
         PublicKey::from_bytes(&b.try_into().ok()?).ok()
@@ -466,7 +535,7 @@ impl Inner {
     fn send(&self, body: Body, path: Option<PathBuf>, ttl: Option<Duration>) -> Result<Message> {
         let expires = ttl.map(|d| now_ms() + d.as_millis() as i64);
         let m = self.db(|s| s.enqueue(body, path, expires))?;
-        self.emit(Event::Message(m.clone()));
+        self.emit_msg(m.clone(), true);
         match self.current() {
             Some(l) => {
                 let _ = l.tx.send(Frame::Item(m.item()));
@@ -678,7 +747,7 @@ impl Inner {
                     return Ok(());
                 }
                 if new {
-                    self.emit(Event::Message(msg.clone()));
+                    self.emit_msg(msg.clone(), true);
                 }
                 if msg.state == State::Incoming {
                     if !self.receiving.lock().unwrap().contains(&msg.id) {
@@ -691,7 +760,7 @@ impl Inner {
             }
             Frame::Ack { id } => {
                 if let Some(m) = self.db(|s| s.ack(id))? {
-                    self.emit(Event::Message(m));
+                    self.emit_msg(m, false);
                 }
             }
             Frame::FileWant { id, offset } => {
@@ -715,6 +784,9 @@ impl Inner {
             Frame::PushToken(t) => self.db(|s| s.set_kv("push_token", t.as_bytes()))?,
             Frame::StayConnected(b) => link.activity.peer_stay.store(b, Ordering::SeqCst),
             Frame::Cancel { id } => self.on_cancel(link, id).await?,
+            Frame::App { channel, data } => {
+                self.emit(Event::App { id: None, channel, data, from_me: false, view: false })
+            }
         }
         Ok(())
     }

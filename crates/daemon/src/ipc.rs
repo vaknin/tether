@@ -36,7 +36,46 @@ pub enum Request {
     Json { limit: usize },
     MarkRead,
     Connect,
+    /// Node events as JSON lines, plus `{"type":"app","channel":…,"view":bool}` when a
+    /// channel's view or thread changed (no data: re-read with `channels` or `thread`).
     Watch,
+    /// To the phone on an app channel: queued (with `replace`, it supersedes my undelivered
+    /// ones), or `live` (dropped when the phone isn't connected; the reply says whether it went).
+    AppSend {
+        channel: String,
+        data: String,
+        #[serde(default)]
+        live: bool,
+        #[serde(default)]
+        replace: bool,
+    },
+    /// Become the channel's client: a stream of `{"id":…,"data":…}` (queued; reply
+    /// `{"done":"<id>"}` once handled, or it comes again next time) and `{"data":…}` (live) lines.
+    AppSubscribe { channel: String },
+    /// An action from a laptop UI (the panel, `tether action`), routed to the channel's app as if
+    /// the phone sent it. `data` is a JSON object; missing `from`, `uid` and `ts` are filled in.
+    AppAction { channel: String, data: String },
+    /// Every channel (manifests, then channels with items but no manifest), each with its newest
+    /// view and badge.
+    Channels,
+    /// Reads the manifests again (publishing `_channels` if they changed), then as `Channels`.
+    ChannelsReload,
+    /// A channel's items both ways (posts, replies, actions), oldest first.
+    Thread {
+        channel: String,
+        #[serde(default = "thread_limit")]
+        limit: usize,
+    },
+}
+
+fn thread_limit() -> usize {
+    100
+}
+
+/// What a channel client writes back on its subscription.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppDone {
+    pub done: String,
 }
 
 pub fn default_socket() -> PathBuf {
