@@ -207,11 +207,7 @@ object Notifier {
             false -> "Receiving $name"
             null -> name
         }
-        val cancel = PendingIntent.getBroadcast(
-            context, id.hashCode(), ChatActionReceiver.intent(context, ChatActionReceiver.CANCEL).putExtra(ChatActionReceiver.ID, id),
-            PendingIntent.FLAG_IMMUTABLE,
-        )
-        val n = NotificationCompat.Builder(context, TRANSFERS)
+        val b = NotificationCompat.Builder(context, TRANSFERS)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(title)
             .setContentText("$pct · ${Formatter.formatShortFileSize(context, done)} of ${Formatter.formatShortFileSize(context, total)}")
@@ -227,9 +223,15 @@ object Notifier {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setContentIntent(openApp(context))
-            .addAction(NotificationCompat.Action.Builder(0, "Cancel", cancel).build())
-            .build()
-        nm.notify(TRANSFER_TAG, id.hashCode(), n)
+        // Only the sender can cancel a file (the core's cancel matches my own files).
+        if (sending == true) {
+            val cancel = PendingIntent.getBroadcast(
+                context, id.hashCode(), ChatActionReceiver.intent(context, ChatActionReceiver.CANCEL).putExtra(ChatActionReceiver.ID, id),
+                PendingIntent.FLAG_IMMUTABLE,
+            )
+            b.addAction(NotificationCompat.Action.Builder(0, "Cancel", cancel).build())
+        }
+        nm.notify(TRANSFER_TAG, id.hashCode(), b.build())
     }
 
     fun cancelTransfer(context: Context, id: String) {

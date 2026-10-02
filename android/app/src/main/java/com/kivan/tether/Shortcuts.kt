@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 
 /**
  * The "Laptop" Direct Share tile (category matches res/xml/shortcuts.xml). It is also the
@@ -16,14 +15,16 @@ object Shortcuts {
     const val ID = "laptop"
 
     fun publish(context: Context) {
+        val laptop = Notifier.laptop(context)
+        // The long label is also the chat notification's title, so it is just the name.
         val shortcut = ShortcutInfoCompat.Builder(context, ID)
             .setShortLabel("Laptop")
-            .setLongLabel("Send to Laptop")
-            .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
+            .setLongLabel("Laptop")
+            .setIcon(laptop.icon)
             .setIntent(Intent(context, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
             .setCategories(setOf(SHARE_CATEGORY))
             .setLongLived(true)
-            .setPerson(Notifier.laptop(context))
+            .setPerson(laptop)
             .build()
         ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
     }
