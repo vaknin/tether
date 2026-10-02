@@ -219,13 +219,18 @@ BorderSurface {
           Image {
             id: img
             visible: row.image
-            readonly property int w: Math.min(Style.space(220), row.maxBubble - chat.bubblePad * 2)
-            width: visible ? w : 0
-            // From the decoded size: with only sourceSize.width set, sourceSize.height stays 0.
-            height: !visible ? 0 : status === Image.Ready && implicitWidth > 0
-              ? Math.min(Style.space(220), Math.round(w * implicitHeight / implicitWidth)) : Style.space(120)
+            // The box the image fits into; the bubble shrinks to the fitted size, so a portrait
+            // screenshot gets a narrow bubble instead of a wide one with empty sides.
+            readonly property int maxW: Math.min(Style.space(220), row.maxBubble - chat.bubblePad * 2)
+            readonly property int maxH: Style.space(220)
+            readonly property bool sized: status === Image.Ready && implicitWidth > 0 && implicitHeight > 0
+            // Decoded size (aspect kept, from sourceSize below) scaled into the box; small images stay as-is.
+            readonly property real fit: sized ? Math.min(1, maxW / implicitWidth, maxH / implicitHeight) : 1
+            width: !visible ? 0 : sized ? Math.round(implicitWidth * fit) : maxW
+            height: !visible ? 0 : sized ? Math.round(implicitHeight * fit) : Style.space(120)
             source: row.wantsImage ? "file://" + model.path : ""
-            sourceSize.width: w * 2
+            sourceSize.width: maxW * 2
+            sourceSize.height: maxH * 2
             fillMode: Image.PreserveAspectFit
             horizontalAlignment: row.mine ? Image.AlignRight : Image.AlignLeft
             asynchronous: true
