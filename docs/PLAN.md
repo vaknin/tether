@@ -129,7 +129,7 @@ time, which the relay makes almost always.
 
    After QML edits, run `omarchy restart shell`. Toasts for chat messages run
    `omarchy-shell tether open` when clicked.
-5. **Cut over** (laptop side done 2026-10-02; KDE Connect still on the phone until the user confirms). One sudo step: deploy nftables (drop 1714-1764, add Tether UDP port for LAN),
+5. **Cut over** (done 2026-10-02: KDE Connect removed from the laptop and the phone; idea ticked off). One sudo step: deploy nftables (drop 1714-1764, add Tether UDP port for LAN),
    reinstall suspend-guard, `pacman -Rns kdeconnect`. Remove kdeconnect-share-notify unit and script,
    drop `kdeconnect` from `packages-repo.txt`, uninstall KDE Connect on the phone. Read
    `~/.config/system-notes.md` first and append an entry (firewall + package change). Update memories
