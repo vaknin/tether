@@ -32,7 +32,10 @@ class ShareActivity : Activity() {
                 if (node.status().peer == null) {
                     "Pair with the laptop first"
                 } else {
-                    for (f in files) node.sendFile(f.path)
+                    for (f in files) {
+                        val m = node.sendFile(f.path)
+                        withContext(Dispatchers.IO) { Thumbs.save(this@ShareActivity, m.id, f) }
+                    }
                     if (files.isEmpty()) node.sendText(text!!)
                     SyncService.start(this@ShareActivity, "share")
                     Shortcuts.used(this@ShareActivity)

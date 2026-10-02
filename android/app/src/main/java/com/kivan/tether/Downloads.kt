@@ -53,6 +53,7 @@ object Downloads {
             return@withContext
         }
         prefs.edit().putString(m.id, uri.toString()).apply()
+        Thumbs.save(context, m.id, src)
         src.delete()
         Notifier.file(context, m, uri)
     }
