@@ -21,8 +21,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The foreground service that keeps the process up while the phone is linked. Started by an FCM
- * wake or a share (a short sync: dial, let both outboxes drain, stop when the link closes, which
- * the core does after 60 s without traffic), by media playing (stays while "media" is held), or
+ * wake, a share or a reply from the chat notification (a short sync: dial, let both outboxes
+ * drain, stop when the link closes, which the core does after 60 s without traffic), by media playing (stays while "media" is held), or
  * by a ring (stays while it rings). The visible notification is what Android requires for
  * high-priority FCM.
  */
@@ -112,7 +112,7 @@ class SyncService : Service() {
         private const val REASON = "reason"
         private const val MAX_MS = 5 * 60_000L
         /** Reasons that dial and hold the node themselves; media and ring arrive with their own hold or link. */
-        private val DIALS = setOf("wake", "share")
+        private val DIALS = setOf("wake", "share", "reply")
 
         fun start(context: Context, reason: String) {
             context.startForegroundService(Intent(context, SyncService::class.java).putExtra(REASON, reason))

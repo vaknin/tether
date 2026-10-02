@@ -65,6 +65,7 @@ object Core {
                     scope.launch { if (lock.withLock { holds.isNotEmpty() }) connect() }
                 }
             })
+        Transfers.watch(app)
     }
 
     val outgoingDir: File get() = File(app.filesDir, "outgoing")
@@ -202,7 +203,10 @@ object Core {
         }
         if (m.state != MsgState.RECEIVED) return
         when (m.kind) {
-            MsgKind.FILE -> scope.launch { Downloads.publish(app, m) }
+            MsgKind.FILE -> scope.launch {
+                Downloads.publish(app, m)
+                if (chatVisible) withNode { it.markRead() }
+            }
             MsgKind.TEXT, MsgKind.PING ->
                 if (chatVisible) scope.launch { withNode { it.markRead() } } else Notifier.message(app, m)
             // A ring is meant to be heard, chat open or not.

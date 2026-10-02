@@ -33,6 +33,13 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   thumbnails, file chips, setup sheet and unpair in the ⋮ menu) and `ui/Theme.kt`: a fixed **gruvbox
   dark** theme, always dark (the user's choice; dynamic colour came out grey). `Thumbs` keeps
   `filesDir/thumbs/<id>.webp`, written on send and on save, because neither original stays put.
+- Phone notifications (`Notifier.kt`): chat, pings and received files are **one** conversation
+  notification (MessagingStyle, Person "Laptop", shortcut `laptop` so it sits under Conversations).
+  Each line is appended to the posted notification, which holds the only state. Images show
+  inline (MediaStore URI), other files are 📎 lines plus Open. Reply (RemoteInput) and Mark as read
+  go through `ChatActionReceiver` (a reply queues `sendText` and starts `SyncService` "reply").
+  It clears when the chat opens. `Transfers` shows a progress notification (ProgressStyle, Live
+  Update chip, Cancel) for a transfer that runs past 2 s.
 - Phase 3 on the phone: `PhoneListener` (NotificationListenerService) mirrors notifications only
   over a link that is already up (a new link gets a snapshot) and owns `MediaMirror`. While a
   session plays, MediaMirror holds the node (`media` hold, stay on), runs `SyncService` as

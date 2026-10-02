@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Core.chatVisible = true
+        Notifier.clearChat(this)
         lifecycleScope.launch {
             val node = Core.acquire(Core.UI)
             if (node.status().peer != null) {
