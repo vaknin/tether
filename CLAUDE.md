@@ -25,6 +25,17 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   reads the phone's DNS servers; it must run before the first node start. The phone's mDNS send
   fails with EPERM (no `MulticastLock`). That's deferred on purpose: a lock costs battery, the home
   Wi-Fi drops client-to-client multicast anyway, and relay plus hole-punching finds the direct path.
+- Phase 3 on the phone: `PhoneListener` (NotificationListenerService) mirrors notifications only
+  over a link that is already up (a new link gets a snapshot) and owns `MediaMirror`. While a
+  session plays, MediaMirror holds the node (`media` hold, stay on), runs `SyncService` as
+  "Connected to Laptop", and lets go 5 min after pause. It skips KDE Connect's sessions
+  (`org.kde.kdeconnect_tp`): they mirror the laptop's MPRIS players, ours included, and would loop.
+  Starting the service from the listener needs battery "Unrestricted" (granted on the Pixel via
+  `dumpsys deviceidle whitelist +com.kivan.tether`); without it the hold still dials, unprotected
+  from Doze. `Ringer` + `RingActivity`: alarm stream at max, full-screen Stop, 5 min cap.
+- Daemon Phase 3: `mpris.rs` (zbus) holds `org.mpris.MediaPlayer2.tether.pixel` only while the
+  phone reports a session. `tether notifications --fresh` wakes the phone (FCM), waits for the
+  snapshot and keeps the link up 2 min (rami-login polls it). `tether ring --stop`.
 - Still to come: `shell/` (Omarchy QML plugin `kivan.tether`).
 
 ## Build and test

@@ -28,8 +28,8 @@ private const val HISTORY = 500u
 
 /**
  * Owns the Rust node. The phone holds no connection while idle (CLAUDE.md "Battery"): the node
- * runs only while something holds it (the app on screen, a wake or share sync, an outbox retry)
- * or a link is still open. Once nothing holds it and the link has closed (the core closes it after
+ * runs only while something holds it (the app on screen, media playing, a wake or share sync, an
+ * outbox retry) or a link is still open. Once nothing holds it and the link has closed (the core closes it after
  * 60 s without traffic), the endpoint is shut down.
  */
 object Core {
@@ -37,8 +37,11 @@ object Core {
 
     private lateinit var app: Context
     private val lock = Mutex()
-    private var node: TetherNode? = null
+    @Volatile private var node: TetherNode? = null
     private val holds = mutableSetOf<String>()
+    private val _held = MutableStateFlow<Set<String>>(emptySet())
+    /** The current holds; SyncService stays up while "media" is among them. */
+    val held: StateFlow<Set<String>> = _held.asStateFlow()
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -69,8 +72,9 @@ object Core {
     /** Starts the node if needed and keeps it running until [release] with the same [reason]. */
     suspend fun acquire(reason: String): TetherNode = lock.withLock {
         holds += reason
+        _held.value = holds.toSet()
         val n = node ?: startLocked()
-        n.setStay(UI in holds)
+        n.setStay(stayLocked())
         n
     }
 
@@ -78,7 +82,8 @@ object Core {
         scope.launch {
             lock.withLock {
                 if (!holds.remove(reason)) return@withLock
-                node?.setStay(UI in holds)
+                _held.value = holds.toSet()
+                node?.setStay(stayLocked())
             }
             // A hold is often handed on (a share to SyncService); don't restart the endpoint in between.
             delay(STOP_GRACE_MS)
@@ -88,6 +93,9 @@ object Core {
             }
         }
     }
+
+    // The link stays open past the idle timeout only while it is cheap or needed (CLAUDE.md "Battery").
+    private fun stayLocked() = UI in holds || MEDIA in holds
 
     /** Dials the laptop unless connected; false when it couldn't be reached. */
     suspend fun connect(): Boolean {
@@ -100,6 +108,13 @@ object Core {
             false
         }
     }
+
+    /**
+     * Sends a live frame (media, notifications, stop ring) if a node is running. Those never block,
+     * and skipping the lock keeps them in the caller's order; a node closed meanwhile just drops it.
+     */
+    fun sendLive(send: (TetherNode) -> Boolean): Boolean =
+        node?.let { runCatching { send(it) }.getOrDefault(false) } ?: false
 
     suspend fun <T> withNode(block: suspend (TetherNode) -> T): T? = lock.withLock { node }?.let { block(it) }
 
@@ -142,6 +157,8 @@ object Core {
             is Event.Connected -> {
                 _connected.value = true
                 Push.sendToken(n)
+                // Live state is dropped while offline, so each new link starts with a fresh snapshot.
+                PhoneListener.linkUp()
             }
             is Event.Disconnected -> {
                 _connected.value = false
@@ -156,7 +173,14 @@ object Core {
                 return
             }
             is Event.Paired, is Event.Unpaired -> {}
-            is Event.MediaCmd, is Event.StopRing -> {} // Phase 3
+            is Event.MediaCmd -> {
+                PhoneListener.command(event.cmd)
+                return
+            }
+            is Event.StopRing -> {
+                Ringer.stop(app, fromLaptop = true)
+                return
+            }
         }
         refresh(n)
     }
@@ -175,11 +199,17 @@ object Core {
         if (m.state != MsgState.RECEIVED) return
         when (m.kind) {
             MsgKind.FILE -> scope.launch { Downloads.publish(app, m) }
-            MsgKind.TEXT, MsgKind.PING, MsgKind.RING ->
+            MsgKind.TEXT, MsgKind.PING ->
                 if (chatVisible) scope.launch { withNode { it.markRead() } } else Notifier.message(app, m)
+            // A ring is meant to be heard, chat open or not.
+            MsgKind.RING -> {
+                Ringer.start(app)
+                if (chatVisible) scope.launch { withNode { it.markRead() } }
+            }
         }
     }
 
     const val UI = "ui"
+    const val MEDIA = "media"
     private const val STOP_GRACE_MS = 2_000L
 }

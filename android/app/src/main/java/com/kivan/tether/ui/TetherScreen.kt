@@ -1,6 +1,12 @@
 package com.kivan.tether.ui
 
+import android.app.NotificationManager
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import android.text.format.DateFormat
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,10 +44,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,12 +63,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.kivan.tether.Core
 import com.kivan.tether.Downloads
 import com.kivan.tether.Outgoing
+import com.kivan.tether.PhoneListener
 import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.MsgKind
 import com.kivan.tether.core.MsgState
@@ -188,6 +198,7 @@ private fun ChatScreen(peerName: String, queued: ULong) {
                 }
             }
         }
+        PhoneSetup()
         HorizontalDivider()
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
@@ -215,6 +226,62 @@ private fun ChatScreen(peerName: String, queued: ULong) {
                     scope.launch { Core.withNode { it.sendText(text) } }
                 },
             ) { Text("➤") }
+        }
+    }
+}
+
+/** One permission the phone side needs; shown only while it is missing. */
+private class SetupItem(
+    val label: String,
+    val granted: (Context) -> Boolean,
+    /** Opened when [intent]'s screen doesn't exist on this build. */
+    val fallback: String? = null,
+    val intent: (Context) -> Intent,
+)
+
+private val setupItems = listOf(
+    SetupItem(
+        "Notification access, to mirror notifications and media",
+        PhoneListener::enabled,
+        Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS,
+    ) { ctx ->
+        Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+            Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+            ComponentName(ctx, PhoneListener::class.java).flattenToString(),
+        )
+    },
+    SetupItem(
+        "Battery \"Unrestricted\", to stay linked while media plays",
+        { it.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(it.packageName) },
+    ) { Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${it.packageName}")) },
+    SetupItem(
+        "Full-screen alerts, so a ring shows over the lock screen",
+        { it.getSystemService(NotificationManager::class.java).canUseFullScreenIntent() },
+    ) { Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${it.packageName}")) },
+)
+
+@Composable
+private fun PhoneSetup() {
+    val ctx = LocalContext.current
+    // Grants happen in Settings, so re-check whenever the app comes back.
+    var resumed by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        resumed++
+        onPauseOrDispose {}
+    }
+    val missing = remember(resumed) { setupItems.filterNot { it.granted(ctx) } }
+    if (missing.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 4.dp)) {
+        Text("Phone setup", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        for (item in missing) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(item.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = {
+                    runCatching { ctx.startActivity(item.intent(ctx)) }.onFailure {
+                        item.fallback?.let { runCatching { ctx.startActivity(Intent(it)) } }
+                    }
+                }) { Text("Allow") }
+            }
         }
     }
 }
