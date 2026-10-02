@@ -126,6 +126,6 @@ Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linu
   - MPRIS `org.mpris.MediaPlayer2.tether.pixel` through zbus.
 
 ## Machine notes
-- Phone over adb: `adb connect Android_FBR2HM5L.local:5555`. Always pass `-s`, and check which app
+- Phone over adb: `adb connect 192.168.1.245:5555` (the IP on the home Wi-Fi; the `.local` name changes and does not resolve, see `~/.config/system-notes.md`). Always pass `-s`, and check which app
   has focus before any `adb input`.
 - QML plugin edits only take effect after `omarchy restart shell`.
