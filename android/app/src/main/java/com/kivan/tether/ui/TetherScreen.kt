@@ -12,6 +12,7 @@ import android.provider.Settings
 import android.text.format.DateFormat
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -122,6 +123,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.kivan.tether.Channels
 import com.kivan.tether.Core
 import com.kivan.tether.Downloads
 import com.kivan.tether.Outgoing
@@ -150,7 +152,7 @@ fun TetherScreen() {
                 CircularProgressIndicator()
             }
             s.peer == null -> PairScreen()
-            else -> ChatScreen(s.peer!!.name, s.queued)
+            else -> Home(s.peer!!.name, s.queued)
         }
     }
 }
@@ -236,15 +238,28 @@ private fun PairScreen() {
     }
 }
 
+/** The paired app: the channel list, or the screen it opened (the chat, or a channel). */
+@Composable
+private fun Home(peerName: String, queued: ULong) {
+    val open by Channels.open.collectAsState()
+    when (val o = open) {
+        null -> ChannelList(peerName, queued)
+        Channels.CHAT -> ChatScreen(peerName, queued)
+        else -> ChannelScreen(o)
+    }
+    if (open != null) BackHandler { Channels.show(null) }
+}
+
+/**
+ * The top bar with the laptop's state and the ⋮ menu (setup, unpair), plus the sheet and dialog
+ * they open. [onBack] adds a back arrow (the chat); the list has none.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatScreen(peerName: String, queued: ULong) {
+internal fun PeerBar(peerName: String, queued: ULong, onBack: (() -> Unit)?) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val messages by Core.messages.collectAsState()
     val connected by Core.connected.collectAsState()
-    val progress by Core.progress.collectAsState()
-    var draft by rememberSaveable { mutableStateOf("") }
     var setupOpen by rememberSaveable { mutableStateOf(false) }
     var confirmUnpair by remember { mutableStateOf(false) }
     var connecting by remember { mutableStateOf(false) }
@@ -257,50 +272,23 @@ private fun ChatScreen(peerName: String, queued: ULong) {
     }
     val granted = remember(resumed) { setupItems.map { it.granted(ctx) } }
 
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        scope.launch {
-            val files = withContext(Dispatchers.IO) { uris.map { Outgoing.copyIn(ctx, it) } }
-            Core.withNode { n ->
-                for (f in files) {
-                    val m = n.sendFile(f.path)
-                    withContext(Dispatchers.IO) { Thumbs.save(ctx, m.id, f) }
-                }
+    TopBar(
+        peerName = peerName,
+        connected = connected,
+        connecting = connecting,
+        queued = queued,
+        setupMissing = granted.count { !it },
+        onBack = onBack,
+        onRetry = {
+            connecting = true
+            scope.launch {
+                Core.connect()
+                connecting = false
             }
-        }
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        TopBar(
-            peerName = peerName,
-            connected = connected,
-            connecting = connecting,
-            queued = queued,
-            setupMissing = granted.count { !it },
-            onRetry = {
-                connecting = true
-                scope.launch {
-                    Core.connect()
-                    connecting = false
-                }
-            },
-            onSetup = { setupOpen = true },
-            onUnpair = { confirmUnpair = true },
-        )
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (messages.isEmpty()) EmptyChat(peerName) else MessageList(messages, progress)
-        }
-        InputBar(
-            draft = draft,
-            onDraft = { draft = it },
-            onAttach = { pick.launch("*/*") },
-            onSend = {
-                val text = draft.trim()
-                draft = ""
-                scope.launch { Core.withNode { it.sendText(text) } }
-            },
-        )
-    }
+        },
+        onSetup = { setupOpen = true },
+        onUnpair = { confirmUnpair = true },
+    )
 
     if (setupOpen) {
         ModalBottomSheet(onDismissRequest = { setupOpen = false }) { SetupSheet(granted) }
@@ -326,12 +314,52 @@ private fun ChatScreen(peerName: String, queued: ULong) {
 }
 
 @Composable
+private fun ChatScreen(peerName: String, queued: ULong) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val messages by Core.messages.collectAsState()
+    val progress by Core.progress.collectAsState()
+    var draft by rememberSaveable { mutableStateOf("") }
+
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            val files = withContext(Dispatchers.IO) { uris.map { Outgoing.copyIn(ctx, it) } }
+            Core.withNode { n ->
+                for (f in files) {
+                    val m = n.sendFile(f.path)
+                    withContext(Dispatchers.IO) { Thumbs.save(ctx, m.id, f) }
+                }
+            }
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        PeerBar(peerName, queued, onBack = { Channels.show(null) })
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (messages.isEmpty()) EmptyChat(peerName) else MessageList(messages, progress)
+        }
+        InputBar(
+            draft = draft,
+            onDraft = { draft = it },
+            onAttach = { pick.launch("*/*") },
+            onSend = {
+                val text = draft.trim()
+                draft = ""
+                scope.launch { Core.withNode { it.sendText(text) } }
+            },
+        )
+    }
+}
+
+@Composable
 private fun TopBar(
     peerName: String,
     connected: Boolean,
     connecting: Boolean,
     queued: ULong,
     setupMissing: Int,
+    onBack: (() -> Unit)?,
     onRetry: () -> Unit,
     onSetup: () -> Unit,
     onUnpair: () -> Unit,
@@ -343,6 +371,7 @@ private fun TopBar(
             Modifier.fillMaxWidth().statusBarsPadding().height(68.dp).padding(start = 8.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            onBack?.let { BackButton(it) }
             Row(
                 Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
                     .clickable(enabled = !connected && !connecting, onClick = onRetry)
@@ -404,7 +433,7 @@ private fun TopBar(
 }
 
 @Composable
-private fun Avatar(icon: Int, size: Dp) {
+internal fun Avatar(icon: Int, size: Dp) {
     Box(
         Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,

@@ -29,6 +29,7 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   reads the phone's DNS servers; it must run before the first node start. The phone's mDNS send
   fails with EPERM (no `MulticastLock`). That's deferred on purpose: a lock costs battery, the home
   Wi-Fi drops client-to-client multicast anyway, and relay plus hole-punching finds the direct path.
+- Phone root screen: the channel list (`ui/ChannelScreen.kt`, state in `Channels.kt`); the chat is one entry.
 - Phone UI: `ui/TetherScreen.kt` (grouped bubbles, day headers, inline time and ✓✓, links, image
   thumbnails, file chips, setup sheet and unpair in the ⋮ menu) and `ui/Theme.kt`: a fixed **gruvbox
   dark** theme, always dark (the user's choice; dynamic colour came out grey). `Thumbs` keeps

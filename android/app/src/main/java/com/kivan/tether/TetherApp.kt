@@ -9,6 +9,7 @@ class TetherApp : Application() {
         Notifier.channels(this)
         Push.init(this)
         Core.init(this)
+        Channels.init(this)
         Shortcuts.publish(this)
     }
 }

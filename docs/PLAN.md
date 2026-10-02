@@ -244,5 +244,15 @@ executable. The daemon reads the folder at start and on `tether channels --reloa
   output, keyboard focus None (OnDemand took the owner's keystrokes once on a headless output).
   Checked in an isolated `qs -p` with a fake CLI: rendering of every block, RTL, the action JSON.
   Not checked: real clicks/keys, Exclusive focus, dropdown with the strip, a real watch notice.
-  Live progress patches don't reach the panel (watch drops id-less `Event::App`). Phone (Compose, later): a channel list as root,
-  a block renderer, pinned/app shortcuts and share targets, one notification channel per Tether channel.
+  Live progress patches don't reach the panel (watch drops id-less `Event::App`). 
+- Phone: **built 2026-10-02, not installed** (`assembleRelease` and unit tests pass; nothing run on the
+  Pixel yet). `Channels.kt` holds the `_channels` list, each view (live `patch` applied until the next
+  view), threads, ⏳ echoes, drafts (kept across reloads) and the open screen (the last one reopens;
+  `tether://chat`, `tether://channel/<name>` intents). Root screen `ui/ChannelScreen.kt` `ChannelList`:
+  Chat first, then channels with badges; long press → pin. `ChannelScreen` draws the blocks in the
+  channel's direction (Compose `LayoutDirection`), confirm = second press within 4 s. Actions go out
+  with `Core.acquire` as queued items (`from:"phone"`, uid, ts). Notifications: channel `app.<name>`
+  (group "Channels") per notifying channel; a view's `notify` and thread posts post one per channel
+  unless it is on screen. Shortcuts `ch.<name>`: dynamic (launcher menu), pinnable, Direct Share
+  (category SHARE_TEXT, text/plain) for `share` channels; shared text lands in the first compose.
+  Not checked on a device: everything visual, shortcuts, share, notifications.

@@ -2,6 +2,7 @@ package com.kivan.tether
 
 import android.app.Notification
 import android.app.NotificationChannel
+import android.app.NotificationChannelGroup
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -9,6 +10,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.net.Uri
 import android.text.format.Formatter
 import androidx.core.app.NotificationCompat
@@ -32,6 +34,10 @@ object Notifier {
     const val SYNC_ID = 1
     private const val RING_ID = 2
     private const val CHAT_TAG = "chat"
+    private const val APP_TAG = "app"
+    /** Each Tether channel's notification channel is `app.<name>`, in this group. */
+    private const val APP_PREFIX = "app."
+    private const val APP_GROUP = "apps"
     private const val TRANSFER_TAG = "transfer"
     private const val MAX_LINES = 10
     const val REPLY_KEY = "reply"
@@ -152,7 +158,7 @@ object Notifier {
             .setStyle(style)
             .setShortcutId(Shortcuts.ID)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setContentIntent(openApp(context))
+            .setContentIntent(openChannel(context, Channels.CHAT))
             .setAutoCancel(true)
             .setOnlyAlertOnce(silent)
             .addAction(replyAction(context))
@@ -236,6 +242,67 @@ object Notifier {
 
     fun cancelTransfer(context: Context, id: String) {
         context.getSystemService(NotificationManager::class.java).cancel(TRANSFER_TAG, id.hashCode())
+    }
+
+    /** One notification channel per Tether channel that may notify; the rest are deleted. */
+    fun appChannels(context: Context, list: List<ChannelInfo>) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannelGroup(NotificationChannelGroup(APP_GROUP, "Channels"))
+        val wanted = list.filter { it.notify }
+        nm.createNotificationChannels(
+            wanted.map { c ->
+                NotificationChannel(APP_PREFIX + c.name, c.title, NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Updates from ${c.title} on the laptop"
+                    group = APP_GROUP
+                }
+            },
+        )
+        val ids = wanted.map { APP_PREFIX + it.name }.toSet()
+        nm.notificationChannels.filter { it.id.startsWith(APP_PREFIX) && it.id !in ids }
+            .forEach { nm.deleteNotificationChannel(it.id) }
+    }
+
+    /** A channel's news (a view's `notify`, a thread post); one notification per channel, replaced. */
+    fun app(context: Context, c: ChannelInfo, title: String, text: String) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (!nm.areNotificationsEnabled()) return
+        val n = NotificationCompat.Builder(context, APP_PREFIX + c.name)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setLargeIcon(glyph(c, 192))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setColor(c.accent ?: 0xFFFABD2F.toInt())
+            .setShortcutId(Shortcuts.channelId(c.name))
+            .setContentIntent(openChannel(context, c.name))
+            .setAutoCancel(true)
+            .build()
+        nm.notify(APP_TAG, c.name.hashCode(), n)
+    }
+
+    fun clearApp(context: Context, name: String) {
+        context.getSystemService(NotificationManager::class.java).cancel(APP_TAG, name.hashCode())
+    }
+
+    /** Opens the app on a channel ([Channels.CHAT]: the chat). */
+    fun openChannel(context: Context, name: String): PendingIntent =
+        PendingIntent.getActivity(
+            context, name.hashCode(), MainActivity.open(context, name), PendingIntent.FLAG_IMMUTABLE,
+        )
+
+    /** A channel's glyph on a circle of its accent (the shortcut and notification icon). */
+    fun glyph(c: ChannelInfo, size: Int): Bitmap {
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c.accent ?: 0xFFFABD2F.toInt() })
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF1D2021.toInt()
+            textSize = size * 0.5f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        canvas.drawText(c.glyph, size / 2f, size / 2f - (paint.descent() + paint.ascent()) / 2, paint)
+        return bmp
     }
 
     private fun openApp(context: Context): PendingIntent =

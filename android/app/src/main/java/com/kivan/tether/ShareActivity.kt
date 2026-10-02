@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.IntentCompat
+import androidx.core.content.pm.ShortcutManagerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -16,6 +17,7 @@ import kotlinx.coroutines.withContext
 /**
  * Target of the "Laptop" Direct Share tile and the share-sheet entry. Files are copied in
  * ([Outgoing]), queued, and a sync is started. Text without a file becomes a chat message.
+ * Text shared to an app channel's tile opens that channel with the text in its compose.
  */
 class ShareActivity : Activity() {
     private val scope = MainScope()
@@ -25,6 +27,11 @@ class ShareActivity : Activity() {
         val uris = sharedUris(intent)
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
         if (uris.isEmpty() && text == null) return finish()
+        // A channel's tile: the text goes into that channel's compose, to be sent from there.
+        Shortcuts.channelOf(intent.getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID))?.let { name ->
+            if (text != null) startActivity(MainActivity.open(this, name).putExtra(Intent.EXTRA_TEXT, text))
+            return finish()
+        }
         scope.launch {
             val msg = try {
                 val files = withContext(Dispatchers.IO) { uris.map { Outgoing.copyIn(this@ShareActivity, it) } }

@@ -130,6 +130,7 @@ object Core {
         })
         node = n
         refresh(n)
+        Channels.load(n)
         Log.i(TAG, "node started")
         return n
     }
@@ -180,6 +181,10 @@ object Core {
             }
             is Event.StopRing -> {
                 Ringer.stop(app, fromLaptop = true)
+                return
+            }
+            is Event.App -> {
+                Channels.onEvent(n, event)
                 return
             }
         }
