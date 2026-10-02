@@ -155,7 +155,9 @@ BorderSurface {
       required property var model
       readonly property bool mine: model.fromMe
       readonly property bool system: model.kind === "ring"
-      readonly property bool image: model.kind === "file" && chat.isImage(model.fileName) && model.path !== ""
+      readonly property bool wantsImage: model.kind === "file" && chat.isImage(model.fileName) && model.path !== ""
+      // A file that has since moved or been deleted shows as a chip instead of an empty bubble.
+      readonly property bool image: wantsImage && img.status !== Image.Error
       readonly property bool fileChip: model.kind === "file" && !image
       // Same sender within two minutes: tucked under the previous bubble.
       readonly property bool grouped: {
@@ -214,10 +216,10 @@ BorderSurface {
             visible: row.image
             readonly property int w: Math.min(Style.space(220), row.maxBubble - chat.bubblePad * 2)
             width: visible ? w : 0
-            // From the decoded size, not implicitHeight, which follows height and loops.
-            height: !visible ? 0 : status === Image.Ready && sourceSize.width > 0
-              ? Math.min(Style.space(220), Math.round(w * sourceSize.height / sourceSize.width)) : Style.space(120)
-            source: row.image ? "file://" + model.path : ""
+            // From the decoded size: with only sourceSize.width set, sourceSize.height stays 0.
+            height: !visible ? 0 : status === Image.Ready && implicitWidth > 0
+              ? Math.min(Style.space(220), Math.round(w * implicitHeight / implicitWidth)) : Style.space(120)
+            source: row.wantsImage ? "file://" + model.path : ""
             sourceSize.width: w * 2
             fillMode: Image.PreserveAspectFit
             horizontalAlignment: row.mine ? Image.AlignRight : Image.AlignLeft
