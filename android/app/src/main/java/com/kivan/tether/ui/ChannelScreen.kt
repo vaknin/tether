@@ -163,15 +163,12 @@ private fun EntryRow(
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (line.isNotEmpty()) {
-                    // Hebrew lines read from the right, but the row stays in the list's direction.
                     Text(
                         line,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        textAlign = if (rtl) TextAlign.End else TextAlign.Start,
-                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

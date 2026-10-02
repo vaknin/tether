@@ -79,6 +79,18 @@ BorderSurface {
   }
   Timer { id: disarm; interval: 4000; onTriggered: ch.armed = "" }
 
+  // The text box being typed in stays in view: scrolled to when it gets focus, and again when
+  // the blocks above it grow (a long list pushes the compose below the card).
+  property Item focusedBox: null
+  function reveal(item) {
+    if (!item || !item.visible) return
+    var top = item.mapToItem(body, 0, 0).y + body.y
+    var bottom = top + item.height + ch.pad
+    if (top < flick.contentY) flick.contentY = top
+    else if (bottom > flick.contentY + flick.height)
+      flick.contentY = Math.max(0, Math.min(bottom - flick.height, flick.contentHeight - flick.height))
+  }
+
   function focusFirst() {
     var box = body.findBox(focusKey) || body.findBox("")
     if (box) box.forceActiveFocus()
@@ -193,6 +205,7 @@ BorderSurface {
       y: ch.pad
       width: flick.width
       spacing: ch.gap
+      onHeightChanged: if (ch.focusedBox && ch.focusedBox.input.activeFocus) Qt.callLater(ch.reveal, ch.focusedBox)
 
       // The text box for `key` ("" = the first one), searched through the loaded blocks.
       function findBox(key) {
@@ -674,7 +687,7 @@ BorderSurface {
         bottomPadding: Style.space(5)
         background: null
         onTextChanged: if (text !== ch.draft(bx.key, bx.initial)) ch.setDraft(bx.key, text)
-        onActiveFocusChanged: if (activeFocus) ch.focusKey = bx.key
+        onActiveFocusChanged: if (activeFocus) { ch.focusKey = bx.key; ch.focusedBox = bx; Qt.callLater(ch.reveal, bx) }
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
             event.accepted = true

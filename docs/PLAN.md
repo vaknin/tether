@@ -256,3 +256,11 @@ executable. The daemon reads the folder at start and on `tether channels --reloa
   unless it is on screen. Shortcuts `ch.<name>`: dynamic (launcher menu), pinnable, Direct Share
   (category SHARE_TEXT, text/plain) for `share` channels; shared text lands in the first compose.
   Not checked on a device: everything visual, shortcuts, share, notifications.
+- **Checked end to end with teen-app (2026-10-02 evening, made-up data):** phone (adb) RTL layout,
+  ⏳ echo, confirm on second press, text share into compose, live updates, long-press pin dialog,
+  the "report ready" notification; panel opens RTL, typing + Enter adds, Esc closes. Fixed then:
+  `ChannelScreen.kt` `EntryRow` dropped `TextAlign.End` on the rtl subtitle (it sat right-aligned
+  away from the title); `Channel.qml` keeps the focused box in view (`focusedBox` + `reveal(item)`
+  on focus and on `body` height change), since with many notes the compose box was below the
+  visible area. A stale view: with no app instance running, `tether channels` showed the last
+  published view, not the app's current state.
