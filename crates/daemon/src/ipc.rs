@@ -25,7 +25,12 @@ pub enum Request {
     Msg { text: String },
     Ping { text: String },
     Ring,
-    Notifications,
+    StopRing,
+    /// `fresh`: wake the phone if needed, wait for its list, and keep the link up for a while.
+    Notifications {
+        #[serde(default)]
+        fresh: bool,
+    },
     Json { limit: usize },
     MarkRead,
     Connect,

@@ -20,7 +20,10 @@ use tether_core::{
     node::{Event, Node},
     store::State,
 };
-use tokio::sync::broadcast::{self, error::RecvError};
+use tokio::sync::{
+    broadcast::{self, error::RecvError},
+    mpsc,
+};
 use tracing::{debug, info, warn};
 
 const SCOPE: &str = "https://www.googleapis.com/auth/firebase.messaging";
@@ -202,11 +205,19 @@ impl Phone for Node {
     }
 }
 
-/// Wakes the phone when something is queued for it and it isn't connected: right away, or once
-/// `gap` has passed since the last wake. Also once at start if the outbox isn't empty.
-pub async fn run(phone: impl Phone, waker: impl Waker, mut rx: broadcast::Receiver<Event>, gap: Duration) {
+/// Wakes the phone when something is queued for it, or a caller `asked` (fresh notifications), and
+/// it isn't connected: right away, or once `gap` has passed since the last wake. Also once at start
+/// if the outbox isn't empty.
+pub async fn run(
+    phone: impl Phone,
+    waker: impl Waker,
+    mut rx: broadcast::Receiver<Event>,
+    mut asked: mpsc::UnboundedReceiver<()>,
+    gap: Duration,
+) {
     let mut last: Option<tokio::time::Instant> = None;
     let mut due = (phone.queued() > 0).then(tokio::time::Instant::now);
+    let mut wanted = false;
     loop {
         let timer = async {
             match due {
@@ -214,19 +225,29 @@ pub async fn run(phone: impl Phone, waker: impl Waker, mut rx: broadcast::Receiv
                 None => std::future::pending().await,
             }
         };
+        let schedule = |due: Option<tokio::time::Instant>| {
+            let now = tokio::time::Instant::now();
+            let at = last.map_or(now, |l| (l + gap).max(now));
+            Some(due.map_or(at, |d| d.min(at)))
+        };
         tokio::select! {
             ev = rx.recv() => match ev {
                 Ok(Event::Message(m)) if m.from_me && m.state == State::Queued && !phone.connected() => {
-                    let now = tokio::time::Instant::now();
-                    let at = last.map_or(now, |l| (l + gap).max(now));
-                    due = Some(due.map_or(at, |d| d.min(at)));
+                    due = schedule(due);
                 }
                 Ok(_) | Err(RecvError::Lagged(_)) => {}
                 Err(RecvError::Closed) => return,
             },
+            Some(()) = asked.recv() => {
+                if !phone.connected() {
+                    wanted = true;
+                    due = schedule(due);
+                }
+            }
             () = timer => {
                 due = None;
-                if phone.connected() || phone.queued() == 0 {
+                let want = std::mem::take(&mut wanted);
+                if phone.connected() || (phone.queued() == 0 && !want) {
                     continue;
                 }
                 let Some(token) = phone.token() else {
@@ -316,6 +337,7 @@ mod tests {
         phone: FakePhone,
         waker: FakeWaker,
         tx: broadcast::Sender<Event>,
+        ask: mpsc::UnboundedSender<()>,
     }
 
     impl Rig {
@@ -324,8 +346,9 @@ mod tests {
             *phone.0.lock().unwrap() = St { connected: false, queued, token: Some("tok".into()) };
             let waker = FakeWaker { unregistered, ..Default::default() };
             let (tx, rx) = broadcast::channel(16);
-            tokio::spawn(run(phone.clone(), waker.clone(), rx, WAKE_GAP));
-            Self { phone, waker, tx }
+            let (ask, asked) = mpsc::unbounded_channel();
+            tokio::spawn(run(phone.clone(), waker.clone(), rx, asked, WAKE_GAP));
+            Self { phone, waker, tx, ask }
         }
         fn queue(&self) {
             self.phone.0.lock().unwrap().queued += 1;
@@ -356,6 +379,23 @@ mod tests {
         assert_eq!(r.calls(), 2, "one deferred wake for both items");
         advance(120).await;
         assert_eq!(r.calls(), 2, "no repeats without new items");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wakes_when_asked_with_nothing_queued() {
+        let r = Rig::new(0, false);
+        r.ask.send(()).unwrap();
+        advance(1).await;
+        assert_eq!(r.calls(), 1);
+        r.ask.send(()).unwrap();
+        advance(10).await;
+        assert_eq!(r.calls(), 1, "within the gap");
+        advance(25).await;
+        assert_eq!(r.calls(), 2);
+        r.phone.0.lock().unwrap().connected = true;
+        r.ask.send(()).unwrap();
+        advance(60).await;
+        assert_eq!(r.calls(), 2, "connected: nothing to wake");
     }
 
     #[tokio::test(start_paused = true)]

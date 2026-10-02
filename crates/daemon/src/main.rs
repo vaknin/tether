@@ -4,6 +4,7 @@ mod daemon;
 mod desktop;
 mod fcm;
 mod ipc;
+mod mpris;
 
 use std::{path::PathBuf, process::ExitCode, time::Duration};
 
@@ -75,11 +76,19 @@ enum Cmd {
         text: Vec<String>,
     },
     /// Ring the phone (dropped if it can't be reached within 2 minutes).
-    Ring,
-    /// The phone's active notifications.
+    Ring {
+        /// Stop a ring that is going on.
+        #[arg(long)]
+        stop: bool,
+    },
+    /// The phone's active notifications, as last mirrored while it was connected.
     Notifications {
         #[arg(long)]
         json: bool,
+        /// Wake the phone if it isn't connected and wait for its current list (up to 25 s); the
+        /// link then stays open for 2 minutes, so repeated calls see new notifications live.
+        #[arg(long)]
+        fresh: bool,
     },
     /// Chat snapshot for the shell UI: status, media and recent messages.
     Json {
@@ -123,17 +132,23 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             let node = Node::start(cfg).await?;
             if !no_desktop {
                 tokio::spawn(desktop::run(node.clone()));
+                tokio::spawn(mpris::run(node.clone()));
             }
             let fcm_key = fcm_key.map_or_else(default_fcm_key, Ok)?;
-            match fcm::Fcm::load(&fcm_key) {
+            let wake = match fcm::Fcm::load(&fcm_key) {
                 Ok(f) => {
                     info!("FCM wake on ({})", fcm_key.display());
-                    tokio::spawn(fcm::run(node.clone(), f, node.events(), fcm::WAKE_GAP));
+                    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                    tokio::spawn(fcm::run(node.clone(), f, node.events(), rx, fcm::WAKE_GAP));
+                    Some(tx)
                 }
-                Err(e) => warn!("FCM wake off, relying on redial: {e:#}"),
-            }
+                Err(e) => {
+                    warn!("FCM wake off, relying on redial: {e:#}");
+                    None
+                }
+            };
             let res = tokio::select! {
-                r = daemon::serve(node.clone(), &sock) => r,
+                r = daemon::serve(daemon::Ctx::new(node.clone(), wake), &sock) => r,
                 _ = shutdown_signal() => Ok(()),
             };
             node.shutdown().await;
@@ -170,9 +185,10 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
         }
         Cmd::Msg { text } => print_state(call(&sock, &Request::Msg { text: text.join(" ") }).await?),
         Cmd::Ping { text } => print_state(call(&sock, &Request::Ping { text: text.join(" ") }).await?),
-        Cmd::Ring => print_state(call(&sock, &Request::Ring).await?),
-        Cmd::Notifications { json } => {
-            let list = call(&sock, &Request::Notifications).await?;
+        Cmd::Ring { stop: false } => print_state(call(&sock, &Request::Ring).await?),
+        Cmd::Ring { stop: true } => call(&sock, &Request::StopRing).await.map(drop),
+        Cmd::Notifications { json, fresh } => {
+            let list = call(&sock, &Request::Notifications { fresh }).await?;
             if json {
                 println!("{list}");
             } else {

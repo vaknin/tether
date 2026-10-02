@@ -171,6 +171,59 @@ impl From<proto::MediaCmd> for MediaCmd {
     }
 }
 
+/// The phone's active media session, sent to the laptop on every change.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MediaState {
+    /// The app playing (Spotify, YouTube).
+    pub player: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub playing: bool,
+    /// Position now, not at the session's last update.
+    pub position_ms: i64,
+    pub duration_ms: i64,
+    /// 0–100, `None` when the volume can't be changed.
+    pub volume: Option<u8>,
+    pub can_seek: bool,
+    pub can_next: bool,
+    pub can_previous: bool,
+}
+
+impl From<MediaState> for proto::MediaState {
+    fn from(m: MediaState) -> Self {
+        proto::MediaState {
+            player: m.player,
+            title: m.title,
+            artist: m.artist,
+            album: m.album,
+            playing: m.playing,
+            position_ms: m.position_ms,
+            duration_ms: m.duration_ms,
+            volume: m.volume.map(|v| v.min(100)),
+            can_seek: m.can_seek,
+            can_next: m.can_next,
+            can_previous: m.can_previous,
+        }
+    }
+}
+
+/// One active notification, mirrored to the laptop.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PhoneNotif {
+    pub key: String,
+    pub app: String,
+    pub title: String,
+    pub text: String,
+    pub posted_ms: i64,
+}
+
+impl From<PhoneNotif> for proto::PhoneNotif {
+    fn from(n: PhoneNotif) -> Self {
+        proto::PhoneNotif { key: n.key, app: n.app, title: n.title, text: n.text, posted_ms: n.posted_ms }
+    }
+}
+
 /// The node's events, minus the laptop-only ones (the phone's own media and notifications).
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum Event {
@@ -319,6 +372,16 @@ impl TetherNode {
 
     pub fn stop_ring(&self) -> bool {
         self.node.send_live(Frame::StopRing)
+    }
+
+    /// Live media state (`None`: no session); dropped when not connected.
+    pub fn send_media(&self, state: Option<MediaState>) -> bool {
+        self.node.send_live(Frame::Media(state.map(Into::into)))
+    }
+
+    /// The full list of active notifications; dropped when not connected.
+    pub fn send_notifs(&self, list: Vec<PhoneNotif>) -> bool {
+        self.node.send_live(Frame::Notifs(list.into_iter().map(Into::into).collect()))
     }
 
     /// Keeps the link open past the idle timeout while the app is in front or media plays.

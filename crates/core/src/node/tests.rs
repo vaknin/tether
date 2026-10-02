@@ -217,3 +217,32 @@ async fn simultaneous_dials_settle_on_one_link() {
     let m = a.send_text("after the race").unwrap();
     wait_for(&mut eb, |e| msg_in(e, m.id, State::Received)).await;
 }
+
+#[tokio::test]
+async fn media_state_is_dropped_with_the_link() {
+    let d = tempfile::tempdir().unwrap();
+    let (laptop, phone) = paired(d.path()).await;
+    let mut el = laptop.events();
+    phone.connect().await.unwrap();
+    wait_for(&mut el, |e| matches!(e, Event::Connected)).await;
+    let state = MediaState {
+        player: "Spotify".into(),
+        title: "t".into(),
+        artist: "a".into(),
+        album: String::new(),
+        playing: true,
+        position_ms: 1000,
+        duration_ms: 60_000,
+        volume: Some(40),
+        can_seek: true,
+        can_next: true,
+        can_previous: true,
+    };
+    assert!(phone.send_live(Frame::Media(Some(state.clone()))));
+    wait_for(&mut el, |e| matches!(e, Event::Media { state: Some(_) })).await;
+    assert_eq!(laptop.media(), Some(state));
+
+    phone.disconnect();
+    wait_for(&mut el, |e| matches!(e, Event::Media { state: None })).await;
+    assert_eq!(laptop.media(), None);
+}

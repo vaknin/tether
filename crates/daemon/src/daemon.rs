@@ -1,22 +1,106 @@
 //! `tether daemon`: runs the node and serves the CLI/UI socket.
 
-use std::{path::Path, time::Duration};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
-use tether_core::node::Node;
+use tether_core::{
+    node::{Event, Node},
+    proto::Frame,
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{UnixListener, UnixStream},
-    sync::broadcast::error::RecvError,
+    sync::{broadcast::error::RecvError, mpsc},
+    time::Instant,
 };
 use tracing::{debug, info};
 
 use crate::ipc::Request;
 
 const RING_TTL: Duration = Duration::from_secs(120);
+/// How long `notifications --fresh` waits for the phone's list after asking for a wake.
+const FRESH_WAIT: Duration = Duration::from_secs(25);
+/// A connected phone sends its list right after the link comes up; give it this long.
+const SNAPSHOT_GRACE: Duration = Duration::from_secs(3);
+/// After a `--fresh` request the link stays open this long, so polling (rami-login waiting for an
+/// SMS code) sees new notifications live instead of waking the phone each time.
+const FRESH_HOLD: Duration = Duration::from_secs(120);
 
-pub async fn serve(node: Node, sock: &Path) -> Result<()> {
+#[derive(Clone)]
+pub struct Ctx {
+    pub node: Node,
+    /// Asks the FCM loop to wake the phone; `None` without a key.
+    pub wake: Option<mpsc::UnboundedSender<()>>,
+    hold_until: Arc<Mutex<Option<Instant>>>,
+}
+
+impl Ctx {
+    pub fn new(node: Node, wake: Option<mpsc::UnboundedSender<()>>) -> Self {
+        Self { node, wake, hold_until: Arc::default() }
+    }
+
+    /// Keeps the link open until `FRESH_HOLD` after the last call.
+    fn hold(&self) {
+        let until = Instant::now() + FRESH_HOLD;
+        let start = self.hold_until.lock().unwrap().replace(until).is_none();
+        self.node.set_stay(true);
+        if start {
+            let me = self.clone();
+            tokio::spawn(async move {
+                loop {
+                    let until = me.hold_until.lock().unwrap().expect("set while held");
+                    tokio::time::sleep_until(until).await;
+                    let mut slot = me.hold_until.lock().unwrap();
+                    if slot.is_some_and(|u| u <= Instant::now()) {
+                        *slot = None;
+                        me.node.set_stay(false);
+                        return;
+                    }
+                }
+            });
+        }
+    }
+
+    async fn fresh_notifs(&self) -> Result<Value> {
+        let node = &self.node;
+        let mut rx = node.events();
+        self.hold();
+        if !node.is_connected() {
+            match &self.wake {
+                Some(w) => {
+                    let _ = w.send(());
+                }
+                None => return Ok(serde_json::to_value(node.notifs())?),
+            }
+            let wait = async {
+                let mut grace: Option<Instant> = None;
+                loop {
+                    let ev = match grace {
+                        Some(g) => match tokio::time::timeout_at(g, rx.recv()).await {
+                            Ok(ev) => ev,
+                            Err(_) => return,
+                        },
+                        None => rx.recv().await,
+                    };
+                    match ev {
+                        Ok(Event::Notifs { .. }) | Err(RecvError::Closed) => return,
+                        Ok(Event::Connected) => grace = Some(Instant::now() + SNAPSHOT_GRACE),
+                        Ok(_) | Err(RecvError::Lagged(_)) => {}
+                    }
+                }
+            };
+            let _ = tokio::time::timeout(FRESH_WAIT, wait).await;
+        }
+        Ok(serde_json::to_value(node.notifs())?)
+    }
+}
+
+pub async fn serve(ctx: Ctx, sock: &Path) -> Result<()> {
     if UnixStream::connect(sock).await.is_ok() {
         anyhow::bail!("another tether daemon is already serving {}", sock.display());
     }
@@ -29,16 +113,17 @@ pub async fn serve(node: Node, sock: &Path) -> Result<()> {
     info!("listening on {}", sock.display());
     loop {
         let (stream, _) = listener.accept().await?;
-        let node = node.clone();
+        let ctx = ctx.clone();
         tokio::spawn(async move {
-            if let Err(e) = client(node, stream).await {
+            if let Err(e) = client(ctx, stream).await {
                 debug!("client: {e:#}");
             }
         });
     }
 }
 
-async fn client(node: Node, stream: UnixStream) -> Result<()> {
+async fn client(ctx: Ctx, stream: UnixStream) -> Result<()> {
+    let node = &ctx.node;
     let (r, mut w) = stream.into_split();
     let Some(line) = BufReader::new(r).lines().next_line().await? else { return Ok(()) };
     let req: Request = match serde_json::from_str(&line) {
@@ -59,7 +144,7 @@ async fn client(node: Node, stream: UnixStream) -> Result<()> {
             }
         }
     }
-    let res = handle(&node, req).await;
+    let res = handle(&ctx, req).await;
     reply(&mut w, res).await
 }
 
@@ -74,7 +159,8 @@ async fn reply(w: &mut (impl AsyncWriteExt + Unpin), res: Result<Value>) -> Resu
     Ok(())
 }
 
-async fn handle(node: &Node, req: Request) -> Result<Value> {
+async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
+    let node = &ctx.node;
     Ok(match req {
         Request::Status => serde_json::to_value(node.status()?)?,
         Request::PairOffer => json!({ "code": node.pair_offer() }),
@@ -93,7 +179,12 @@ async fn handle(node: &Node, req: Request) -> Result<Value> {
         Request::Msg { text } => serde_json::to_value(node.send_text(text)?)?,
         Request::Ping { text } => serde_json::to_value(node.send_ping(text)?)?,
         Request::Ring => serde_json::to_value(node.ring(RING_TTL)?)?,
-        Request::Notifications => serde_json::to_value(node.notifs())?,
+        Request::StopRing => {
+            anyhow::ensure!(node.send_live(Frame::StopRing), "the phone isn't connected");
+            Value::Null
+        }
+        Request::Notifications { fresh: false } => serde_json::to_value(node.notifs())?,
+        Request::Notifications { fresh: true } => ctx.fresh_notifs().await?,
         Request::Json { limit } => json!({
             "status": node.status()?,
             "media": node.media(),

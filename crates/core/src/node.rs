@@ -434,7 +434,15 @@ impl Inner {
         let old = self.link.lock().unwrap().take();
         if let Some(l) = old {
             l.conn.close(code.into(), reason);
-            self.emit(Event::Disconnected);
+            self.link_gone();
+        }
+    }
+
+    /// The link is gone: media is live state, so the phone's player goes away with it.
+    fn link_gone(&self) {
+        self.emit(Event::Disconnected);
+        if self.media.lock().unwrap().take().is_some() {
+            self.emit(Event::Media { state: None });
         }
     }
 
@@ -565,7 +573,7 @@ impl Inner {
                 cur
             };
             if was_current {
-                me.emit(Event::Disconnected);
+                me.link_gone();
                 // Anything enqueued while the link was dying goes out on the next one.
                 me.kick.notify_one();
             }

@@ -20,6 +20,7 @@ rustls = { version = "0.23.45", default-features = false, features = ["ring", "s
 ring = "0.17.14"
 base64 = "0.23.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+zbus = { version = "5.19", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
 tempfile.workspace = true
