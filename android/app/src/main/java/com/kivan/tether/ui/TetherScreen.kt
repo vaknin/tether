@@ -622,12 +622,14 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
         ) {
             when {
                 thumb != null -> {
-                    val ratio = (thumb.width.toFloat() / thumb.height).coerceIn(0.6f, 1.8f)
+                    // The whole image, at its own aspect, inside a 260×320 box: no cropping.
+                    val ratio = thumb.width.toFloat() / thumb.height
+                    val w = minOf(maxWidth.coerceAtMost(260.dp), 320.dp * ratio)
                     Image(
                         thumb,
                         m.fileName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.width(maxWidth.coerceAtMost(260.dp)).aspectRatio(ratio),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.width(w).aspectRatio(ratio),
                     )
                     Box(
                         Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(CircleShape)

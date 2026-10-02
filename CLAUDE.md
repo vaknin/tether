@@ -51,9 +51,16 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   so it sits under the bar) or centered (440×470, SUPER+M in `~/.config/hypr/bindings.lua`). Both
   modes are layer-shell with exclusive keyboard focus, not a `PopupCard`, because nothing in Omarchy
   types into an xdg popup. 📎 runs `tether send --pick` (FileChooser portal over zbus; `ashpd` is
-  only 0.13), and the panel hides until the chooser closes. Ctrl+V runs `tether send --clipboard`
-  when the clipboard has an image (saved under `~/.local/state/tether/pasted`, pruned after 14 days);
-  otherwise it pastes text. Chat and ping toasts run `omarchy-shell tether open` on click.
+  only 0.13), and the panel hides until the chooser closes.
+  Ctrl+V on an image runs `tether paste` (saves the clipboard image under `~/.local/state/tether/pasted`,
+  pruned after 14 days, and prints its path), which goes into an attach strip above the input and is not
+  sent; Enter sends the strip and the text through `ui.sendWith`. Otherwise Ctrl+V pastes text. Right-click
+  on a file: Open, and Copy image (`tether copy <file>`, PNG on the clipboard) or Copy path.
+  Chat and ping toasts run `omarchy-shell tether open` on click.
+- Image bubbles fit the whole image at its own aspect on both sides: the laptop inside 220×220
+  (`Chat.qml`, `sourceSize` sets both sides), the phone inside 260×320 (`ContentScale.Fit`). Never crop.
+- Logging: the ffi's filter is `info,tether_core=debug,iroh=warn,swarm_discovery=error`
+  (`crates/ffi/src/lib.rs`), because swarm_discovery logs every failed mDNS send (EPERM) on the phone.
 
 ## Build and test
 Rust is pinned in `mise.toml` (1.98.1). Run `cargo test` and `cargo build --release`.
@@ -99,6 +106,10 @@ Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linu
   for 5 minutes and usable once. The phone connects with `PAIR_ALPN` and sends the token, and then
   each side stores the other's id. Connections from any other endpoint id are refused.
 - **Media and notifications are live state** and are never queued.
+- **Cancelling a file** (`tether cancel <id>`, ✕ on the phone): the sender marks it `cancelling`, stops
+  streaming, and sends `Frame::Cancel{id}`. The receiver drops the `.part`, marks it `cancelled`, and echoes
+  `Cancel` back as confirmation; then the sender marks it `cancelled`. The sender repeats the Cancel on each
+  new link until it is confirmed. If the file finished first, the receiver's Ack wins and it stays delivered.
 - **Laptop side effects stay in the daemon, not the core.** They are:
   - an image goes onto the clipboard as image data (`wl-copy --type`, converted to PNG with EXIF
     orientation);
