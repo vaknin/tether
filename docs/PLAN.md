@@ -109,10 +109,10 @@ time, which the relay makes almost always.
 2. **Android app.** Pair, chat, Direct Share tile, receive files. Install over adb
    (`Android_FBR2HM5L.local:5555`, `-s` explicit; check focus before any `adb input`). Keep the
    release keystore safe (lesson from babah).
-3. **Parity with KDE Connect**: MPRIS/media, ring, notifications mirror, ping. Switch
+3. **Parity with KDE Connect** (done 2026-10-02, live-checked): MPRIS/media, ring, notifications mirror, ping. Switch
    phonemedia `busPrefix`, dictation grep, voxtype ignore list, scheduled-jobs `notify`,
    suspend-guard, rami-login.ts. Run both side by side for a few days.
-4. **Laptop chat UI.** Plugin `kivan.tether` in `~/Projects/tether/shell/`, installed with an
+4. **Laptop chat UI** (done 2026-10-02; user confirmed send, 📎, badge, toast, cancel, Ctrl+V attach, image to clipboard). Plugin `kivan.tether` in `~/Projects/tether/shell/`, installed with an
    `install.sh` symlink into `~/.config/omarchy/plugins/` like capture's Ideas panel. It has two parts:
    - a `bar-widget`: the chat badge with the unread count, which opens the dropdown;
    - a `panel` (`keepLoaded`): the same `Chat.qml` centered, opened by SUPER+M through IPC target
