@@ -15,7 +15,8 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
 - `crates/core/src/node.rs`: the iroh endpoint and the single link (pairing, dial race, outbox resend,
   file resume, idle close). Its tests run two nodes over loopback (`Net::Loopback`).
 - `contrib/tether.service`: the systemd user unit. Installed on 2026-10-02 (earlier than planned, the user
-  chose it) so Tether runs side by side with KDE Connect until the Phase 5 cut-over: binary from
+  chose it) so Tether ran side by side with KDE Connect until the Phase 5 cut-over (2026-10-02: KDE Connect
+  removed from the laptop, nftables opens only UDP 47114 from the LAN for Tether): binary from
   `cargo install --path crates/daemon --locked` (`~/.cargo/bin/tether`), state and the paired identity in
   `~/.local/state/tether` (moved from the old dev dir), unit listed in `~/.config/laptop/paths`.
   After daemon changes: reinstall, then `systemctl --user restart tether`.
@@ -36,7 +37,7 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   over a link that is already up (a new link gets a snapshot) and owns `MediaMirror`. While a
   session plays, MediaMirror holds the node (`media` hold, stay on), runs `SyncService` as
   "Connected to Laptop", and lets go 5 min after pause. It skips KDE Connect's sessions
-  (`org.kde.kdeconnect_tp`): they mirror the laptop's MPRIS players, ours included, and would loop.
+  (`org.kde.kdeconnect_tp`): they mirror the laptop's MPRIS players, ours included, and would loop. KDE Connect is gone since the cut-over; the skip is harmless and stays.
   Starting the service from the listener needs battery "Unrestricted" (granted on the Pixel via
   `dumpsys deviceidle whitelist +com.kivan.tether`); without it the hold still dials, unprotected
   from Doze. `Ringer` + `RingActivity`: alarm stream at max, full-screen Stop, 5 min cap.
