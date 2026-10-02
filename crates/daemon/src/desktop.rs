@@ -86,7 +86,7 @@ async fn toast(args: &[&str], exec: &[&str]) -> Result<()> {
     Ok(())
 }
 
-async fn copy_image(path: &Path) -> Result<()> {
+pub async fn copy_image(path: &Path) -> Result<()> {
     let p = path.to_owned();
     let (mime, data) = tokio::task::spawn_blocking(move || clipboard_image(&p)).await??;
     let mut child = Command::new("wl-copy")

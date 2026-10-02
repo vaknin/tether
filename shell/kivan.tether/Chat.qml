@@ -30,6 +30,11 @@ BorderSurface {
   function scrollToEnd() { list.positionViewAtEnd() }
   function pasteText() { input.paste() }
 
+  // Images pasted with Ctrl+V, waiting for Enter.
+  property var attachments: []
+  function attach(path) { attachments = attachments.concat([path]); focusInput() }
+  function detach(i) { var a = attachments.slice(); a.splice(i, 1); attachments = a }
+
   function isImage(name) {
     var dot = name ? name.lastIndexOf(".") : -1
     return dot >= 0 && imageExt.indexOf(name.slice(dot + 1).toLowerCase()) >= 0
@@ -197,7 +202,7 @@ BorderSurface {
           acceptedButtons: Qt.LeftButton | Qt.RightButton
           onClicked: function(mouse) {
             if (row.image || row.fileChip) {
-              if (mouse.button === Qt.RightButton) ui.copy(model.path)
+              if (mouse.button === Qt.RightButton) chat.openMenu(bubble.mapToItem(chat, mouse.x, mouse.y), model.path, row.image)
               else ui.openFile(model.path)
             } else if (mouse.button === Qt.RightButton) {
               ui.copy(model.text)
@@ -301,19 +306,40 @@ BorderSurface {
             HoverHandler { cursorShape: body.hoveredLink ? Qt.PointingHandCursor : Qt.ArrowCursor }
           }
 
-          Text {
-            id: meta
+          Row {
             anchors.right: parent.right
-            text: {
-              var t = Qt.formatTime(new Date(model.ts), "HH:mm")
-              if (!row.mine) return t
-              if (model.state === "queued") return t + "  󰥔"
-              if (model.state === "expired") return t + "  not delivered"
-              return t + "  ✓✓"
+            spacing: Style.space(8)
+
+            // Stops a file that is still sending (or waiting to); the phone drops what it got.
+            Text {
+              visible: row.mine && model.kind === "file" && model.state === "queued"
+              text: "✕ Cancel"
+              color: cancelArea.containsMouse ? Color.urgent : chat.muted
+              font.family: chat.fontFamily
+              font.pixelSize: Style.font.caption
+              MouseArea {
+                id: cancelArea
+                anchors { fill: parent; margins: -Style.space(4) }
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: ui.cancel(model.mid)
+              }
             }
-            color: model.state === "expired" ? Color.urgent : chat.muted
-            font.family: chat.fontFamily
-            font.pixelSize: Style.font.caption
+
+            Text {
+              id: meta
+              text: {
+                var t = Qt.formatTime(new Date(model.ts), "HH:mm")
+                if (model.state === "cancelled") return t + "  cancelled"
+                if (!row.mine) return t
+                if (model.state === "queued") return t + "  󰥔"
+                if (model.state === "expired") return t + "  not delivered"
+                return t + "  ✓✓"
+              }
+              color: model.state === "expired" ? Color.urgent : chat.muted
+              font.family: chat.fontFamily
+              font.pixelSize: Style.font.caption
+            }
           }
         }
       }
@@ -342,10 +368,56 @@ BorderSurface {
     anchors.leftMargin: chat.contentLeftInset + chat.pad / 2
     anchors.rightMargin: chat.contentRightInset + chat.pad / 2
     anchors.bottomMargin: chat.contentBottomInset + chat.pad / 2
-    height: inputRow.height + (hint.visible ? hint.height + Style.space(4) : 0)
+    height: inputRow.y + inputRow.height + (hint.visible ? hint.height + Style.space(4) : 0)
+
+    // Pasted images, sent with the next Enter; ✕ drops one.
+    Row {
+      id: attachStrip
+      visible: chat.attachments.length > 0
+      height: visible ? Style.space(48) : 0
+      spacing: Style.space(6)
+
+      Repeater {
+        model: chat.attachments
+        Item {
+          required property string modelData
+          required property int index
+          width: Style.space(48)
+          height: Style.space(48)
+
+          Image {
+            anchors.fill: parent
+            source: "file://" + parent.modelData
+            sourceSize.width: width * 2
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+          }
+
+          Rectangle {
+            anchors { top: parent.top; right: parent.right; margins: Style.space(2) }
+            width: Style.space(16)
+            height: width
+            radius: width / 2
+            color: Util.alpha(Color.popups.background, 0.85)
+            Text {
+              anchors.centerIn: parent
+              text: "✕"
+              color: chat.fg
+              font.pixelSize: Style.space(9)
+            }
+            MouseArea {
+              anchors { fill: parent; margins: -Style.space(3) }
+              cursorShape: Qt.PointingHandCursor
+              onClicked: chat.detach(parent.parent.index)
+            }
+          }
+        }
+      }
+    }
 
     Row {
       id: inputRow
+      y: attachStrip.visible ? attachStrip.height + Style.space(6) : 0
       width: parent.width
       height: Math.max(Style.space(32), box.height)
       spacing: Style.space(4)
@@ -399,7 +471,7 @@ BorderSurface {
             bottomPadding: Style.space(6)
             background: null
 
-            // Enter sends, Shift+Enter adds a line, Ctrl+V sends a clipboard image (or pastes
+            // Enter sends, Shift+Enter adds a line, Ctrl+V attaches a clipboard image (or pastes
             // text), Esc closes.
             Keys.onPressed: function(event) {
               if (event.key === Qt.Key_Escape) {
@@ -434,17 +506,90 @@ BorderSurface {
       anchors { top: inputRow.bottom; topMargin: Style.space(4); horizontalCenter: parent.horizontalCenter }
       width: Math.min(implicitWidth, parent.width)
       elide: Text.ElideRight
-      text: "Enter sends · Shift+Enter line · Ctrl+V image · right-click copies"
+      text: "Enter sends · Shift+Enter line · Ctrl+V attaches · right-click menu"
       color: Util.alpha(chat.fg, 0.4)
       font.family: chat.fontFamily
       font.pixelSize: Style.font.caption
     }
   }
 
+  // --- Right-click menu for files and images ------------------------------------------------------
+
+  MouseArea {
+    anchors.fill: parent
+    visible: fileMenu.visible
+    z: 9
+    acceptedButtons: Qt.LeftButton | Qt.RightButton
+    onClicked: fileMenu.visible = false
+  }
+
+  Rectangle {
+    id: fileMenu
+    property string path: ""
+    property bool image: false
+    visible: false
+    z: 10
+    width: menuCol.implicitWidth + Style.space(8)
+    height: menuCol.implicitHeight + Style.space(8)
+    radius: 6
+    color: Color.popups.background
+    border.color: Util.alpha(chat.fg, 0.2)
+
+    Column {
+      id: menuCol
+      anchors.centerIn: parent
+      MenuEntry { label: "Open"; onClicked: ui.openFile(fileMenu.path) }
+      MenuEntry {
+        label: fileMenu.image ? "Copy image" : "Copy path"
+        onClicked: fileMenu.image ? ui.copyImage(fileMenu.path) : ui.copy(fileMenu.path)
+      }
+    }
+  }
+
+  function openMenu(p, path, image) {
+    if (!path) return
+    fileMenu.path = path
+    fileMenu.image = image
+    fileMenu.x = Math.max(0, Math.min(p.x, width - fileMenu.width))
+    fileMenu.y = Math.max(0, Math.min(p.y, height - fileMenu.height))
+    fileMenu.visible = true
+  }
+
+  component MenuEntry: Rectangle {
+    id: entry
+    property string label: ""
+    signal clicked()
+    width: Style.space(120)
+    height: Style.space(26)
+    radius: 4
+    color: entryArea.containsMouse ? Util.alpha(Color.accent, 0.25) : "transparent"
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      x: Style.space(8)
+      text: entry.label
+      color: chat.fg
+      font.family: chat.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+    MouseArea {
+      id: entryArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: { fileMenu.visible = false; entry.clicked() }
+    }
+  }
+
   function submit() {
     var t = input.text.trim()
-    if (!t) return
-    ui.sendText(t)
+    if (attachments.length > 0) {
+      ui.sendWith(attachments, t)
+      attachments = []
+    } else if (t) {
+      ui.sendText(t)
+    } else {
+      return
+    }
     input.clear()
     list.pinned = true
   }

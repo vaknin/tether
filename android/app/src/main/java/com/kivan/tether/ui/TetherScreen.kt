@@ -700,12 +700,33 @@ private fun FileChip(m: ChatMessage, progress: Pair<Long, Long>?, fg: Color) {
     }
 }
 
-/** Time, and for my messages the delivery state: a clock while queued, ✓✓ once the laptop has it. */
+/**
+ * Time, and for my messages the delivery state: a clock while queued, ✓✓ once the laptop has it.
+ * A file I'm still sending gets a Cancel; the laptop drops what it got.
+ */
 @Composable
 private fun Meta(m: ChatMessage, color: Color) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     Row(verticalAlignment = Alignment.CenterVertically) {
+        if (m.fromMe && m.kind == MsgKind.FILE && m.state == MsgState.QUEUED) {
+            Text(
+                "✕ Cancel",
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { scope.launch { Core.withNode { n -> runCatching { n.cancel(m.id) } } } }
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+        }
         Text(timeOf(ctx, m), style = MaterialTheme.typography.labelSmall, color = color)
+        if (m.state == MsgState.CANCELLED) {
+            Spacer(Modifier.width(4.dp))
+            Text("Cancelled", style = MaterialTheme.typography.labelSmall, color = color)
+            return@Row
+        }
         if (!m.fromMe) return@Row
         val (icon, desc) = when (m.state) {
             MsgState.QUEUED -> R.drawable.ic_schedule to "Waiting"

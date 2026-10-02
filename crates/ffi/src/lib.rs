@@ -64,6 +64,8 @@ pub enum MsgState {
     Expired,
     Incoming,
     Received,
+    /// Stopped by its sender (`Node::cancel`), confirmed or not.
+    Cancelled,
 }
 
 impl From<State> for MsgState {
@@ -74,6 +76,7 @@ impl From<State> for MsgState {
             State::Expired => MsgState::Expired,
             State::Incoming => MsgState::Incoming,
             State::Received => MsgState::Received,
+            State::Cancelling | State::Cancelled => MsgState::Cancelled,
         }
     }
 }
@@ -358,6 +361,12 @@ impl TetherNode {
     }
 
     /// Queues the file at `path`, which must stay in place until the message is delivered.
+    /// Stops a file this phone is sending; false if it already finished (or isn't one).
+    pub fn cancel(&self, id: String) -> Res<bool> {
+        let id = uuid::Uuid::parse_str(&id).map_err(anyhow::Error::from)?;
+        Ok(self.node.cancel(id)?)
+    }
+
     pub async fn send_file(&self, path: String) -> Res<ChatMessage> {
         let node = self.node.clone();
         let m = on_rt(async move { node.send_file(std::path::Path::new(&path)).await }).await?;
@@ -430,7 +439,7 @@ impl TetherNode {
 fn init_logging() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let filter = tracing_subscriber::EnvFilter::new("info,tether_core=debug,iroh=warn");
+        let filter = tracing_subscriber::EnvFilter::new("info,tether_core=debug,iroh=warn,swarm_discovery=error");
         let b = tracing_subscriber::fmt().with_env_filter(filter).with_ansi(false);
         #[cfg(target_os = "android")]
         let b = b.without_time().with_writer(logcat::Writer::default);

@@ -91,6 +91,8 @@ pub enum Frame {
     /// Phone → laptop: whether the phone wants to stay connected (media playing, chat open).
     /// When false, either side closes the connection after the idle timeout.
     StayConnected(bool),
+    /// A file item, either way: its sender stopped it, or its receiver confirms it dropped it.
+    Cancel { id: Uuid },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -152,6 +154,7 @@ mod tests {
                 body: Body::File { name: "a.png".into(), size: 3, sha256: [9; 32] },
             }),
             Frame::MediaCmd(MediaCmd::Seek { position_ms: 1234 }),
+            Frame::Cancel { id: Uuid::new_v4() },
         ];
         let mut buf = Vec::new();
         for f in &frames {

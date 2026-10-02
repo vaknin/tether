@@ -53,6 +53,9 @@ const CLOSE_NOT_PAIRED: u32 = 1;
 const CLOSE_DUPLICATE: u32 = 2;
 const CLOSE_IDLE: u32 = 3;
 
+/// Stream reset code for a file whose sender cancelled it.
+const RESET_CANCELLED: u32 = 1;
+
 pub enum Net {
     /// n0 relays and DNS lookup plus mDNS on the LAN. `port` pins the IPv4 socket.
     Internet { port: Option<u16> },
@@ -365,6 +368,16 @@ impl Node {
         self.inner.send(Body::File { name, size, sha256 }, Some(path), None)
     }
 
+    /// Stops a file I'm sending, mid-stream or still waiting. The peer drops what it has, and every
+    /// new link repeats the cancel until it confirms. False if it isn't a queued file of mine
+    /// (already delivered, say).
+    pub fn cancel(&self, id: Uuid) -> Result<bool> {
+        let Some(m) = self.inner.db(|s| s.cancel(id))? else { return Ok(false) };
+        self.inner.emit(Event::Message(m));
+        self.send_live(Frame::Cancel { id });
+        Ok(true)
+    }
+
     /// Sends live state (media, notifications, StopRing, …). Never queued: returns false when
     /// there is no link.
     pub fn send_live(&self, frame: Frame) -> bool {
@@ -592,6 +605,9 @@ impl Inner {
         for m in live {
             let _ = link.tx.send(Frame::Item(m.item()));
         }
+        for id in self.db(|s| s.cancelling())? {
+            let _ = link.tx.send(Frame::Cancel { id });
+        }
         Ok(())
     }
 
@@ -698,8 +714,43 @@ impl Inner {
             Frame::StopRing => self.emit(Event::StopRing),
             Frame::PushToken(t) => self.db(|s| s.set_kv("push_token", t.as_bytes()))?,
             Frame::StayConnected(b) => link.activity.peer_stay.store(b, Ordering::SeqCst),
+            Frame::Cancel { id } => self.on_cancel(link, id).await?,
         }
         Ok(())
+    }
+
+    async fn on_cancel(&self, link: &Link, id: Uuid) -> Result<()> {
+        match self.db(|s| s.get(id))? {
+            // My file: the peer confirms it dropped it.
+            Some(m) if m.from_me => {
+                if m.state == State::Cancelling
+                    && let Some(m) = self.db(|s| s.set_state(id, State::Cancelled))?
+                {
+                    self.emit(Event::Message(m));
+                }
+            }
+            // It finished before the cancel got here; the ack tells the sender so.
+            Some(m) if m.state == State::Received => {
+                let _ = link.tx.send(Frame::Ack { id });
+            }
+            m => {
+                if m.is_some_and(|m| m.state == State::Incoming) {
+                    if let Some(m) = self.db(|s| s.set_state(id, State::Cancelled))? {
+                        self.emit(Event::Message(m));
+                    }
+                    // A running receive notices the state and deletes the part itself.
+                    if !self.receiving.lock().unwrap().contains(&id) {
+                        let _ = tokio::fs::remove_file(files::part_path(&self.cfg.download_dir, id)).await;
+                    }
+                }
+                let _ = link.tx.send(Frame::Cancel { id });
+            }
+        }
+        Ok(())
+    }
+
+    fn still(&self, id: Uuid, state: State) -> Result<bool> {
+        Ok(self.db(|s| s.get(id))?.is_some_and(|m| m.state == state))
     }
 
     async fn part_len(&self, id: Uuid) -> u64 {
@@ -734,6 +785,10 @@ impl Inner {
         meter.tick(self, done);
         let mut buf = vec![0u8; CHUNK];
         while done < size {
+            if !self.still(id, State::Queued)? {
+                let _ = s.reset(RESET_CANCELLED.into());
+                return Ok(());
+            }
             let want = buf.len().min((size - done) as usize);
             let n = f.read(&mut buf[..want]).await?;
             if n == 0 {
@@ -759,9 +814,15 @@ impl Inner {
             return;
         };
         if let Err(e) = res {
-            warn!("receiving file {id} stopped: {e:#}");
-            // The link may still be fine (e.g. a duplicate stream lost the race); ask again.
+            // The link may still be fine (e.g. a duplicate stream lost the race); ask again. The
+            // wait also lets a cancel arrive, which can trail the sender's stream reset.
             tokio::time::sleep(Duration::from_secs(1)).await;
+            if self.still(id, State::Cancelled).unwrap_or(false) {
+                debug!("file {id} cancelled by the sender");
+                let _ = tokio::fs::remove_file(files::part_path(&self.cfg.download_dir, id)).await;
+                return;
+            }
+            warn!("receiving file {id} stopped: {e:#}");
             let still_incoming = self
                 .db(|s| s.get(id))
                 .ok()
@@ -809,6 +870,10 @@ impl Inner {
         meter.tick(self, done);
         let mut buf = vec![0u8; CHUNK];
         while done < size {
+            if !self.still(hdr.id, State::Incoming)? {
+                let _ = r.stop(0u32.into());
+                bail!("cancelled");
+            }
             let want = buf.len().min((size - done) as usize);
             let Some(n) = r.read(&mut buf[..want]).await? else { break };
             f.write_all(&buf[..n]).await?;

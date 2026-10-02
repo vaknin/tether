@@ -94,8 +94,8 @@ pub async fn clipboard_image(dir: &Path) -> Result<PathBuf> {
 
     std::fs::create_dir_all(dir)?;
     prune(dir);
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let path = dir.join(format!("pasted-{secs}.{ext}"));
+    let ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+    let path = dir.join(format!("pasted-{ms}.{ext}"));
     std::fs::write(&path, &data.stdout)?;
     Ok(path)
 }

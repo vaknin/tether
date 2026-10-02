@@ -22,6 +22,8 @@ pub enum Request {
     Pair { code: String },
     Unpair,
     Send { paths: Vec<PathBuf> },
+    /// Stop a file I'm sending.
+    Cancel { id: String },
     Msg { text: String },
     Ping { text: String },
     Ring,

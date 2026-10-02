@@ -184,8 +184,24 @@ Item {
     Quickshell.execDetached([cli, "msg", "--", t])
   }
 
+  // Files first, then the text, in that order, so a caption lands under its image.
+  function sendWith(paths, t) {
+    Quickshell.execDetached(["sh", "-c",
+      'cli="$1"; t="$2"; shift 2; "$cli" send -- "$@" >/dev/null && { [ -z "$t" ] || "$cli" msg -- "$t"; }',
+      "sh", cli, t].concat(paths))
+  }
+
+  function cancel(id) {
+    Quickshell.execDetached([cli, "cancel", id])
+  }
+
   function ring() {
     Quickshell.execDetached([cli, "ring"])
+  }
+
+  // As image data, the way received images land on the clipboard.
+  function copyImage(path) {
+    if (path) Quickshell.execDetached([cli, "copy", path])
   }
 
   function copy(t) {
@@ -217,14 +233,19 @@ Item {
     }
   }
 
-  // Ctrl+V: an image on the clipboard is sent as a file; anything else is pasted as text (exit 7).
+  // Ctrl+V: an image on the clipboard is saved and attached, to go with the next Enter; anything
+  // else is pasted as text (exit 7).
   function paste() {
     if (!paster.running) paster.running = true
   }
 
   Process {
     id: paster
-    command: ["sh", "-c", "wl-paste --list-types 2>/dev/null | grep -q '^image/' || exit 7; exec \"$0\" send --clipboard", root.cli]
+    command: ["sh", "-c", "wl-paste --list-types 2>/dev/null | grep -q '^image/' || exit 7; exec \"$0\" paste", root.cli]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: { var p = text.trim(); if (p) card.attach(p) }
+    }
     onExited: function(code) { if (code === 7) card.pasteText() }
   }
 

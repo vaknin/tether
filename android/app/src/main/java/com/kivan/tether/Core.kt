@@ -186,9 +186,13 @@ object Core {
     }
 
     private fun onMessage(m: ChatMessage) {
+        // A transfer that ended without finishing (cancelled) never reports done == total.
+        if (m.state != MsgState.QUEUED && m.state != MsgState.INCOMING && m.id in _progress.value) {
+            _progress.value = _progress.value - m.id
+        }
         if (m.fromMe) {
-            // The copy made for sending is no longer needed once the laptop has it.
-            if (m.state == MsgState.DELIVERED || m.state == MsgState.EXPIRED) {
+            // The copy made for sending is no longer needed once the laptop has it (or never will).
+            if (m.state == MsgState.DELIVERED || m.state == MsgState.EXPIRED || m.state == MsgState.CANCELLED) {
                 m.path?.let { File(it) }?.takeIf { it.startsWith(outgoingDir) }?.let {
                     it.delete()
                     it.parentFile?.delete()

@@ -43,6 +43,12 @@ async fn wait_for(rx: &mut Receiver<Event>, f: impl Fn(&Event) -> bool) -> Event
     .expect("event did not arrive")
 }
 
+impl Node {
+    fn db_state(&self, id: Uuid) -> State {
+        self.inner.db(|s| s.get(id)).unwrap().unwrap().state
+    }
+}
+
 fn msg_in(e: &Event, id: Uuid, state: State) -> bool {
     matches!(e, Event::Message(m) if m.id == id && m.state == state)
 }
@@ -158,6 +164,53 @@ async fn file_resumes_from_partial_download() {
     wait_for(&mut eb, |e| msg_in(e, f.id, State::Received)).await;
     assert_eq!(std::fs::read(dl.join("big.bin")).unwrap(), data);
     assert!(!files::part_path(&dl, f.id).exists());
+}
+
+#[tokio::test]
+async fn cancel_stops_a_file_midway() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    let file = d.path().join("huge.bin");
+    std::fs::write(&file, vec![7u8; 64 << 20]).unwrap();
+    let (mut ea, mut eb) = (a.events(), b.events());
+    let f = a.send_file(&file).await.unwrap();
+    wait_for(&mut eb, |e| matches!(e, Event::Progress { id, done, .. } if *id == f.id && *done > 0)).await;
+    assert!(a.cancel(f.id).unwrap());
+
+    wait_for(&mut eb, |e| msg_in(e, f.id, State::Cancelled)).await;
+    // My side shows it at once, then hears the peer confirm.
+    wait_for(&mut ea, |e| msg_in(e, f.id, State::Cancelled)).await;
+    assert_eq!(a.status().unwrap().queued, 0);
+    let dl = d.path().join("b/dl");
+    timeout(WAIT, async {
+        while files::part_path(&dl, f.id).exists() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the partial file was not removed");
+    assert!(!dl.join("huge.bin").exists());
+    // Delivered or cancelled files can't be cancelled again.
+    assert!(!a.cancel(f.id).unwrap());
+}
+
+#[tokio::test]
+async fn cancel_while_offline_reaches_the_peer_later() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    b.shutdown().await;
+    let file = d.path().join("later.bin");
+    std::fs::write(&file, b"never sent").unwrap();
+    let f = a.send_file(&file).await.unwrap();
+    assert!(a.cancel(f.id).unwrap());
+    assert_eq!(a.db_state(f.id), State::Cancelling);
+
+    let b = start(d.path(), "b").await;
+    let mut ea = a.events();
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    wait_for(&mut ea, |e| msg_in(e, f.id, State::Cancelled)).await;
+    assert!(b.recent(10).unwrap().iter().all(|m| m.id != f.id));
 }
 
 #[tokio::test]

@@ -22,6 +22,11 @@ pub enum State {
     Incoming,
     /// Theirs, complete.
     Received,
+    /// Mine, a file I stopped; the peer hasn't confirmed dropping it yet. UIs see it as cancelled.
+    #[serde(rename = "cancelled")]
+    Cancelling,
+    /// A file its sender stopped (on my side, confirmed by the peer).
+    Cancelled,
 }
 
 impl State {
@@ -32,6 +37,8 @@ impl State {
             State::Expired => "expired",
             State::Incoming => "incoming",
             State::Received => "received",
+            State::Cancelling => "cancelling",
+            State::Cancelled => "cancelled",
         }
     }
 
@@ -42,6 +49,8 @@ impl State {
             "expired" => State::Expired,
             "incoming" => State::Incoming,
             "received" => State::Received,
+            "cancelling" => State::Cancelling,
+            "cancelled" => State::Cancelled,
             other => anyhow::bail!("unknown state {other}"),
         })
     }
@@ -256,13 +265,32 @@ impl Store {
         self.get(id)
     }
 
-    /// Marks my item as delivered; `None` if it isn't mine or was already delivered.
+    /// Marks my item as delivered; `None` if it isn't mine or was already delivered. A file I was
+    /// cancelling counts too: the ack means it arrived whole before the cancel did.
     pub fn ack(&self, id: Uuid) -> Result<Option<Message>> {
         let n = self.db.execute(
-            "UPDATE messages SET state = 'delivered' WHERE id = ?1 AND from_me = 1 AND state = 'queued'",
+            "UPDATE messages SET state = 'delivered'
+             WHERE id = ?1 AND from_me = 1 AND state IN ('queued', 'cancelling')",
             [id.to_string()],
         )?;
         if n == 0 { Ok(None) } else { self.get(id) }
+    }
+
+    /// Takes my queued file out of the outbox; `None` if it isn't one (already delivered, say).
+    pub fn cancel(&self, id: Uuid) -> Result<Option<Message>> {
+        let n = self.db.execute(
+            "UPDATE messages SET state = 'cancelling'
+             WHERE id = ?1 AND from_me = 1 AND kind = 'file' AND state = 'queued'",
+            [id.to_string()],
+        )?;
+        if n == 0 { Ok(None) } else { self.get(id) }
+    }
+
+    /// My cancelled files the peer hasn't confirmed yet; each new link repeats their cancel.
+    pub fn cancelling(&self) -> Result<Vec<Uuid>> {
+        let mut stmt = self.db.prepare("SELECT id FROM messages WHERE state = 'cancelling'")?;
+        let ids = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(ids.iter().filter_map(|i| Uuid::parse_str(i).ok()).collect())
     }
 
     pub fn set_path(&self, id: Uuid, path: &Path) -> Result<Option<Message>> {

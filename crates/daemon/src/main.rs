@@ -72,6 +72,12 @@ enum Cmd {
         #[arg(long)]
         clipboard: bool,
     },
+    /// Stop sending a file (its id is in `tether json`); the phone drops what it got.
+    Cancel { id: String },
+    /// Put an image on the clipboard as image data (PNG), as received images are.
+    Copy { file: PathBuf },
+    /// Save the image on the clipboard and print its path (the chat attaches it on Ctrl+V).
+    Paste,
     /// Send a chat message.
     Msg {
         #[arg(required = true)]
@@ -197,6 +203,12 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             for m in sent.as_array().into_iter().flatten() {
                 println!("{} {}", m["state"].as_str().unwrap_or("?"), m["file_name"].as_str().unwrap_or("?"));
             }
+            Ok(())
+        }
+        Cmd::Cancel { id } => call(&sock, &Request::Cancel { id }).await.map(drop),
+        Cmd::Copy { file } => desktop::copy_image(&file).await,
+        Cmd::Paste => {
+            println!("{}", pick::clipboard_image(&default_state_dir()?.join("pasted")).await?.display());
             Ok(())
         }
         Cmd::Msg { text } => print_state(call(&sock, &Request::Msg { text: text.join(" ") }).await?),

@@ -176,6 +176,10 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
             }
             serde_json::to_value(sent)?
         }
+        Request::Cancel { id } => {
+            anyhow::ensure!(node.cancel(id.parse().context("bad message id")?)?, "not a file that is still sending");
+            Value::Null
+        }
         Request::Msg { text } => serde_json::to_value(node.send_text(text)?)?,
         Request::Ping { text } => serde_json::to_value(node.send_ping(text)?)?,
         Request::Ring => serde_json::to_value(node.ring(RING_TTL)?)?,
