@@ -239,7 +239,8 @@ Item {
         var list
         try { list = JSON.parse(text) } catch (e) { return }
         if (!Array.isArray(list)) return
-        root.channels = list
+        // `laptop = false` in a manifest keeps a channel on the phone only.
+        root.channels = list.filter(function (c) { return c.laptop !== false })
         root.prunePending()
         root.reloadThread()
       }

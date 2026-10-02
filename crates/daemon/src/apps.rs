@@ -63,6 +63,7 @@ struct Raw {
     #[serde(default)]
     share: bool,
     notify: Option<bool>,
+    laptop: Option<bool>,
 }
 
 /// A channel as the UIs see it (also an entry of `_channels`).
@@ -82,6 +83,9 @@ pub struct Channel {
     pub notify: bool,
     #[serde(skip)]
     pub exec: Option<String>,
+    /// Shown in the laptop panel. Kept out of `_channels`: the phone shows every channel.
+    #[serde(skip)]
+    pub laptop: bool,
 }
 
 impl Channel {
@@ -114,6 +118,7 @@ impl Channel {
             share: r.share,
             notify: r.notify.unwrap_or(true),
             exec,
+            laptop: r.laptop.unwrap_or(true),
         }
     }
 }

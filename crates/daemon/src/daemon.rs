@@ -81,6 +81,7 @@ impl Ctx {
         for c in list {
             let view = self.node.app_view(&c.name)?.map(|d| parse(&d)).unwrap_or(Value::Null);
             let mut v = serde_json::to_value(&c)?;
+            v["laptop"] = c.laptop.into();
             v["badge"] = view.get("badge").cloned().unwrap_or(Value::Null);
             v["view"] = view;
             out.push(v);

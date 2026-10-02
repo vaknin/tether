@@ -223,7 +223,8 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 ### Manifest `~/.config/tether/apps/<name>.toml` (name: `[a-z0-9_-]+`)
 `title`, `glyph` (one emoji or letter), `accent` (`#rrggbb`), `dir` (`ltr`|`rtl`), `kind`
 (`app`|`thread`), `exec` (a shell command; `~` expanded; started on demand as before), `share`
-(accept Android share text into the compose), `notify` (bool). It replaces the earlier bare
+(accept Android share text into the compose), `notify` (bool), `laptop` (bool, default true; false
+keeps the channel off the laptop panel, phone only; not sent in `_channels`). It replaces the earlier bare
 executable. The daemon reads the folder at start and on `tether channels --reload`, and publishes
 `_channels` when the list changed. A channel with items but no manifest shows as a thread.
 
@@ -240,7 +241,8 @@ executable. The daemon reads the folder at start and on `tether channels --reloa
   has the strip (Chat + channels with badges), Ctrl+1…9, Ctrl+K switcher, reload on watch `app`
   notices, and IPC `channel <name>` / `toggleChannel <name>` (`open` keeps no argument, since chat
   toasts call it bare and `qs ipc` rejects a wrong arg count). SUPER+N → `omarchy-shell tether
-  toggleChannel teen` (bound 2026-10-02; live after `omarchy restart shell`). `TETHER_PANEL_OUTPUT=<output>` is the test mode: that
+  toggleChannel teen` (bound 2026-10-02; removed 2026-10-03: the owner uses teen-app's own window on
+  the laptop, so `teen.toml` has `laptop = false` and חפיפה stays on the phone only). `TETHER_PANEL_OUTPUT=<output>` is the test mode: that
   output, keyboard focus None (OnDemand took the owner's keystrokes once on a headless output).
   Checked in an isolated `qs -p` with a fake CLI: rendering of every block, RTL, the action JSON.
   Not checked: real clicks/keys, Exclusive focus, dropdown with the strip, a real watch notice.
