@@ -14,8 +14,11 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   to the daemon over `$XDG_RUNTIME_DIR/tether.sock`.
 - `crates/core/src/node.rs`: the iroh endpoint and the single link (pairing, dial race, outbox resend,
   file resume, idle close). Its tests run two nodes over loopback (`Net::Loopback`).
-- `contrib/tether.service`: the systemd user unit. It isn't installed yet; KDE Connect stays live
-  until the Phase 5 cut-over.
+- `contrib/tether.service`: the systemd user unit. Installed on 2026-10-02 (earlier than planned, the user
+  chose it) so Tether runs side by side with KDE Connect until the Phase 5 cut-over: binary from
+  `cargo install --path crates/daemon --locked` (`~/.cargo/bin/tether`), state and the paired identity in
+  `~/.local/state/tether` (moved from the old dev dir), unit listed in `~/.config/laptop/paths`.
+  After daemon changes: reinstall, then `systemctl --user restart tether`.
 - `android/`: Kotlin/Compose app `com.kivan.tether` (toolchain copied from ~/Projects/chordhand).
   Gradle runs cargo-ndk and uniffi-bindgen itself (`buildSrc/.../RustTasks.kt`). `Core.kt` owns the
   node: it runs only while held (UI, `SyncService` after FCM wake or share, `OutboxWorker` retries)
@@ -25,6 +28,10 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   reads the phone's DNS servers; it must run before the first node start. The phone's mDNS send
   fails with EPERM (no `MulticastLock`). That's deferred on purpose: a lock costs battery, the home
   Wi-Fi drops client-to-client multicast anyway, and relay plus hole-punching finds the direct path.
+- Phone UI: `ui/TetherScreen.kt` (grouped bubbles, day headers, inline time and ✓✓, links, image
+  thumbnails, file chips, setup sheet and unpair in the ⋮ menu) and `ui/Theme.kt`: a fixed **gruvbox
+  dark** theme, always dark (the user's choice; dynamic colour came out grey). `Thumbs` keeps
+  `filesDir/thumbs/<id>.webp`, written on send and on save, because neither original stays put.
 - Phase 3 on the phone: `PhoneListener` (NotificationListenerService) mirrors notifications only
   over a link that is already up (a new link gets a snapshot) and owns `MediaMirror`. While a
   session plays, MediaMirror holds the node (`media` hold, stay on), runs `SyncService` as
