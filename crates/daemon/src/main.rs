@@ -5,6 +5,7 @@ mod desktop;
 mod fcm;
 mod ipc;
 mod mpris;
+mod pick;
 
 use std::{path::PathBuf, process::ExitCode, time::Duration};
 
@@ -62,8 +63,14 @@ enum Cmd {
     },
     /// Send files (queued until the phone is reachable).
     Send {
-        #[arg(required = true)]
+        #[arg(required_unless_present_any = ["pick", "clipboard"])]
         files: Vec<PathBuf>,
+        /// Choose the files in the desktop's file chooser.
+        #[arg(long, conflicts_with = "clipboard")]
+        pick: bool,
+        /// Send the image on the clipboard.
+        #[arg(long)]
+        clipboard: bool,
     },
     /// Send a chat message.
     Msg {
@@ -175,8 +182,17 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Send { files } => {
-            let paths = files.iter().map(std::path::absolute).collect::<std::io::Result<Vec<_>>>()?;
+        Cmd::Send { files, pick, clipboard } => {
+            let mut paths = files.iter().map(std::path::absolute).collect::<std::io::Result<Vec<_>>>()?;
+            if pick {
+                paths.extend(pick::choose_files().await?);
+            }
+            if clipboard {
+                paths.push(pick::clipboard_image(&default_state_dir()?.join("pasted")).await?);
+            }
+            if paths.is_empty() {
+                return Ok(());
+            }
             let sent = call(&sock, &Request::Send { paths }).await?;
             for m in sent.as_array().into_iter().flatten() {
                 println!("{} {}", m["state"].as_str().unwrap_or("?"), m["file_name"].as_str().unwrap_or("?"));

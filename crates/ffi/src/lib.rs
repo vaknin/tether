@@ -250,7 +250,7 @@ impl Event {
             }
             node::Event::MediaCmd { cmd } => Event::MediaCmd { cmd: cmd.into() },
             node::Event::StopRing => Event::StopRing,
-            node::Event::Media { .. } | node::Event::Notifs { .. } => return None,
+            node::Event::Media { .. } | node::Event::Notifs { .. } | node::Event::Read => return None,
         })
     }
 }

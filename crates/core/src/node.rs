@@ -120,6 +120,8 @@ pub enum Event {
     MediaCmd { cmd: MediaCmd },
     Notifs { list: Vec<PhoneNotif> },
     StopRing,
+    /// Received messages were marked read (the laptop's unread badge clears).
+    Read,
 }
 
 #[derive(Clone)]
@@ -292,7 +294,9 @@ impl Node {
     }
 
     pub fn mark_read(&self) -> Result<()> {
-        self.inner.db(|s| s.mark_read())
+        self.inner.db(|s| s.mark_read())?;
+        self.inner.emit(Event::Read);
+        Ok(())
     }
 
     pub fn media(&self) -> Option<MediaState> {

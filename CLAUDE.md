@@ -43,7 +43,17 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
 - Daemon Phase 3: `mpris.rs` (zbus) holds `org.mpris.MediaPlayer2.tether.pixel` only while the
   phone reports a session. `tether notifications --fresh` wakes the phone (FCM), waits for the
   snapshot and keeps the link up 2 min (rami-login polls it). `tether ring --stop`.
-- Still to come: `shell/` (Omarchy QML plugin `kivan.tether`).
+- Phase 4, laptop chat: `shell/kivan.tether` (Omarchy plugin, linked and enabled by `shell/install.sh`,
+  badge placed before `omarchy.tray`). `Badge.qml` is the bar widget (unread count; it has its own
+  `tether watch` and re-reads `status --json`; the core's `read` event clears it). `Panel.qml`
+  (keepLoaded) owns the data, the IPC target `tether` (`toggle|open|close|dropdown <x>|isOpen`)
+  and one layer-shell window that shows `Chat.qml` as the dropdown (330×400, `ExclusionMode.Normal`
+  so it sits under the bar) or centered (440×470, SUPER+M in `~/.config/hypr/bindings.lua`). Both
+  modes are layer-shell with exclusive keyboard focus, not a `PopupCard`, because nothing in Omarchy
+  types into an xdg popup. 📎 runs `tether send --pick` (FileChooser portal over zbus; `ashpd` is
+  only 0.13), and the panel hides until the chooser closes. Ctrl+V runs `tether send --clipboard`
+  when the clipboard has an image (saved under `~/.local/state/tether/pasted`, pruned after 14 days);
+  otherwise it pastes text. Chat and ping toasts run `omarchy-shell tether open` on click.
 
 ## Build and test
 Rust is pinned in `mise.toml` (1.98.1). Run `cargo test` and `cargo build --release`.

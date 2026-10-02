@@ -30,6 +30,9 @@ pub async fn run(node: Node) {
     }
 }
 
+/// A click on a chat toast opens the chat panel (the `kivan.tether` shell plugin).
+const OPEN_CHAT: &[&str] = &["omarchy-shell", "tether", "open"];
+
 async fn handle(node: &Node, m: &Message) -> Result<()> {
     if m.state != State::Received {
         return Ok(());
@@ -45,8 +48,8 @@ async fn handle(node: &Node, m: &Message) -> Result<()> {
             let path = m.path.as_deref().context("received file has no path")?;
             on_file(&who, path).await
         }
-        "text" => toast(&["-g", "󰍡", &who, &text], &[]).await,
-        "ping" => toast(&["-g", "󰂚", &who, &text], &[]).await,
+        "text" => toast(&["-g", "󰍡", &who, &text], OPEN_CHAT).await,
+        "ping" => toast(&["-g", "󰂚", &who, &text], OPEN_CHAT).await,
         _ => Ok(()),
     }
 }
