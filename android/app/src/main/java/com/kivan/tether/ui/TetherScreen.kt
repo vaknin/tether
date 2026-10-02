@@ -337,7 +337,7 @@ private fun TopBar(
     onUnpair: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    val online = Color(0xFF34C759)
+    val online = Gruvbox.green
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().height(68.dp).padding(start = 8.dp, end = 4.dp),
