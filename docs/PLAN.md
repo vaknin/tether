@@ -240,13 +240,13 @@ executable. The daemon reads the folder at start and on `tether channels --reloa
   has the strip (Chat + channels with badges), Ctrl+1…9, Ctrl+K switcher, reload on watch `app`
   notices, and IPC `channel <name>` / `toggleChannel <name>` (`open` keeps no argument, since chat
   toasts call it bare and `qs ipc` rejects a wrong arg count). SUPER+N → `omarchy-shell tether
-  toggleChannel teen`, to bind after merge. `TETHER_PANEL_OUTPUT=<output>` is the test mode: that
+  toggleChannel teen` (bound 2026-10-02; live after `omarchy restart shell`). `TETHER_PANEL_OUTPUT=<output>` is the test mode: that
   output, keyboard focus None (OnDemand took the owner's keystrokes once on a headless output).
   Checked in an isolated `qs -p` with a fake CLI: rendering of every block, RTL, the action JSON.
   Not checked: real clicks/keys, Exclusive focus, dropdown with the strip, a real watch notice.
   Live progress patches don't reach the panel (watch drops id-less `Event::App`). 
-- Phone: **built 2026-10-02, not installed** (`assembleRelease` and unit tests pass; nothing run on the
-  Pixel yet). `Channels.kt` holds the `_channels` list, each view (live `patch` applied until the next
+- Phone: **built and installed 2026-10-02** (merged to master; daemon reinstalled the same day; the
+  phone connected and took `_channels`, no crash; the screen itself not yet seen). `Channels.kt` holds the `_channels` list, each view (live `patch` applied until the next
   view), threads, ⏳ echoes, drafts (kept across reloads) and the open screen (the last one reopens;
   `tether://chat`, `tether://channel/<name>` intents). Root screen `ui/ChannelScreen.kt` `ChannelList`:
   Chat first, then channels with badges; long press → pin. `ChannelScreen` draws the blocks in the
