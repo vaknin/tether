@@ -60,6 +60,8 @@ pub enum Request {
     Channels,
     /// Reads the manifests again (publishing `_channels` if they changed), then as `Channels`.
     ChannelsReload,
+    /// A command for a built-in `list` channel (`tether list`); the reply depends on the op.
+    List { channel: String, op: crate::lists::ListOp },
     /// A channel's items both ways (posts, replies, actions), oldest first.
     Thread {
         channel: String,

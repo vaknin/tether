@@ -63,7 +63,13 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
 - App channels (`docs/PLAN.md`, "App channels"): `apps.rs` reads the manifests
   `~/.config/tether/apps/<name>.toml` (at start and `tether channels --reload`), publishes the list
   as the `_channels` view, and starts a channel's app on demand (`exec` via `sh -c`). Channel data
-  never enters the chat; the socket has `app_send/app_subscribe/app_action/channels/thread`.
+  never enters the chat; the socket has `app_send/app_subscribe/app_action/channels/thread/list`.
+  Create and change channels with `tether channel add|set|rm|ls` (`channel_cmd.rs`), not by hand.
+  `show = both|phone|laptop|none` decides where a channel appears (`none`: only apps use it);
+  `dir = auto` (default) gives each text its own direction. Built-in kinds are channels the daemon
+  runs itself: `kind = "list"` (`lists.rs`, `tether list <ch> add|ls|done|undo|rm|clear`) is a
+  to-do/shopping list for any channel name, whose state lives in `~/.local/state/tether/lists/`
+  and which an app reads with `tether list <ch> ls --pending --json`. New kinds follow that pattern.
 - Daemon Phase 3: `mpris.rs` (zbus) holds `org.mpris.MediaPlayer2.tether.pixel` only while the
   phone reports a session. `tether notifications --fresh` wakes the phone (FCM), waits for the
   snapshot and keeps the link up 2 min (rami-login polls it). `tether ring --stop`.

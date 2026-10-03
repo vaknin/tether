@@ -91,6 +91,7 @@ impl Ctx {
             let view = self.node.app_view(&c.name)?.map(|d| parse(&d)).unwrap_or(Value::Null);
             let mut v = serde_json::to_value(&c)?;
             v["laptop"] = c.laptop.into();
+            v["show"] = serde_json::to_value(c.show)?;
             v["badge"] = view.get("badge").cloned().unwrap_or(Value::Null);
             v["view"] = view;
             out.push(v);
@@ -330,6 +331,12 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
         Request::ChannelsReload => {
             ctx.apps.reload(node)?;
             ctx.channels()?
+        }
+        Request::List { channel, op } => {
+            check_channel(&channel)?;
+            let c = ctx.apps.get(&channel).filter(|c| c.kind == apps::Kind::List);
+            let c = c.with_context(|| format!("{channel} isn't a list channel (kind = \"list\" in its manifest)"))?;
+            ctx.apps.lists().run_op(node, &channel, c.keep_done, op)?
         }
         Request::Thread { channel, limit } => Value::Array(
             node.app_history(&channel, limit)?

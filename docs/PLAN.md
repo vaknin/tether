@@ -213,7 +213,9 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 - `text {text, mono?}`: multi-line, selectable (a report, say).
 - `list {items:[{id, title?, text, meta?, chips?:[str], actions?:[{id,label,confirm?}]}], empty?}`:
   an item action sends `{"action":<action id>,"value":{"item":<item id>}}`.
-- `checklist {items:[{id,label,checked}]}`: a tap sends `{"action":<block id>,"value":{"item","checked"}}`.
+- `checklist {items:[{id,label,checked,actions?:[{id,label,confirm?}]}]}`: a tap sends
+  `{"action":<block id>,"value":{"item","checked"}}`; an item action (like a list item's) sends
+  `{"action":<action id>,"value":{"item":<item id>}}`.
 - `compose {id, placeholder, submit, chips?:[{id,label}], multi?}`: sends
   `{"action":<id>,"uid","value":{"text","chips":[ids]}}`. Until a view lists an item with that
   uid, the renderer shows the text as a pending (⏳) item at the end of the list before it.
@@ -223,12 +225,36 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 - `web`: reserved (a webxdc-style bundle, later).
 
 ### Manifest `~/.config/tether/apps/<name>.toml` (name: `[a-z0-9_-]+`)
-`title`, `glyph` (one emoji or letter), `accent` (`#rrggbb`), `dir` (`ltr`|`rtl`), `kind`
-(`app`|`thread`), `exec` (a shell command; `~` expanded; started on demand as before), `share`
-(accept Android share text into the compose), `notify` (bool), `laptop` (bool, default true; false
-keeps the channel off the laptop panel, phone only; not sent in `_channels`). It replaces the earlier bare
-executable. The daemon reads the folder at start and on `tether channels --reload`, and publishes
-`_channels` when the list changed. A channel with items but no manifest shows as a thread.
+Make one with `tether channel add <name> [--kind … --glyph … --show …]` (it validates, writes the file and
+reloads the daemon); `tether channel set <name> key=value…` edits one and keeps its comments;
+`tether channel rm <name> [--purge]` deletes it. Hand-written files still work.
+Keys: `title`, `glyph` (one emoji or letter), `accent` (`#rrggbb`), `dir` (`auto`|`ltr`|`rtl`, default
+`auto`: each text takes its own direction, Hebrew right-to-left and English left-to-right, per item on
+the phone and the panel; `ltr`/`rtl` fix the whole channel), `kind` (`app`|`thread`|`list`, see below),
+`exec` (a shell command; `~` expanded; started on demand), `share` (accept Android share text into the
+compose), `notify` (bool), `show` (`both` default | `phone` | `laptop` | `none`: where the channel appears.
+Only phone channels are in `_channels`; `none` is for channels only an app uses, still fully usable over
+the socket; the old `laptop = false` means `show = "phone"`, `show` wins when both are set),
+`keep_done` (list only: hours a ticked item stays, default 24). The daemon reads the folder at start and on
+`tether channels --reload`, and publishes `_channels` when the list changed. A channel with items but no
+manifest shows as a thread.
+
+### Built-in kinds (`kind`)
+A kind is a channel whose behaviour the daemon provides, so no app has to run: it applies the
+phone's and the panel's actions itself, republishes the view, and has its own CLI group. `list` is the
+first (`crates/daemon/src/lists.rs`); later kinds follow the same pattern (a state module, a socket
+request, a CLI group, an arm in `apps::run`).
+- **`list`**: a shopping or to-do list for any channel name. State is
+  `~/.local/state/tether/lists/<channel>.json` (items `{id,text,done,added_ms,done_ms?,by}`); the view is
+  derived from it: a compose (`add`, multi-line adds several), a checklist (`items`; pending first; each item
+  has a `✕` action `rm` with confirm) and "Clear done" (`clear_done`); `badge` = pending count; no `notify`,
+  so a change doesn't wake the phone. A phone's add uses its uid as the item id (idempotent on replay, and the
+  ⏳ echo clears); extra lines get `1~<uid>`, `2~<uid>`. Done items older than `keep_done` hours are dropped
+  (at start, on every change and hourly).
+  CLI: `tether list <ch> add <item>… | ls [--pending] [--json] | done|undo|rm <id|prefix>… | clear [--all]`
+  (each argument and each line of an add is one item; `ls` prints unique id prefixes; `--json` gives
+  `[{id,text,done,added_ms,done_ms?,by}]` for apps, which read the pending items and tick them with `done`).
+  Socket: `list{channel,op}`.
 
 ### Daemon and CLI
 - Socket: `app_send` (replace = view), `app_subscribe`, `app_action{channel,data}` (local route),
@@ -236,7 +262,8 @@ executable. The daemon reads the folder at start and on `tether channels --reloa
   `watch` also streams `{"type":"app","channel","view":bool}` change notices (no data) for views and
   thread items, so the panel can re-read.
 - CLI: `tether post <ch> <text…> [--action id:label]…`, `tether channels [--json] [--reload]`,
-  `tether view <ch> [<file>|-]` (publish a view), `tether action <ch> <json>`, `tether thread <ch> [--json]`.
+  `tether view <ch> [<file>|-]` (publish a view), `tether action <ch> <json>`, `tether thread <ch> [--json]`,
+  `tether channel add|set|rm|ls`, `tether list <ch> …` (built-in `list` kind, above).
 - Panel (QML): **built 2026-10-02, not live yet** (the live plugin links to the main checkout).
   `Channel.qml` draws the blocks (RTL by mirroring; drafts kept by block/field across view
   reloads; ⏳ echo until a view lists the uid; confirm = second press within 4 s); `Panel.qml`

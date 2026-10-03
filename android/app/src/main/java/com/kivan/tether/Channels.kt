@@ -24,11 +24,32 @@ data class ChannelInfo(
     val glyph: String,
     /** ARGB, or null for the theme's accent. */
     val accent: Int?,
-    val rtl: Boolean,
+    val dir: Dir,
+    /** `kind = "thread"`; `app` and `list` are both view-driven. */
     val thread: Boolean,
     val share: Boolean,
     val notify: Boolean,
 )
+
+/** A channel's `dir`: `auto` keeps the chrome LTR and gives each text its own direction. */
+enum class Dir { LTR, RTL, AUTO }
+
+/** A text's direction from its first strong character (none: LTR), as `dir = "auto"` uses it. */
+fun textRtl(s: String): Boolean {
+    var i = 0
+    while (i < s.length) {
+        val cp = s.codePointAt(i)
+        when (Character.getDirectionality(cp)) {
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE -> return true
+            Character.DIRECTIONALITY_LEFT_TO_RIGHT -> return false
+        }
+        i += Character.charCount(cp)
+    }
+    return false
+}
 
 /** A compose block's text that was sent but isn't in a view yet (the ⏳ echo). */
 data class Pending(val uid: String, val text: String)
@@ -142,7 +163,7 @@ object Channels {
                 }
                 e.id == null -> patch(e.channel, e.data)
                 else -> {
-                    val c = info(e.channel) ?: ChannelInfo(e.channel, e.channel, e.channel.take(1), null, false, true, false, true)
+                    val c = info(e.channel) ?: ChannelInfo(e.channel, e.channel, e.channel.take(1), null, Dir.AUTO, true, false, true)
                     if (c.thread) _threads.value = _threads.value + (c.name to n.appHistory(c.name, HISTORY))
                     post(c, e.data)
                     n.appDone(e.id)
@@ -254,7 +275,11 @@ object Channels {
                 glyph = o.optString("glyph").ifEmpty { name.take(1) },
                 accent = o.optString("accent").takeIf { it.matches(Regex("#[0-9a-fA-F]{6}")) }
                     ?.let { (0xFF000000 or it.substring(1).toLong(16)).toInt() },
-                rtl = o.optString("dir") == "rtl",
+                dir = when (o.optString("dir")) {
+                    "ltr" -> Dir.LTR
+                    "rtl" -> Dir.RTL
+                    else -> Dir.AUTO
+                },
                 thread = o.optString("kind") == "thread",
                 share = o.optBoolean("share"),
                 notify = o.optBoolean("notify", true),

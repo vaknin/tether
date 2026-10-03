@@ -433,7 +433,7 @@ Item {
       id: chanCard
       visible: root.channel !== ""
       ui: root
-      channel: root.current || (root.channel ? { name: root.channel, title: root.channel, glyph: root.channel.charAt(0).toUpperCase(), dir: "ltr", kind: "app", view: null } : null)
+      channel: root.current || (root.channel ? { name: root.channel, title: root.channel, glyph: root.channel.charAt(0).toUpperCase(), dir: "auto", kind: "app", view: null } : null)
       roomy: !panel.dropdown
       width: panel.cardW
       height: panel.cardH

@@ -1,10 +1,12 @@
 //! `tether`: the laptop daemon and the CLI that talks to it.
 
 mod apps;
+mod channel_cmd;
 mod daemon;
 mod desktop;
 mod fcm;
 mod ipc;
+mod lists;
 mod mpris;
 mod pick;
 
@@ -17,7 +19,10 @@ use tether_core::node::{Config, Net, Node, PORT};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use crate::ipc::{Request, call};
+use crate::{
+    ipc::{Request, call},
+    lists::ListOp,
+};
 
 #[derive(Parser)]
 #[command(version, about = "Laptop ↔ phone: chat, files, pings, media and notifications")]
@@ -136,6 +141,17 @@ enum Cmd {
     View { channel: String, file: Option<PathBuf> },
     /// Send the channel's app an action, as the panel would (e.g. '{"action":"refresh"}').
     Action { channel: String, json: String },
+    /// Create, change or remove a channel's manifest (~/.config/tether/apps/<name>.toml).
+    Channel {
+        #[command(subcommand)]
+        cmd: ChannelCmd,
+    },
+    /// A built-in list channel (`kind = "list"`): add, ls, done, undo, rm, clear.
+    List {
+        channel: String,
+        #[command(subcommand)]
+        op: ListCmd,
+    },
     /// A channel's posts, replies and actions, oldest first.
     Thread {
         channel: String,
@@ -143,6 +159,103 @@ enum Cmd {
         json: bool,
         #[arg(long, default_value_t = 50)]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChannelCmd {
+    /// Create a channel: `tether channel add groceries --kind list --glyph 🛒`.
+    Add {
+        /// `[a-z0-9_-]+`
+        name: String,
+        #[arg(long)]
+        title: Option<String>,
+        /// One emoji or letter.
+        #[arg(long)]
+        glyph: Option<String>,
+        /// `#rrggbb`
+        #[arg(long)]
+        accent: Option<String>,
+        /// auto (each text by its own language, the default), ltr or rtl.
+        #[arg(long)]
+        dir: Option<String>,
+        /// app (an app publishes the view), thread (posts only) or list (kept by Tether).
+        #[arg(long)]
+        kind: Option<String>,
+        /// The shell command that starts the channel's app on demand.
+        #[arg(long)]
+        exec: Option<String>,
+        /// both (default), phone, laptop or none (only apps use it).
+        #[arg(long)]
+        show: Option<String>,
+        /// Accept Android share text into the channel.
+        #[arg(long)]
+        share: bool,
+        #[arg(long)]
+        no_notify: bool,
+        /// Hours a ticked list item stays before it's dropped (default 24).
+        #[arg(long)]
+        keep_done: Option<u32>,
+        /// Replace an existing manifest.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Change keys of a manifest, keeping its comments: `tether channel set teen show=phone`.
+    /// An empty value removes the key.
+    Set {
+        name: String,
+        #[arg(required = true, value_name = "KEY=VALUE")]
+        pairs: Vec<String>,
+    },
+    /// Delete a manifest. Its items stay (a thread); a list's saved state stays too, unless --purge.
+    Rm {
+        name: String,
+        #[arg(long)]
+        purge: bool,
+    },
+    /// Same as `tether channels`.
+    Ls {
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        reload: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ListCmd {
+    /// Add items: each argument is one item (quote multi-word ones), and so is each line.
+    Add {
+        #[arg(required = true)]
+        text: Vec<String>,
+    },
+    /// Show the items, newest last.
+    Ls {
+        /// Only those not ticked off yet.
+        #[arg(long)]
+        pending: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Tick items off (an id or a unique prefix of one).
+    Done {
+        #[arg(required = true)]
+        ids: Vec<String>,
+    },
+    /// Untick items.
+    Undo {
+        #[arg(required = true)]
+        ids: Vec<String>,
+    },
+    /// Delete items.
+    Rm {
+        #[arg(required = true)]
+        ids: Vec<String>,
+    },
+    /// Delete the ticked items, or with --all every item.
+    Clear {
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -169,6 +282,7 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
                 )
                 .init();
             let state_dir = state_dir.map_or_else(default_state_dir, Ok)?;
+            let lists_dir = state_dir.join("lists");
             let download_dir = download_dir.map_or_else(|| Ok(home()?.join("Downloads")), Ok::<_, anyhow::Error>)?;
             let mut cfg = Config::new(state_dir, download_dir, name);
             cfg.net = Net::Internet { port: Some(port) };
@@ -192,7 +306,7 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
                 }
             };
             let clients = daemon::Clients::default();
-            let apps = apps::Apps::new(apps::default_dir()?);
+            let apps = apps::Apps::new(apps::default_dir()?, lists_dir);
             if let Err(e) = apps.publish(&node) {
                 warn!("publishing the channel list: {e:#}");
             }
@@ -282,18 +396,10 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             println!("queued");
             Ok(())
         }
-        Cmd::Channels { json, reload } => {
-            let list = call(&sock, &if reload { Request::ChannelsReload } else { Request::Channels }).await?;
-            if json {
-                println!("{list}");
-            } else {
-                for c in list.as_array().into_iter().flatten() {
-                    let badge = c["badge"].as_u64().map(|b| format!("  ({b})")).unwrap_or_default();
-                    println!("{} {:<14} {} [{}]{badge}", s(&c["glyph"]), s(&c["name"]), s(&c["title"]), s(&c["kind"]));
-                }
-            }
-            Ok(())
+        Cmd::Channels { json, reload } | Cmd::Channel { cmd: ChannelCmd::Ls { json, reload } } => {
+            print_channels(&sock, json, reload).await
         }
+        Cmd::Channel { cmd } => channel(&sock, cmd).await,
         Cmd::View { channel, file } => {
             let data = match file {
                 Some(f) if f.as_os_str() != "-" => {
@@ -309,6 +415,30 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             Ok(())
         }
         Cmd::Action { channel, json } => call(&sock, &Request::AppAction { channel, data: json }).await.map(drop),
+        Cmd::List { channel, op } => {
+            let (json, op) = match op {
+                ListCmd::Add { text } => (false, ListOp::Add { text: text.join("\n") }),
+                ListCmd::Ls { pending, json } => (json, ListOp::Ls { pending }),
+                ListCmd::Done { ids } => (false, ListOp::Done { ids }),
+                ListCmd::Undo { ids } => (false, ListOp::Undo { ids }),
+                ListCmd::Rm { ids } => (false, ListOp::Rm { ids }),
+                ListCmd::Clear { all } => (false, ListOp::Clear { done_only: !all }),
+            };
+            let ls = matches!(op, ListOp::Ls { .. });
+            let reply = call(&sock, &Request::List { channel, op }).await?;
+            if json {
+                println!("{reply}");
+            } else if ls {
+                let items = reply.as_array().map(Vec::as_slice).unwrap_or_default();
+                let ids: Vec<&str> = items.iter().map(|i| s(&i["id"])).collect();
+                for (i, short) in items.iter().zip(short_ids(&ids)) {
+                    println!("{} {short}  {}", if i["done"] == true { "✓" } else { "·" }, s(&i["text"]));
+                }
+            } else {
+                println!("{reply}");
+            }
+            Ok(())
+        }
         Cmd::Thread { channel, json, limit } => {
             let items = call(&sock, &Request::Thread { channel, limit }).await?;
             if json {
@@ -405,6 +535,68 @@ fn print_state(m: Value) -> Result<()> {
     Ok(())
 }
 
+async fn print_channels(sock: &std::path::Path, json: bool, reload: bool) -> Result<()> {
+    let list = call(sock, &if reload { Request::ChannelsReload } else { Request::Channels }).await?;
+    if json {
+        println!("{list}");
+    } else {
+        for c in list.as_array().into_iter().flatten() {
+            let badge = c["badge"].as_u64().map(|b| format!("  ({b})")).unwrap_or_default();
+            let show = c["show"].as_str().filter(|s| *s != "both").map(|s| format!(" ({s} only)")).unwrap_or_default();
+            println!("{} {:<14} {} [{}]{show}{badge}", s(&c["glyph"]), s(&c["name"]), s(&c["title"]), s(&c["kind"]));
+        }
+    }
+    Ok(())
+}
+
+/// `tether channel add|set|rm`: edit the manifest, then tell the daemon (when it runs).
+async fn channel(sock: &std::path::Path, cmd: ChannelCmd) -> Result<()> {
+    let dir = apps::default_dir()?;
+    let name = match cmd {
+        ChannelCmd::Add { name, title, glyph, accent, dir: d, kind, exec, show, share, no_notify, keep_done, force } => {
+            let new = channel_cmd::New { title, glyph, accent, dir: d, kind, exec, show, share, no_notify, keep_done };
+            println!("wrote {}", channel_cmd::add(&dir, &name, &new, force)?.display());
+            name
+        }
+        ChannelCmd::Set { name, pairs } => {
+            println!("updated {}", channel_cmd::set(&dir, &name, &pairs)?.display());
+            name
+        }
+        ChannelCmd::Rm { name, purge } => {
+            if !channel_cmd::rm(&dir, &name)? {
+                anyhow::bail!("{name} has no manifest");
+            }
+            let state = default_state_dir()?.join("lists").join(format!("{name}.json"));
+            if purge {
+                let _ = std::fs::remove_file(&state);
+            } else if state.exists() {
+                println!("kept its list state ({}); --purge deletes it", state.display());
+            }
+            println!("removed {name}; its items stay on the phone as a thread");
+            name
+        }
+        ChannelCmd::Ls { .. } => unreachable!("handled by the caller"),
+    };
+    match call(sock, &Request::ChannelsReload).await {
+        Ok(_) => println!("{name}: the daemon reloaded"),
+        Err(e) => println!("{name}: not reloaded ({e:#}); the daemon reads it at start"),
+    }
+    Ok(())
+}
+
+/// The shortest prefix of each id (at least 6 characters) that no other id shares, so what
+/// `tether list ls` prints can be pasted into `done`, `undo` and `rm`.
+fn short_ids<'a>(ids: &[&'a str]) -> Vec<&'a str> {
+    ids.iter()
+        .map(|id| {
+            let ends = id.char_indices().map(|(i, c)| i + c.len_utf8()).filter(|&e| e >= 6.min(id.len()));
+            ends.map(|e| &id[..e])
+                .find(|p| ids.iter().filter(|o| o.starts_with(p)).count() == 1)
+                .unwrap_or(id)
+        })
+        .collect()
+}
+
 fn s(v: &Value) -> &str {
     v.as_str().unwrap_or("")
 }
@@ -446,6 +638,13 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn list_ids_are_shortened_to_unique_prefixes() {
+        let ids = ["3d6dc340-aaaa", "1~3d6dc340-aaaa", "3d6dd111-bbbb", "ab"];
+        assert_eq!(short_ids(&ids), ["3d6dc3", "1~3d6d", "3d6dd1", "ab"]);
+        assert_eq!(short_ids(&["abcdef1", "abcdef2"]), ["abcdef1", "abcdef2"]);
+    }
 
     #[test]
     fn posts_and_thread_lines() {

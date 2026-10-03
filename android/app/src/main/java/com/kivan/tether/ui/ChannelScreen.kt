@@ -44,6 +44,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,18 +69,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.ChannelInfo
 import com.kivan.tether.Channels
 import com.kivan.tether.Core
+import com.kivan.tether.Dir
 import com.kivan.tether.R
 import com.kivan.tether.Shortcuts
 import com.kivan.tether.core.AppHistoryItem
+import com.kivan.tether.textRtl
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
@@ -117,7 +122,7 @@ internal fun ChannelList(peerName: String, queued: ULong) {
                     title = c.title,
                     line = line?.takeIf { it.isNotBlank() } ?: if (c.thread) "Thread" else "",
                     badge = v?.optInt("badge") ?: 0,
-                    rtl = c.rtl,
+                    rtl = c.dir == Dir.RTL,
                     onClick = { Channels.show(c.name) },
                     menu = c,
                 )
@@ -220,6 +225,8 @@ private class Ctx(
     val name: String,
     val accent: Color,
     val armed: String?,
+    /** `dir = "auto"`: each text and list row takes its own direction. */
+    val auto: Boolean,
     /** A second press within 4 s confirms: arms [key], or sends when it is already armed. */
     val press: (key: String, confirm: Boolean, obj: JSONObject) -> Unit,
 )
@@ -234,7 +241,7 @@ internal fun ChannelScreen(name: String) {
     val threads by Channels.threads.collectAsState()
     val connected by Core.connected.collectAsState()
     val c = list.firstOrNull { it.name == name }
-        ?: ChannelInfo(name, name, name.take(1), null, rtl = false, thread = false, share = false, notify = false)
+        ?: ChannelInfo(name, name, name.take(1), null, dir = Dir.AUTO, thread = false, share = false, notify = false)
     val blocks = remember(c, views[name], threads[name]) {
         if (c.thread) threadBlocks(threads[name].orEmpty()) else blocksOf(views[name])
     }
@@ -248,7 +255,7 @@ internal fun ChannelScreen(name: String) {
         }
     }
     val accent = c.accent?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-    val ctx = Ctx(name, accent, armed) { key, confirm, obj ->
+    val ctx = Ctx(name, accent, armed, c.dir == Dir.AUTO) { key, confirm, obj ->
         if (confirm && armed != key) {
             armed = key
         } else {
@@ -268,7 +275,7 @@ internal fun ChannelScreen(name: String) {
     }
 
     CompositionLocalProvider(
-        LocalLayoutDirection provides if (c.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+        LocalLayoutDirection provides if (c.dir == Dir.RTL) LayoutDirection.Rtl else LayoutDirection.Ltr,
         LocalCh provides ctx,
     ) {
         Column(Modifier.fillMaxSize().imePadding()) {
@@ -312,9 +319,9 @@ private fun ChannelBar(c: ChannelInfo, title: String, subtitle: String) {
             Glyph(c, 40)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = MaterialTheme.typography.titleMedium.auto(title), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
                 if (subtitle.isNotEmpty()) {
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall.auto(subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
                 }
             }
             Box {
@@ -334,6 +341,19 @@ private fun ChannelBar(c: ChannelInfo, title: String, subtitle: String) {
 }
 
 // --- Blocks (docs/PLAN.md, "Blocks"; Channel.qml is the panel's twin) ----------------------------
+
+/** In an `auto` channel, [s] in its own direction and aligned to its side; else the screen's. */
+@Composable
+private fun TextStyle.auto(s: String): TextStyle =
+    if (!LocalCh.current.auto) this
+    else merge(TextStyle(textDirection = TextDirection.Content, textAlign = if (textRtl(s)) TextAlign.Right else TextAlign.Left))
+
+/** In an `auto` channel, lays out [content] (a list row) in the direction of [text]. */
+@Composable
+private fun RowDir(text: String, content: @Composable () -> Unit) {
+    if (!LocalCh.current.auto) return content()
+    CompositionLocalProvider(LocalLayoutDirection provides if (textRtl(text)) LayoutDirection.Rtl else LayoutDirection.Ltr, content = content)
+}
 
 @Composable
 private fun Block(b: JSONObject) {
@@ -366,7 +386,7 @@ private fun Notice(b: JSONObject) {
         border = BorderStroke(1.dp, color.copy(alpha = 0.45f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(b.optString("text"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(12.dp))
+        Text(b.optString("text"), style = MaterialTheme.typography.bodyMedium.auto(b.optString("text")), modifier = Modifier.fillMaxWidth().padding(12.dp))
     }
 }
 
@@ -379,7 +399,7 @@ private fun TextBlock(b: JSONObject) {
             SelectionContainer {
                 Text(
                     text,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.auto(text),
                     fontFamily = if (b.optBoolean("mono")) FontFamily.Monospace else null,
                     modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 40.dp),
                 )
@@ -406,41 +426,58 @@ private fun ListBlock(b: JSONObject) {
         }
         for (it in items) {
             val id = it.optString("id")
-            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val chips = strings(it.optJSONArray("chips"))
-                    val meta = it.optString("meta")
-                    val title = it.optString("title")
-                    if (meta.isNotEmpty() || title.isNotEmpty() || chips.isNotEmpty()) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterVertically))
-                            if (title.isNotEmpty()) Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterVertically))
-                            for (chip in chips) Tag(chip, ch.accent)
-                        }
-                    }
-                    if (it.optString("text").isNotEmpty()) Text(it.optString("text"), style = MaterialTheme.typography.bodyMedium)
-                    val actions = objects(it.optJSONArray("actions"))
-                    // A thread post's buttons answer with that action.
-                    val buttons = objects(it.optJSONArray("buttons"))
-                    if (actions.isNotEmpty() || buttons.isNotEmpty()) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (a in actions + buttons) {
-                                val key = "${b.optString("id")}/$id/${a.optString("id")}"
-                                val confirm = a.optString("confirm")
-                                val hot = ch.armed == key
-                                ActionButton(
-                                    label = if (hot && confirm.isNotEmpty()) confirm else a.optString("label"),
-                                    style = if (hot) "danger" else "plain",
-                                    small = true,
-                                ) {
-                                    ch.press(key, confirm.isNotEmpty(), JSONObject().put("action", a.optString("id")).put("value", JSONObject().put("item", id)))
-                                }
+            RowDir("${it.optString("title")}\n${it.optString("text")}") {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val chips = strings(it.optJSONArray("chips"))
+                        val meta = it.optString("meta")
+                        val title = it.optString("title")
+                        if (meta.isNotEmpty() || title.isNotEmpty() || chips.isNotEmpty()) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterVertically))
+                                if (title.isNotEmpty()) Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterVertically))
+                                for (chip in chips) Tag(chip, ch.accent)
                             }
+                        }
+                        if (it.optString("text").isNotEmpty()) Text(it.optString("text"), style = MaterialTheme.typography.bodyMedium)
+                        val actions = objects(it.optJSONArray("actions"))
+                        // A thread post's buttons answer with that action.
+                        val buttons = objects(it.optJSONArray("buttons"))
+                        if (actions.isNotEmpty() || buttons.isNotEmpty()) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { ItemActions(b.optString("id"), id, actions + buttons) }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** An item's action buttons: each sends `{"action":<id>,"value":{"item":<item id>}}`. */
+@Composable
+private fun ItemActions(block: String, item: String, actions: List<JSONObject>) {
+    val ch = LocalCh.current
+    for (a in actions) {
+        val key = "$block/$item/${a.optString("id")}"
+        val confirm = confirmOf(a)
+        val hot = ch.armed == key
+        ActionButton(
+            label = if (hot && confirm != null) confirm else a.optString("label"),
+            style = if (hot) "danger" else "plain",
+            small = true,
+        ) {
+            ch.press(key, confirm != null, JSONObject().put("action", a.optString("id")).put("value", JSONObject().put("item", item)))
+        }
+    }
+}
+
+/** An action's `confirm`: the label for the second press, or `true` (the label stays, in red). */
+private fun confirmOf(a: JSONObject): String? {
+    val c = a.opt("confirm")
+    return when {
+        c is String -> c.ifEmpty { null }
+        c == true -> a.optString("label")
+        else -> null
     }
 }
 
@@ -463,20 +500,29 @@ private fun Checklist(b: JSONObject) {
                 Channels.act(ch.name, JSONObject().put("action", b.optString("id")).put("value", JSONObject().put("item", it.optString("id")).put("checked", !checked)))
                 Unit
             }
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = toggle).padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(
-                    checked = checked,
-                    onCheckedChange = { toggle() },
-                    colors = CheckboxDefaults.colors(checkedColor = ch.accent, checkmarkColor = Gruvbox.bg0),
-                )
-                Text(
-                    it.optString("label"),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                )
+            val actions = objects(it.optJSONArray("actions"))
+            RowDir(it.optString("label")) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = toggle).padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = { toggle() },
+                        colors = CheckboxDefaults.colors(checkedColor = ch.accent, checkmarkColor = Gruvbox.bg0),
+                    )
+                    Text(
+                        it.optString("label"),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (actions.isNotEmpty()) {
+                        Row(Modifier.padding(start = 8.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ItemActions(b.optString("id"), it.optString("id"), actions)
+                        }
+                    }
+                }
             }
         }
     }
@@ -502,7 +548,7 @@ private fun Compose(b: JSONObject) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Sent, not yet in a view.
         for (p in pending["${ch.name}/$id"].orEmpty()) {
-            Text("⏳ ${p.text}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("⏳ ${p.text}", style = MaterialTheme.typography.bodyMedium.auto(p.text), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
         }
         val chips = objects(b.optJSONArray("chips"))
         if (chips.isNotEmpty()) {
@@ -529,7 +575,8 @@ private fun Compose(b: JSONObject) {
             OutlinedTextField(
                 value = text,
                 onValueChange = { Channels.drafts[key] = it },
-                placeholder = { Text(b.optString("placeholder")) },
+                placeholder = { Text(b.optString("placeholder"), style = LocalTextStyle.current.auto(b.optString("placeholder"))) },
+                textStyle = LocalTextStyle.current.auto(text),
                 maxLines = 6,
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ch.accent, cursorColor = ch.accent),
@@ -597,12 +644,12 @@ private fun Buttons(b: JSONObject) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (it in objects(b.optJSONArray("items"))) {
             val key = "btn/${it.optString("id")}"
-            val confirm = it.optString("confirm")
+            val confirm = confirmOf(it)
             val hot = ch.armed == key
             ActionButton(
-                label = if (hot && confirm.isNotEmpty()) confirm else it.optString("label"),
+                label = if (hot && confirm != null) confirm else it.optString("label"),
                 style = if (hot) "danger" else it.optString("style").ifEmpty { "plain" },
-            ) { ch.press(key, confirm.isNotEmpty(), JSONObject().put("action", it.optString("id"))) }
+            ) { ch.press(key, confirm != null, JSONObject().put("action", it.optString("id"))) }
         }
     }
 }

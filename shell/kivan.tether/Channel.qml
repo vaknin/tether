@@ -1,7 +1,10 @@
 // An app channel's card (docs/PLAN.md, "App channels"): the view its app published, drawn from
 // the blocks, and the actions sent back through `tether action`. A channel without an app (kind
-// `thread`) shows its posts and takes a reply. `ui` is Panel.qml; `channel` is one entry of
-// `tether channels --json`.
+// `thread`) shows its posts and takes a reply; any other kind (`app`, `list`) shows its view. `ui`
+// is Panel.qml; `channel` is one entry of `tether channels --json`.
+//
+// Direction: `rtl` mirrors the whole card, `ltr` doesn't; `auto` (the default) mirrors nothing but
+// each list/checklist row by its own text, and aligns each text and box by its own content.
 //
 // The blocks are rebuilt whenever a new view arrives, so what is being typed lives in `drafts`
 // (by block and field id) and the focused box gets its focus back.
@@ -19,6 +22,7 @@ BorderSurface {
 
   readonly property string name: channel ? channel.name : ""
   readonly property bool rtl: !!channel && channel.dir === "rtl"
+  readonly property bool autoDir: !!channel && channel.dir !== "rtl" && channel.dir !== "ltr"
   readonly property bool thread: !!channel && channel.kind === "thread"
   readonly property color fg: Color.popups.text
   readonly property color muted: Util.alpha(fg, 0.55)
@@ -78,6 +82,28 @@ BorderSurface {
     send(obj)
   }
   Timer { id: disarm; interval: 4000; onTriggered: ch.armed = "" }
+  // An armed button shows its `confirm` text (when it is one, not just `true`).
+  function pressLabel(key, a) {
+    return armed === key && typeof a.confirm === "string" && a.confirm !== "" ? a.confirm : a.label
+  }
+
+  // True when the first strong character is Hebrew or Arabic; a Latin letter first, or none, is ltr.
+  function rtlOf(text) {
+    var t = text === undefined || text === null ? "" : String(text)
+    for (var i = 0; i < t.length; i++) {
+      var c = t.charCodeAt(i)
+      if ((c >= 0x0590 && c <= 0x08FF) || (c >= 0xFB1D && c <= 0xFDFF) || (c >= 0xFE70 && c <= 0xFEFF)) return true
+      if ((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || (c >= 0xC0 && c <= 0x24F && c !== 0xD7 && c !== 0xF7)) return false
+    }
+    return false
+  }
+  // In auto a text goes to the side its own content starts from; `flipped` = it sits in a row that
+  // auto mirrored, which mirrors the alignment too. In ltr and rtl it stays AlignLeft (the card's
+  // mirroring turns it right in rtl), as before.
+  function alignOf(text, flipped) {
+    if (!autoDir) return Text.AlignLeft
+    return rtlOf(text) !== !!flipped ? Text.AlignRight : Text.AlignLeft
+  }
 
   // The text box being typed in stays in view: scrolled to when it gets focus, and again when
   // the blocks above it grow (a long list pushes the compose below the card).
@@ -152,7 +178,7 @@ BorderSurface {
         text: ch.headerBlock && ch.headerBlock.title ? ch.headerBlock.title : (ch.channel ? ch.channel.title : "")
         color: ch.fg
         elide: Text.ElideRight
-        horizontalAlignment: Text.AlignLeft
+        horizontalAlignment: ch.alignOf(text)
         font.family: ch.fontFamily
         font.pixelSize: Style.font.subtitle
         font.bold: true
@@ -164,7 +190,7 @@ BorderSurface {
           : (ch.ui && !ch.ui.daemonUp ? "daemon not running" : "")
         color: ch.muted
         elide: Text.ElideRight
-        horizontalAlignment: Text.AlignLeft
+        horizontalAlignment: ch.alignOf(text)
         font.family: ch.fontFamily
         font.pixelSize: Style.font.caption
       }
@@ -296,7 +322,7 @@ BorderSurface {
         color: ch.fg
         selectionColor: Style.selectionFillFor(ch.fg, ch.accent)
         selectedTextColor: ch.fg
-        horizontalAlignment: Text.AlignLeft
+        horizontalAlignment: ch.alignOf(text)
         font.family: b.mono ? "monospace" : ch.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
@@ -326,6 +352,10 @@ BorderSurface {
           id: row
           required property var modelData
           readonly property var it: modelData
+          // In auto the row (meta, chips, buttons) runs the way its own text does.
+          readonly property bool flip: ch.autoDir && ch.rtlOf(it.text || it.title || "")
+          LayoutMirroring.enabled: ch.autoDir ? flip : ch.rtl
+          LayoutMirroring.childrenInherit: true
           width: parent ? parent.width : 0
           height: rowCol.implicitHeight + Style.space(12)
           radius: ch.radius2
@@ -345,7 +375,7 @@ BorderSurface {
                 Chip { required property var modelData; label: modelData; on: true }
               }
             }
-            Label { width: parent.width; text: row.it.text || "" }
+            Label { width: parent.width; text: row.it.text || ""; flipped: row.flip }
             Row {
               width: parent.width       // a full-width Row starts at the right in rtl
               spacing: Style.space(5)
@@ -355,7 +385,7 @@ BorderSurface {
                 Btn {
                   required property var modelData
                   readonly property string key: b.id + "/" + row.it.id + "/" + modelData.id
-                  label: ch.armed === key ? (modelData.confirm || modelData.label) : modelData.label
+                  label: ch.pressLabel(key, modelData)
                   style: ch.armed === key ? "danger" : "plain"
                   small: true
                   onClicked: ch.press(key, modelData.confirm, { action: modelData.id, value: { item: row.it.id } })
@@ -387,25 +417,56 @@ BorderSurface {
       Repeater {
         model: b.items || []
         Item {
+          id: crow
           required property var modelData
+          // In auto the row (box, label, actions) runs the way its own label does.
+          readonly property bool flip: ch.autoDir && ch.rtlOf(modelData.label || "")
+          LayoutMirroring.enabled: ch.autoDir ? flip : ch.rtl
+          LayoutMirroring.childrenInherit: true
           width: parent ? parent.width : 0
-          height: Math.max(cbText.implicitHeight, Style.space(22))
+          height: Math.max(cbText.implicitHeight, Style.space(22), cbActions.visible ? cbActions.height : 0)
           Rectangle {
             id: cb
             width: Style.space(16); height: width; radius: 3
             anchors { left: parent.left; verticalCenter: parent.verticalCenter }   // mirrors in rtl
-            color: modelData.checked ? ch.accent : "transparent"
-            border.color: modelData.checked ? ch.accent : ch.muted
-            Text { anchors.centerIn: parent; visible: modelData.checked; text: "✓"; color: Color.popups.background; font.pixelSize: Style.font.caption; font.bold: true }
+            color: crow.modelData.checked ? ch.accent : "transparent"
+            border.color: crow.modelData.checked ? ch.accent : ch.muted
+            Text { anchors.centerIn: parent; visible: crow.modelData.checked; text: "✓"; color: Color.popups.background; font.pixelSize: Style.font.caption; font.bold: true }
           }
           Label {
             id: cbText
-            anchors { left: cb.right; leftMargin: Style.space(8); right: parent.right; verticalCenter: parent.verticalCenter }
-            text: modelData.label || ""
-            color: modelData.checked ? ch.muted : ch.fg
+            anchors { left: cb.right; leftMargin: Style.space(8); verticalCenter: parent.verticalCenter }
+            anchors.right: cbActions.visible ? cbActions.left : parent.right
+            anchors.rightMargin: cbActions.visible ? Style.space(6) : 0
+            text: crow.modelData.label || ""
+            color: crow.modelData.checked ? ch.muted : ch.fg
+            flipped: crow.flip
           }
-          TapHandler { onTapped: ch.send({ action: b.id, value: { item: modelData.id, checked: !modelData.checked } }) }
-          HoverHandler { cursorShape: Qt.PointingHandCursor }
+          // The box and its label take the tap, not the action buttons beside them (a nested
+          // TapHandler would fire too).
+          Item {
+            anchors { left: parent.left; right: cbText.right; top: parent.top; bottom: parent.bottom }
+            TapHandler { onTapped: ch.send({ action: b.id, value: { item: crow.modelData.id, checked: !crow.modelData.checked } }) }
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+          }
+          // The item's own actions (the built-in list's ✕), sent and confirmed like a list row's.
+          Row {
+            id: cbActions
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            spacing: Style.space(5)
+            visible: !!(crow.modelData.actions && crow.modelData.actions.length)
+            Repeater {
+              model: crow.modelData.actions || []
+              Btn {
+                required property var modelData
+                readonly property string key: b.id + "/" + crow.modelData.id + "/" + modelData.id
+                label: ch.pressLabel(key, modelData)
+                style: ch.armed === key ? "danger" : "plain"
+                small: true
+                onClicked: ch.press(key, modelData.confirm, { action: modelData.id, value: { item: crow.modelData.id } })
+              }
+            }
+          }
         }
       }
     }
@@ -557,7 +618,7 @@ BorderSurface {
         Btn {
           required property var modelData
           readonly property string key: "btn/" + modelData.id
-          label: ch.armed === key ? (modelData.confirm || modelData.label) : modelData.label
+          label: ch.pressLabel(key, modelData)
           style: ch.armed === key ? "danger" : (modelData.style || "plain")
           onClicked: ch.press(key, modelData.confirm, { action: modelData.id })
         }
@@ -570,10 +631,11 @@ BorderSurface {
   component Label: Text {
     property bool small: false
     property bool bold: false
+    property bool flipped: false          // sits in a row that auto mirrored
     width: parent ? parent.width : implicitWidth
     color: ch.fg
     wrapMode: Text.Wrap
-    horizontalAlignment: Text.AlignLeft
+    horizontalAlignment: ch.alignOf(text, flipped)
     font.family: ch.fontFamily
     font.pixelSize: small ? Style.font.caption : Style.font.bodySmall
     font.bold: bold
@@ -678,7 +740,7 @@ BorderSurface {
         selectionColor: Style.selectionFillFor(ch.fg, ch.accent)
         selectedTextColor: ch.fg
         placeholderTextColor: ch.muted
-        horizontalAlignment: Text.AlignLeft
+        horizontalAlignment: ch.alignOf(text !== "" ? text : placeholderText)
         font.family: ch.fontFamily
         font.pixelSize: Style.font.bodySmall
         leftPadding: Style.space(8)
