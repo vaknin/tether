@@ -419,9 +419,8 @@ BorderSurface {
         Item {
           id: crow
           required property var modelData
-          // In auto the row (box, label, actions) runs the way its own label does.
-          readonly property bool flip: ch.autoDir && ch.rtlOf(modelData.label || "")
-          LayoutMirroring.enabled: ch.autoDir ? flip : ch.rtl
+          // In auto the controls stay put (box left, actions right); only the label's text aligns to its own side.
+          LayoutMirroring.enabled: ch.autoDir ? false : ch.rtl
           LayoutMirroring.childrenInherit: true
           width: parent ? parent.width : 0
           height: Math.max(cbText.implicitHeight, Style.space(22), cbActions.visible ? cbActions.height : 0)
@@ -440,7 +439,6 @@ BorderSurface {
             anchors.rightMargin: cbActions.visible ? Style.space(6) : 0
             text: crow.modelData.label || ""
             color: crow.modelData.checked ? ch.muted : ch.fg
-            flipped: crow.flip
           }
           // The box and its label take the tap, not the action buttons beside them (a nested
           // TapHandler would fire too).

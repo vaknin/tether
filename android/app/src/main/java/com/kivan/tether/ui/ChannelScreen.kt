@@ -501,7 +501,8 @@ private fun Checklist(b: JSONObject) {
                 Unit
             }
             val actions = objects(it.optJSONArray("actions"))
-            RowDir(it.optString("label")) {
+            // Controls stay put (box left, actions right); only the label's text takes its own side.
+            run {
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = toggle).padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -513,7 +514,7 @@ private fun Checklist(b: JSONObject) {
                     )
                     Text(
                         it.optString("label"),
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyLarge.auto(it.optString("label")),
                         color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
