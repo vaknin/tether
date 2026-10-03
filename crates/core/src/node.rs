@@ -650,6 +650,7 @@ impl Inner {
             *slot = Some(link.clone());
         }
         debug!(serial = link.serial, dialer = %dialer, "link up");
+        tokio::spawn(log_paths(link.conn.clone(), link.serial));
         self.emit(Event::Connected);
         // `set_stay` may have run while there was no link; the peer must hear it on this one.
         if self.stay.load(Ordering::SeqCst) {
@@ -1117,3 +1118,30 @@ pub fn parse_code(code: &str) -> Result<(EndpointId, [u8; 32])> {
 
 #[cfg(test)]
 mod tests;
+
+/// Logs the open paths of a link (direct IP or relay, the selected one marked) and their RTT whenever
+/// the set or the selection changes, so a slow transfer can be told apart from a bad route.
+/// Polls because it only needs to catch changes.
+async fn log_paths(conn: Connection, serial: u64) {
+    let mut last: Option<String> = None;
+    while conn.close_reason().is_none() {
+        let mut paths: Vec<String> = conn
+            .paths()
+            .iter()
+            .map(|p| {
+                let kind = if p.is_relay() { "relay" } else { "direct" };
+                let sel = if p.is_selected() { "*" } else { "" };
+                format!("{sel}{kind} {:?} {} ms", p.remote_addr(), p.rtt().as_millis())
+            })
+            .collect();
+        paths.sort();
+        // RTTs jitter; the set and the selection are what matter.
+        let key: Vec<&str> = paths.iter().map(|p| p.rsplitn(3, ' ').nth(2).unwrap_or(p)).collect();
+        let key = key.join(", ");
+        if last.as_deref() != Some(key.as_str()) {
+            info!(serial, "paths: {}", paths.join(", "));
+            last = Some(key);
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
