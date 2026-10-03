@@ -177,7 +177,10 @@ object Channels {
         if (!c.notify || showing(c.name)) return
         val d = parse(data) ?: return
         val text = d.optJSONObject("post")?.optString("text") ?: d.optString("text")
-        if (text.isNotBlank()) Notifier.app(app, c, c.title, text)
+        val actions = d.optJSONObject("post")?.optJSONArray("actions")?.let { a ->
+            (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { it.optString("id") to it.optString("label") }
+        }.orEmpty()
+        if (text.isNotBlank()) Notifier.app(app, c, c.title, text, actions)
     }
 
     // A live `{"patch":{"<block id>":{…}}}` replaces those fields until the next view.

@@ -242,8 +242,9 @@ internal fun ChannelScreen(name: String) {
     val connected by Core.connected.collectAsState()
     val c = list.firstOrNull { it.name == name }
         ?: ChannelInfo(name, name, name.take(1), null, dir = Dir.AUTO, thread = false, share = false, notify = false)
+    val appCtx = LocalContext.current
     val blocks = remember(c, views[name], threads[name]) {
-        if (c.thread) threadBlocks(threads[name].orEmpty()) else blocksOf(views[name])
+        if (c.thread) threadBlocks(appCtx, threads[name].orEmpty()) else blocksOf(views[name])
     }
     val header = blocks.firstOrNull { it.optString("type") == "header" }
 
@@ -699,11 +700,11 @@ private fun postText(d: JSONObject?): String {
 }
 
 /** A thread's items as a list (with a post's buttons) and a reply box, as the panel shows it. */
-private fun threadBlocks(items: List<AppHistoryItem>): List<JSONObject> {
+private fun threadBlocks(ctx: android.content.Context, items: List<AppHistoryItem>): List<JSONObject> {
     val list = JSONArray()
     for (it in items) {
         val d = parse(it.data)
-        val time = DateUtils.formatDateTime(null, it.tsMs, DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_NUMERIC_DATE)
+        val time = DateUtils.formatDateTime(ctx, it.tsMs, DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_NUMERIC_DATE)
         list.put(
             JSONObject()
                 .put("id", it.id)

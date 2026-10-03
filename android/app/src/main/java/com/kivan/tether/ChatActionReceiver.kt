@@ -28,6 +28,23 @@ class ChatActionReceiver : BroadcastReceiver() {
             }
             return
         }
+        if (intent.action == APP_ACTION) {
+            val ch = intent.getStringExtra(CHANNEL) ?: return
+            val id = intent.getStringExtra(ACTION_ID) ?: return
+            val pending = goAsync()
+            Core.scope.launch {
+                try {
+                    Channels.act(ch, org.json.JSONObject().put("action", id))
+                    Notifier.clearApp(app, ch)
+                    SyncWorker.start(app, "action")
+                } catch (e: Exception) {
+                    Log.w("Tether", "app action $id on $ch failed", e)
+                } finally {
+                    pending.finish()
+                }
+            }
+            return
+        }
         val reply = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Notifier.REPLY_KEY)
             ?.toString()?.takeIf { it.isNotBlank() }
         val pending = goAsync()
@@ -73,6 +90,9 @@ class ChatActionReceiver : BroadcastReceiver() {
         const val CANCEL = "com.kivan.tether.CANCEL"
         const val COPY = "com.kivan.tether.COPY"
         const val RETRY = "com.kivan.tether.RETRY"
+        const val APP_ACTION = "com.kivan.tether.APP_ACTION"
+        const val CHANNEL = "channel"
+        const val ACTION_ID = "action_id"
         const val IDS = "ids"
         const val TEXT = "text"
         private const val HOLD = "notification"

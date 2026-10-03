@@ -366,10 +366,10 @@ object Notifier {
     }
 
     /** A channel's news (a view's `notify`, a thread post); one notification per channel, replaced. */
-    fun app(context: Context, c: ChannelInfo, title: String, text: String) {
+    fun app(context: Context, c: ChannelInfo, title: String, text: String, actions: List<Pair<String, String>> = emptyList()) {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
-        val n = NotificationCompat.Builder(context, APP_PREFIX + c.name)
+        val b = NotificationCompat.Builder(context, APP_PREFIX + c.name)
             .setSmallIcon(R.drawable.ic_notify)
             .setLargeIcon(glyph(c, 192))
             .setContentTitle(title)
@@ -379,8 +379,17 @@ object Notifier {
             .setShortcutId(Shortcuts.channelId(c.name))
             .setContentIntent(openChannel(context, c.name))
             .setAutoCancel(true)
-            .build()
-        nm.notify(APP_TAG, c.name.hashCode(), n)
+        // Buttons run in the background, so they work from the lock screen without unlocking.
+        for ((i, a) in actions.take(3).withIndex()) {
+            val pi = PendingIntent.getBroadcast(
+                context, c.name.hashCode() * 31 + i,
+                ChatActionReceiver.intent(context, ChatActionReceiver.APP_ACTION)
+                    .putExtra(ChatActionReceiver.CHANNEL, c.name).putExtra(ChatActionReceiver.ACTION_ID, a.first),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            b.addAction(NotificationCompat.Action.Builder(0, a.second, pi).setShowsUserInterface(false).build())
+        }
+        nm.notify(APP_TAG, c.name.hashCode(), b.build())
     }
 
     fun clearApp(context: Context, name: String) {
