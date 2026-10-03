@@ -113,7 +113,8 @@ object Notifier {
             MsgKind.PING -> "🔔 ${m.text ?: "Ping"}"
             else -> m.text ?: ""
         }
-        postChat(context, MessagingStyle.Message(text, m.tsMs, laptop(context)), open = null, silent = false)
+        val copy = m.text?.takeIf { m.kind == MsgKind.TEXT }
+        postChat(context, MessagingStyle.Message(text, m.tsMs, laptop(context)), open = null, silent = false, copy = copy)
     }
 
     /** A received file, saved at [uri]: a picture inline, anything else a 📎 line, plus Open. */
@@ -142,9 +143,15 @@ object Notifier {
 
     /**
      * Appends [line] to the conversation. The posted notification is the only state, so the
-     * thread survives the process being killed between messages.
+     * thread survives the process being killed between messages. [copy] (a text line) adds Copy.
      */
-    private fun postChat(context: Context, line: MessagingStyle.Message, open: PendingIntent?, silent: Boolean) {
+    private fun postChat(
+        context: Context,
+        line: MessagingStyle.Message,
+        open: PendingIntent?,
+        silent: Boolean,
+        copy: String? = null,
+    ) {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
         val style = MessagingStyle(Person.Builder().setName("You").build())
@@ -163,6 +170,7 @@ object Notifier {
             .setOnlyAlertOnce(silent)
             .addAction(replyAction(context))
             .addAction(markReadAction(context))
+        copy?.let { b.addAction(copyAction(context, it)) }
         open?.let {
             b.addAction(
                 NotificationCompat.Action.Builder(0, "Open", it)
@@ -184,6 +192,18 @@ object Notifier {
             .addRemoteInput(RemoteInput.Builder(REPLY_KEY).setLabel("Message").build())
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
             .setAllowGeneratedReplies(true)
+            .setShowsUserInterface(false)
+            .build()
+    }
+
+    /** Copies the newest text; older lines are a long-press away in the app. */
+    private fun copyAction(context: Context, text: String): NotificationCompat.Action {
+        val pi = PendingIntent.getBroadcast(
+            context, 3, ChatActionReceiver.intent(context, ChatActionReceiver.COPY).putExtra(ChatActionReceiver.TEXT, text),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Action.Builder(0, "Copy", pi)
+            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_NONE)
             .setShowsUserInterface(false)
             .build()
     }

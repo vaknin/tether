@@ -1,16 +1,25 @@
 package com.kivan.tether
 
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.app.RemoteInput
 import kotlinx.coroutines.launch
 
-/** The chat notification's Reply and Mark as read, and a transfer notification's Cancel. */
+/** The chat notification's Reply, Mark as read and Copy, and a transfer notification's Cancel. */
 class ChatActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
+        if (intent.action == COPY) {
+            // Android 13+ confirms the copy itself. The notification stays, so a reply can follow.
+            intent.getStringExtra(TEXT)?.let {
+                app.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("message", it))
+            }
+            return
+        }
         val reply = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Notifier.REPLY_KEY)
             ?.toString()?.takeIf { it.isNotBlank() }
         val pending = goAsync()
@@ -57,7 +66,9 @@ class ChatActionReceiver : BroadcastReceiver() {
         const val REPLY = "com.kivan.tether.REPLY"
         const val MARK_READ = "com.kivan.tether.MARK_READ"
         const val CANCEL = "com.kivan.tether.CANCEL"
+        const val COPY = "com.kivan.tether.COPY"
         const val ID = "id"
+        const val TEXT = "text"
         private const val HOLD = "notification"
 
         fun intent(context: Context, action: String): Intent =

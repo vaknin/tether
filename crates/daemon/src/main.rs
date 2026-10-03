@@ -178,11 +178,12 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
                 tokio::spawn(mpris::run(node.clone()));
             }
             let fcm_key = fcm_key.map_or_else(default_fcm_key, Ok)?;
+            let unanswered = fcm::Unanswered::default();
             let wake = match fcm::Fcm::load(&fcm_key) {
                 Ok(f) => {
                     info!("FCM wake on ({})", fcm_key.display());
                     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-                    tokio::spawn(fcm::run(node.clone(), f, node.events(), rx, fcm::WAKE_GAP));
+                    tokio::spawn(fcm::run(node.clone(), f, node.events(), rx, fcm::WAKE_GAP, unanswered.clone()));
                     Some(tx)
                 }
                 Err(e) => {
@@ -197,7 +198,7 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             }
             tokio::spawn(apps::run(node.clone(), clients.clone(), apps.clone()));
             let res = tokio::select! {
-                r = daemon::serve(daemon::Ctx::new(node.clone(), wake, clients, apps), &sock) => r,
+                r = daemon::serve(daemon::Ctx::new(node.clone(), wake, unanswered, clients, apps), &sock) => r,
                 _ = shutdown_signal() => Ok(()),
             };
             node.shutdown().await;
@@ -387,7 +388,11 @@ fn print_status(st: &Value) {
     println!("This device  {} ({})", s(&st["name"]), s(&st["id"]));
     match st["peer"].as_object() {
         Some(p) => {
-            let link = if st["connected"] == true { "connected" } else { "not connected" };
+            let link = match (st["connected"] == true, st["wake_unanswered"] == true) {
+                (true, _) => "connected",
+                (false, true) => "not connected (it didn't answer the last wake)",
+                (false, false) => "not connected",
+            };
             println!("Paired with  {} ({}), {link}", s(&p["name"]), s(&p["id"]));
         }
         None => println!("Not paired (run `tether pair`)"),

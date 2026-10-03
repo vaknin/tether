@@ -23,6 +23,7 @@ use tracing::{debug, info};
 
 use crate::{
     apps::{self, Apps, Channel},
+    fcm,
     ipc::{AppDone, Request},
 };
 
@@ -40,6 +41,8 @@ pub struct Ctx {
     pub node: Node,
     /// Asks the FCM loop to wake the phone; `None` without a key.
     pub wake: Option<mpsc::UnboundedSender<()>>,
+    /// The last wake got no link (see [`fcm::run`]); reported by `status`.
+    pub unanswered: fcm::Unanswered,
     hold_until: Arc<Mutex<Option<Instant>>>,
     /// App channels with a client subscribed, and how many.
     pub clients: Clients,
@@ -64,8 +67,14 @@ impl Drop for Subscribed {
 }
 
 impl Ctx {
-    pub fn new(node: Node, wake: Option<mpsc::UnboundedSender<()>>, clients: Clients, apps: Arc<Apps>) -> Self {
-        Self { node, wake, hold_until: Arc::default(), clients, apps }
+    pub fn new(
+        node: Node,
+        wake: Option<mpsc::UnboundedSender<()>>,
+        unanswered: fcm::Unanswered,
+        clients: Clients,
+        apps: Arc<Apps>,
+    ) -> Self {
+        Self { node, wake, unanswered, hold_until: Arc::default(), clients, apps }
     }
 
     /// Manifests first, then the channels that only have items (threads), each with its newest
@@ -261,7 +270,11 @@ async fn reply(w: &mut (impl AsyncWriteExt + Unpin), res: Result<Value>) -> Resu
 async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
     let node = &ctx.node;
     Ok(match req {
-        Request::Status => serde_json::to_value(node.status()?)?,
+        Request::Status => {
+            let mut v = serde_json::to_value(node.status()?)?;
+            v["wake_unanswered"] = ctx.unanswered.load(std::sync::atomic::Ordering::Relaxed).into();
+            v
+        }
         Request::PairOffer => json!({ "code": node.pair_offer() }),
         Request::Pair { code } => serde_json::to_value(node.pair(&code).await?)?,
         Request::Unpair => {

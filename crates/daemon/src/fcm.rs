@@ -5,6 +5,10 @@
 use std::{
     future::Future,
     path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -29,6 +33,12 @@ use tracing::{debug, info, warn};
 const SCOPE: &str = "https://www.googleapis.com/auth/firebase.messaging";
 /// At most one wake per this long; items queued meanwhile ride on the same wake.
 pub const WAKE_GAP: Duration = Duration::from_secs(30);
+/// A wake with no link this long after it counts as unanswered (FCM accepted it, the phone never
+/// dialed: e.g. its DNS is broken, so Google can't reach it).
+pub const ANSWER_WAIT: Duration = Duration::from_secs(30);
+
+/// Set while the last wake went unanswered; cleared by the next link. Shown in `status`.
+pub type Unanswered = Arc<AtomicBool>;
 
 #[derive(Deserialize)]
 struct ServiceAccount {
@@ -217,20 +227,28 @@ impl Phone for Node {
 
 /// Wakes the phone when something is queued for it, or a caller `asked` (fresh notifications), and
 /// it isn't connected: right away, or once `gap` has passed since the last wake. Also once at start
-/// if the outbox isn't empty.
+/// if the outbox isn't empty. A wake with no link within [`ANSWER_WAIT`] sets `unanswered`.
 pub async fn run(
     phone: impl Phone,
     waker: impl Waker,
     mut rx: broadcast::Receiver<Event>,
     mut asked: mpsc::UnboundedReceiver<()>,
     gap: Duration,
+    unanswered: Unanswered,
 ) {
     let mut last: Option<tokio::time::Instant> = None;
     let mut due = (phone.queued() > 0).then(tokio::time::Instant::now);
     let mut wanted = false;
+    let mut answer_by: Option<tokio::time::Instant> = None;
     loop {
         let timer = async {
             match due {
+                Some(t) => tokio::time::sleep_until(t).await,
+                None => std::future::pending().await,
+            }
+        };
+        let answer = async {
+            match answer_by {
                 Some(t) => tokio::time::sleep_until(t).await,
                 None => std::future::pending().await,
             }
@@ -242,6 +260,10 @@ pub async fn run(
         };
         tokio::select! {
             ev = rx.recv() => match ev {
+                Ok(Event::Connected) => {
+                    answer_by = None;
+                    unanswered.store(false, Ordering::Relaxed);
+                }
                 Ok(Event::Message(m)) if m.from_me && m.state == State::Queued && !phone.connected() => {
                     due = schedule(due);
                 }
@@ -259,6 +281,13 @@ pub async fn run(
                     due = schedule(due);
                 }
             }
+            () = answer => {
+                answer_by = None;
+                if !phone.connected() {
+                    warn!("the phone didn't answer the FCM wake (no link after {}s)", ANSWER_WAIT.as_secs());
+                    unanswered.store(true, Ordering::Relaxed);
+                }
+            }
             () = timer => {
                 due = None;
                 let want = std::mem::take(&mut wanted);
@@ -271,7 +300,10 @@ pub async fn run(
                 };
                 last = Some(tokio::time::Instant::now());
                 match waker.wake(&token).await {
-                    Ok(()) => info!("sent FCM wake"),
+                    Ok(()) => {
+                        info!("sent FCM wake");
+                        answer_by = Some(tokio::time::Instant::now() + ANSWER_WAIT);
+                    }
                     Err(WakeError::Unregistered) => {
                         warn!("FCM says the token is unregistered; dropping it");
                         phone.drop_token();
@@ -358,6 +390,7 @@ mod tests {
         waker: FakeWaker,
         tx: broadcast::Sender<Event>,
         ask: mpsc::UnboundedSender<()>,
+        unanswered: Unanswered,
     }
 
     impl Rig {
@@ -367,8 +400,9 @@ mod tests {
             let waker = FakeWaker { unregistered, ..Default::default() };
             let (tx, rx) = broadcast::channel(16);
             let (ask, asked) = mpsc::unbounded_channel();
-            tokio::spawn(run(phone.clone(), waker.clone(), rx, asked, WAKE_GAP));
-            Self { phone, waker, tx, ask }
+            let unanswered = Unanswered::default();
+            tokio::spawn(run(phone.clone(), waker.clone(), rx, asked, WAKE_GAP, unanswered.clone()));
+            Self { phone, waker, tx, ask, unanswered }
         }
         fn queue(&self) {
             self.phone.0.lock().unwrap().queued += 1;
@@ -376,6 +410,9 @@ mod tests {
         }
         fn calls(&self) -> usize {
             self.waker.calls.lock().unwrap().len()
+        }
+        fn unanswered(&self) -> bool {
+            self.unanswered.load(Ordering::Relaxed)
         }
     }
 
@@ -447,6 +484,34 @@ mod tests {
         r.ask.send(()).unwrap();
         advance(60).await;
         assert_eq!(r.calls(), 2, "connected: nothing to wake");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn flags_a_wake_the_phone_never_answers() {
+        let r = Rig::new(1, false);
+        advance(1).await;
+        assert_eq!(r.calls(), 1);
+        advance(25).await;
+        assert!(!r.unanswered(), "still within the wait");
+        advance(10).await;
+        assert!(r.unanswered());
+        r.phone.0.lock().unwrap().connected = true;
+        r.tx.send(Event::Connected).unwrap();
+        advance(1).await;
+        assert!(!r.unanswered(), "a link clears it");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_answered_wake_is_not_flagged() {
+        let r = Rig::new(1, false);
+        advance(5).await;
+        assert_eq!(r.calls(), 1);
+        r.phone.0.lock().unwrap().connected = true;
+        r.tx.send(Event::Connected).unwrap();
+        advance(1).await;
+        r.phone.0.lock().unwrap().connected = false;
+        advance(60).await;
+        assert!(!r.unanswered());
     }
 
     #[tokio::test(start_paused = true)]

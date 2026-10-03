@@ -51,6 +51,7 @@ Item {
     : !status.peer ? "not paired"
     : (status.connected ? "connected" : "not connected")
       + (status.queued > 0 ? " · " + status.queued + " waiting to send" : "")
+      + (!status.connected && status.wake_unanswered ? " · phone didn't answer" : "")
 
   ListModel { id: messageModel }
   readonly property alias messages: messageModel
@@ -187,6 +188,12 @@ Item {
 
   Timer { id: rewatch; interval: 5000; onTriggered: watch.running = true }
   Timer { id: statusSoon; interval: 150; onTriggered: if (!statusProc.running) statusProc.running = true }
+  // No event marks a wake going unanswered (the daemon decides after 30 s), so poll while waiting.
+  Timer {
+    interval: 10000; repeat: true
+    running: root.opened && root.status.queued > 0 && !root.status.connected
+    onTriggered: statusSoon.restart()
+  }
 
   Process {
     id: statusProc

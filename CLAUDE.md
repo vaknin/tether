@@ -37,8 +37,9 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
 - Phone notifications (`Notifier.kt`): chat, pings and received files are **one** conversation
   notification (MessagingStyle, Person "Laptop", shortcut `laptop` so it sits under Conversations).
   Each line is appended to the posted notification, which holds the only state. Images show
-  inline (MediaStore URI), other files are 📎 lines plus Open. Reply (RemoteInput) and Mark as read
-  go through `ChatActionReceiver` (a reply queues `sendText` and starts `SyncService` "reply").
+  inline (MediaStore URI), other files are 📎 lines plus Open. Reply (RemoteInput), Mark as read and Copy
+  (only when the newest line is a text; copies that text) go through `ChatActionReceiver` (a reply
+  queues `sendText` and starts `SyncService` "reply").
   It clears when the chat opens. `Transfers` shows a progress notification (ProgressStyle, Live
   Update chip, Cancel only when sending: the core cancels only my own files) for a transfer that
   runs past 2 s.
@@ -108,6 +109,10 @@ Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linu
     The phone sends its registration token over the paired connection (`Frame::PushToken`).
     The sender is `crates/daemon/src/fcm.rs`: it sends at most one wake per 30 s, `--fcm-key` sets
     the key path, and `cargo test -p tether -- --ignored fcm_live` checks auth against Google.
+    A wake with no link 30 s later is logged as unanswered and reported as `wake_unanswered` in
+    `status` (the panel shows "phone didn't answer"); the next link clears it. Known cause
+    (2026-10-03): Tailscale on the phone with strict Private DNS broke all system DNS, so Play
+    services couldn't reach FCM. Private DNS is now Automatic (see `~/.config/system-notes.md`).
   - The user rejected battery-costly background daemons on the phone before.
 - **If both sides dial at once**, keep the connection whose dialer has the smaller endpoint id. Both
   sides then agree.
