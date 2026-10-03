@@ -54,7 +54,8 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   There is no "syncing" or "connected" notification.
 - Phase 3 on the phone: `PhoneListener` (NotificationListenerService) mirrors notifications only
   over a link that is already up (a new link gets a snapshot) and owns `MediaMirror`. While a
-  session plays, MediaMirror holds the node (`media` hold, stay on) with no notification or service
+  session plays (it watches every active session, so one that resumes takes over), MediaMirror holds
+  the node (`media` hold, stay on) with no notification or service
   of its own (the media session's own notification is enough), and lets go 5 min after pause. It skips KDE Connect's sessions
   (`org.kde.kdeconnect_tp`): they mirror the laptop's MPRIS players, ours included, and would loop. KDE Connect is gone since the cut-over; the skip is harmless and stays.
   Battery is "Unrestricted" on the Pixel (`dumpsys deviceidle whitelist +com.kivan.tether`), which

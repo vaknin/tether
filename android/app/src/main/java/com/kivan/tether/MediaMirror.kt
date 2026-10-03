@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.ContentObserver
 import android.media.MediaMetadata
 import android.media.session.MediaController
+import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.net.Uri
@@ -35,6 +36,8 @@ class MediaMirror(
     private val main = Handler(Looper.getMainLooper())
     private val sessions = context.getSystemService(MediaSessionManager::class.java)
     private var controller: MediaController? = null
+    /** Every active session, watched so one that starts playing takes over at once. */
+    private val watched = HashMap<MediaSession.Token, MediaController>()
     /** What was last sent, minus the clock; a resend of the same state is skipped. */
     private var lastSent: Any? = Unsent
     private var keeper: Job? = null
@@ -48,6 +51,13 @@ class MediaMirror(
         override fun onSessionDestroyed() = rechoose()
         override fun onMetadataChanged(metadata: MediaMetadata?) = publish()
         override fun onAudioInfoChanged(info: MediaController.PlaybackInfo) = publish()
+    }
+
+    // The session list changes only when sessions come and go, not when an existing one (paused
+    // since earlier) starts playing; that shows only in its own playback state.
+    private val others = object : MediaController.Callback() {
+        override fun onPlaybackStateChanged(state: PlaybackState?) = rechoose()
+        override fun onSessionDestroyed() = rechoose()
     }
 
     // Local stream volume changes don't reach the controller callback, but the system persists
@@ -68,6 +78,7 @@ class MediaMirror(
 
     fun stop() {
         runCatching { sessions.removeOnActiveSessionsChangedListener(changed) }
+        watch(emptyList())
         select(null)
         Core.sendLive { it.sendMedia(null) }
         release?.let(main::removeCallbacks)
@@ -102,18 +113,32 @@ class MediaMirror(
         } catch (e: SecurityException) {
             emptyList()
         }
-        // KDE Connect mirrors the laptop's players (ours included) as phone sessions; sending
-        // those back would loop laptop → phone → laptop.
-        choose(list.filter { it.packageName !in MIRRORS })
+        choose(list)
     }
 
-    private fun choose(list: List<MediaController>) {
+    private fun choose(all: List<MediaController>) {
+        // KDE Connect mirrors the laptop's players (ours included) as phone sessions; sending
+        // those back would loop laptop → phone → laptop.
+        val list = all.filter { it.packageName !in MIRRORS }
+        watch(list)
         select(list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: list.firstOrNull())
         publish()
     }
 
+    private fun watch(list: List<MediaController>) {
+        val now = list.associateBy { it.sessionToken }
+        watched.keys.retainAll { token ->
+            (token in now).also { if (!it) watched[token]?.unregisterCallback(others) }
+        }
+        for ((token, c) in now) if (token !in watched) {
+            c.registerCallback(others, main)
+            watched[token] = c
+        }
+    }
+
     private fun select(c: MediaController?) {
         if (c?.sessionToken == controller?.sessionToken) return
+        Log.d("Tether", "media: following ${c?.packageName}")
         controller?.unregisterCallback(callback)
         controller = c
         c?.registerCallback(callback, main)
@@ -168,9 +193,13 @@ class MediaMirror(
         if (playing) {
             release?.let(main::removeCallbacks)
             release = null
-            if (keeper == null) keeper = Core.scope.launch { keepLinked() }
+            if (keeper == null) {
+                Log.d("Tether", "media: playing, holding the link")
+                keeper = Core.scope.launch { keepLinked() }
+            }
         } else if (keeper != null && release == null) {
             release = Runnable {
+                Log.d("Tether", "media: idle, letting the link go")
                 release = null
                 keeper?.cancel()
                 keeper = null
@@ -186,7 +215,9 @@ class MediaMirror(
             Core.acquire(Core.MEDIA)
             var backoff = RETRY_MIN_MS
             while (true) {
-                if (Core.connect()) {
+                val ok = Core.connect()
+                Log.d("Tether", "media: dial ${if (ok) "ok" else "failed"}")
+                if (ok) {
                     backoff = RETRY_MIN_MS
                     Core.connected.first { !it }
                     // The laptop just went away (sleep, restart); one quick redial, then back off.

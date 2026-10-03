@@ -40,8 +40,6 @@ object Notifier {
     private const val STUCK_ID = 3
     private const val REFUSED_ID = 4
     private const val FAILED_TAG = "failed"
-    /** Queued this long without reaching the laptop counts as stuck. */
-    private const val STUCK_AFTER_MS = 30 * 60_000L
     private const val CHAT_TAG = "chat"
     private const val APP_TAG = "app"
     /** Each Tether channel's notification channel is `app.<name>`, in this group. */
@@ -288,9 +286,12 @@ object Notifier {
      * Retry now. Cleared once the outbox is empty.
      */
     fun stuck(context: Context, status: Status) {
-        val oldest = status.oldestQueuedMs
-        if (status.queued == 0uL || oldest == null) return cancelStuck(context)
-        if (System.currentTimeMillis() - oldest < STUCK_AFTER_MS) return
+        val oldest = status.oldestQueuedMs ?: return cancelStuck(context)
+        when (stuckNotice(status.queued, oldest, System.currentTimeMillis())) {
+            false -> return cancelStuck(context)
+            null -> return
+            true -> {}
+        }
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
         val n = status.queued.toInt()
@@ -429,4 +430,14 @@ object Notifier {
         glyph.draw(canvas)
         bmp.also { avatarCache = it }
     }
+}
+
+/** Queued this long without reaching the laptop counts as stuck. */
+internal const val STUCK_AFTER_MS = 30 * 60_000L
+
+/** The stuck notice: true to post it, false to clear it, null to leave it as it is. */
+internal fun stuckNotice(queued: ULong, oldestQueuedMs: Long?, nowMs: Long): Boolean? = when {
+    queued == 0uL || oldestQueuedMs == null -> false
+    nowMs - oldestQueuedMs < STUCK_AFTER_MS -> null
+    else -> true
 }
