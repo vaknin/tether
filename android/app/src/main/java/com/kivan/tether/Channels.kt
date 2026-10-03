@@ -156,6 +156,7 @@ object Channels {
                     _views.value = _views.value + (e.channel to v)
                     prunePending()
                     val c = info(e.channel) ?: return
+                    if (v.optInt("badge", -1) == 0) Notifier.clearApp(app, e.channel)
                     val note = v.optJSONObject("notify")
                     if (c.notify && note != null && !showing(c.name)) {
                         Notifier.app(app, c, note.optString("title", c.title), note.optString("text"))
