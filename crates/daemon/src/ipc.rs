@@ -62,6 +62,8 @@ pub enum Request {
     ChannelsReload,
     /// A command for a built-in `list` channel (`tether list`); the reply depends on the op.
     List { channel: String, op: crate::lists::ListOp },
+    /// Deletes a channel's thread (every item and view) here and, once delivered, on the phone.
+    DropThread { channel: String },
     /// A channel's items both ways (posts, replies, actions), oldest first.
     Thread {
         channel: String,

@@ -39,6 +39,8 @@ pub enum Body {
     /// app's own JSON; Tether only carries it. With `replace` it is the channel's view (its whole
     /// state): storing it, on either side, drops that sender's older views of the channel.
     App { channel: String, data: String, replace: bool },
+    /// Delete a channel's thread: both sides drop every item and view of it. Silent (no wake).
+    DropChannel(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

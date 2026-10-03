@@ -338,6 +338,12 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
             let c = c.with_context(|| format!("{channel} isn't a list channel (kind = \"list\" in its manifest)"))?;
             ctx.apps.lists().run_op(node, &channel, c.keep_done, op)?
         }
+        Request::DropThread { channel } => {
+            check_channel(&channel)?;
+            let n = node.app_history(&channel, usize::MAX >> 1)?.len();
+            node.drop_channel(&channel)?;
+            json!({ "dropped": n })
+        }
         Request::Thread { channel, limit } => Value::Array(
             node.app_history(&channel, limit)?
                 .into_iter()

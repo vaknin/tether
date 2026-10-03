@@ -88,6 +88,7 @@ impl Message {
             "text" => Body::Text(self.text.clone().unwrap_or_default()),
             "ping" => Body::Ping(self.text.clone().unwrap_or_default()),
             "ring" => Body::Ring,
+            "drop" => Body::DropChannel(self.channel.clone().unwrap_or_default()),
             "app" | "view" => Body::App {
                 channel: self.channel.clone().unwrap_or_default(),
                 data: self.text.clone().unwrap_or_default(),
@@ -126,7 +127,7 @@ pub struct Store {
 const COLS: &str =
     "id, seq, from_me, ts_ms, expires_ms, kind, text, file_name, file_size, sha256, path, state, read, channel";
 /// App items and views aren't chat: the chat views and the unread count leave them out.
-const CHAT: &str = "kind NOT IN ('app', 'view')";
+const CHAT: &str = "kind NOT IN ('app', 'view', 'drop')";
 /// Taken or delivered app items are dropped after this long.
 const APP_KEEP_MS: i64 = 30 * 24 * 3600 * 1000;
 
@@ -182,7 +183,7 @@ impl Store {
     /// Drops app items from before `before` that are done with: mine delivered, theirs taken.
     fn prune_apps(&self, before: i64) -> Result<usize> {
         Ok(self.db.execute(
-            "DELETE FROM messages WHERE kind = 'app' AND ts_ms < ?1
+            "DELETE FROM messages WHERE kind IN ('app', 'drop') AND ts_ms < ?1
              AND ((from_me = 1 AND state = 'delivered') OR (from_me = 0 AND read = 1))",
             [before],
         )?)
@@ -222,6 +223,7 @@ impl Store {
         )?;
         let item = Item { id: Uuid::new_v4(), seq: seq as u64, ts_ms: now_ms(), expires_ms, body };
         let msg = to_message(&item, true, path, State::Queued, true);
+        self.drop_thread_for(&msg)?;
         self.insert(&msg)?;
         self.drop_old_views(&msg)?;
         Ok(msg)
@@ -237,9 +239,22 @@ impl Store {
             _ => State::Received,
         };
         let msg = to_message(item, false, None, state, false);
+        self.drop_thread_for(&msg)?;
         self.insert(&msg)?;
         self.drop_old_views(&msg)?;
         Ok((msg, true))
+    }
+
+    /// A `drop` item removes the channel's items and views (the drop itself is stored after, so
+    /// it is acked and deduped like any item).
+    fn drop_thread_for(&self, m: &Message) -> Result<()> {
+        if m.kind == "drop" {
+            self.db.execute(
+                "DELETE FROM messages WHERE kind IN ('app', 'view') AND channel = ?1",
+                [&m.channel],
+            )?;
+        }
+        Ok(())
     }
 
     /// After storing a view: only the newest matters, so the same sender's other views of that
@@ -443,6 +458,10 @@ fn to_message(item: &Item, from_me: bool, path: Option<PathBuf>, state: State, r
         Body::Ping(t) => ("ping", Some(t.clone()), None, None, None),
         Body::Ring => ("ring", None, None, None, None),
         Body::File { name, size, sha256 } => ("file", None, Some(name.clone()), Some(*size), Some(*sha256)),
+        Body::DropChannel(c) => {
+            channel = Some(c.clone());
+            ("drop", None, None, None, None)
+        }
         Body::App { channel: c, data, replace } => {
             channel = Some(c.clone());
             (if *replace { "view" } else { "app" }, Some(data.clone()), None, None, None)
@@ -527,6 +546,28 @@ mod tests {
 
     fn app(d: &str, replace: bool) -> Body {
         Body::App { channel: "teen".into(), data: d.into(), replace }
+    }
+
+    #[test]
+    fn a_drop_deletes_the_thread_on_both_sides() {
+        let a = Store::open_in_memory().unwrap();
+        let b = Store::open_in_memory().unwrap();
+        a.enqueue(Body::Text("hi".into()), None, None).unwrap();
+        a.enqueue(app("post", false), None, None).unwrap();
+        a.enqueue(app("view", true), None, None).unwrap();
+        for o in a.outbox().unwrap().0 {
+            b.receive(&o.item()).unwrap();
+        }
+        let other = Body::App { channel: "keep".into(), data: "x".into(), replace: false };
+        a.enqueue(other, None, None).unwrap();
+        let drop = a.enqueue(Body::DropChannel("teen".into()), None, None).unwrap();
+        assert_eq!(a.app_channels().unwrap(), vec!["keep".to_string()]);
+        let (new, fresh) = b.receive(&drop.item()).unwrap();
+        assert!(fresh);
+        assert_eq!(new.body(), Body::DropChannel("teen".into()));
+        assert!(b.app_channels().unwrap().is_empty());
+        assert_eq!(b.recent(10).unwrap().len(), 1, "the drop isn't chat");
+        assert!(!b.receive(&drop.item()).unwrap().1, "deduped, so it is acked once");
     }
 
     #[test]

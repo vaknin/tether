@@ -207,7 +207,8 @@ enum ChannelCmd {
         #[arg(required = true, value_name = "KEY=VALUE")]
         pairs: Vec<String>,
     },
-    /// Delete a manifest. Its items stay (a thread); a list's saved state stays too, unless --purge.
+    /// Delete a manifest. Its items stay (a thread); a list's saved state stays too, unless --purge,
+    /// which also deletes the thread (here and on the phone) and works with no manifest.
     Rm {
         name: String,
         #[arg(long)]
@@ -563,16 +564,23 @@ async fn channel(sock: &std::path::Path, cmd: ChannelCmd) -> Result<()> {
             name
         }
         ChannelCmd::Rm { name, purge } => {
-            if !channel_cmd::rm(&dir, &name)? {
-                anyhow::bail!("{name} has no manifest");
+            let had = channel_cmd::rm(&dir, &name)?;
+            if !had && !purge {
+                anyhow::bail!("{name} has no manifest (--purge deletes a thread that has none)");
             }
             let state = default_state_dir()?.join("lists").join(format!("{name}.json"));
             if purge {
                 let _ = std::fs::remove_file(&state);
+                match call(sock, &Request::DropThread { channel: name.clone() }).await {
+                    Ok(v) => println!("deleted {name}'s thread ({} items); the phone drops it on its next link", v["dropped"]),
+                    Err(e) => anyhow::bail!("{name}: the thread wasn't deleted ({e:#}); is the daemon running?"),
+                }
             } else if state.exists() {
                 println!("kept its list state ({}); --purge deletes it", state.display());
             }
-            println!("removed {name}; its items stay on the phone as a thread");
+            if had {
+                println!("removed {name}{}", if purge { "" } else { "; its items stay on the phone as a thread" });
+            }
             name
         }
         ChannelCmd::Ls { .. } => unreachable!("handled by the caller"),

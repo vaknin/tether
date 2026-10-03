@@ -387,6 +387,11 @@ impl Node {
         Ok(self.inner.send(Body::App { channel: channel.into(), data, replace }, None, None)?.id)
     }
 
+    /// Deletes a channel's thread on both sides: drops it here now, and queues the drop for the peer.
+    pub fn drop_channel(&self, channel: &str) -> Result<Uuid> {
+        Ok(self.inner.send(Body::DropChannel(channel.into()), None, None)?.id)
+    }
+
     /// An item from a local UI (the laptop's panel): stored and emitted as if the peer sent it,
     /// so the channel's client (or a start on demand) takes it.
     pub fn app_local(&self, channel: &str, data: String) -> Result<Uuid> {
@@ -495,6 +500,13 @@ impl Inner {
                     let data = m.text.unwrap_or_default();
                     let view = m.kind == "view";
                     self.emit(Event::App { id: Some(m.id), channel, data, from_me: m.from_me, view });
+                }
+            }
+            // A drop is no chat. Mine tells the UIs to re-read (a view without notify, so no
+            // wake); the peer's needs nothing: the daemon republishes `_channels`.
+            Some(channel) if m.kind == "drop" => {
+                if new && m.from_me {
+                    self.emit(Event::App { id: Some(m.id), channel, data: String::new(), from_me: true, view: true });
                 }
             }
             _ => self.emit(Event::Message(m)),

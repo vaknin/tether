@@ -227,7 +227,7 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 ### Manifest `~/.config/tether/apps/<name>.toml` (name: `[a-z0-9_-]+`)
 Make one with `tether channel add <name> [--kind … --glyph … --show …]` (it validates, writes the file and
 reloads the daemon); `tether channel set <name> key=value…` edits one and keeps its comments;
-`tether channel rm <name> [--purge]` deletes it. Hand-written files still work.
+`tether channel rm <name> [--purge]` deletes it; `--purge` also deletes its thread on both sides (a queued `DropChannel` item) and works for a thread with no manifest. Hand-written files still work.
 Keys: `title`, `glyph` (one emoji or letter), `accent` (`#rrggbb`), `dir` (`auto`|`ltr`|`rtl`, default
 `auto`: each text takes its own direction, Hebrew right-to-left and English left-to-right, per item on
 the phone and the panel; `ltr`/`rtl` fix the whole channel), `kind` (`app`|`thread`|`list`, see below),
