@@ -21,13 +21,18 @@ class OutboxWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     override suspend fun doWork(): Result {
         val node = Core.acquire(HOLD)
         try {
-            if (!Core.connect()) return Result.retry()
+            if (!Core.connect()) {
+                Notifier.stuck(applicationContext, node.status())
+                return Result.retry()
+            }
             withTimeoutOrNull(120_000) {
                 while (node.status().queued > 0uL && Core.connected.value) {
                     withTimeoutOrNull(2_000) { Core.connected.first { !it } }
                 }
             }
-            return if (node.status().queued > 0uL) Result.retry() else Result.success()
+            val status = node.status()
+            Notifier.stuck(applicationContext, status)
+            return if (status.queued > 0uL) Result.retry() else Result.success()
         } finally {
             Core.release(HOLD)
         }

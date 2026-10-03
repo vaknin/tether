@@ -289,6 +289,8 @@ internal fun PeerBar(peerName: String, queued: ULong, onBack: (() -> Unit)?) {
         onSetup = { setupOpen = true },
         onUnpair = { confirmUnpair = true },
     )
+    val refused by Core.refused.collectAsState()
+    if (refused) RefusedBanner(onUnpair = { confirmUnpair = true })
 
     if (setupOpen) {
         ModalBottomSheet(onDismissRequest = { setupOpen = false }) { SetupSheet(granted) }
@@ -310,6 +312,25 @@ internal fun PeerBar(peerName: String, queued: ULong, onBack: (() -> Unit)?) {
             },
             dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** The laptop refused the link (it unpaired, or paired with another phone): re-pairing is the fix. */
+@Composable
+private fun RefusedBanner(onUnpair: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "The laptop doesn't recognise this phone. Unpair, then pair again.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onUnpair) { Text("Unpair") }
+        }
     }
 }
 

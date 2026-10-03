@@ -180,8 +180,10 @@ class MediaMirror(
 
     private suspend fun keepLinked() {
         try {
+            // No service and no notification of its own: the player shows one already. The
+            // system keeps this process bound (it is the notification listener), the player keeps
+            // the CPU awake, and "battery: Unrestricted" keeps the network up through Doze.
             Core.acquire(Core.MEDIA)
-            SyncService.tryStart(context, "media")
             var backoff = RETRY_MIN_MS
             while (true) {
                 if (Core.connect()) {

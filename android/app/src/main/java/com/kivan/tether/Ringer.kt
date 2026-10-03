@@ -48,9 +48,9 @@ object Ringer {
                 isLooping = true
                 play()
             }
+            // The full-screen alert keeps the process (and so the sound) alive; a wake's sync waits
+            // while it rings.
             Notifier.ring(app)
-            // Keeps the process (and so the sound) alive; refused without a background-start exemption.
-            SyncService.tryStart(app, "ring")
         }
     }
 

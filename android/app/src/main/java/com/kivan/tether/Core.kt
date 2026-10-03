@@ -3,6 +3,7 @@ package com.kivan.tether
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import android.os.SystemClock
 import android.util.Log
 import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.Event
@@ -40,7 +41,7 @@ object Core {
     @Volatile private var node: TetherNode? = null
     private val holds = mutableSetOf<String>()
     private val _held = MutableStateFlow<Set<String>>(emptySet())
-    /** The current holds; SyncService stays up while "media" is among them. */
+    /** The current holds. */
     val held: StateFlow<Set<String>> = _held.asStateFlow()
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -56,8 +57,17 @@ object Core {
     /** The chat is on screen: incoming messages are read, not notified. */
     @Volatile var chatVisible = false
 
+    /** When the node last emitted anything ([SystemClock.elapsedRealtime]); a sync ends once it's quiet. */
+    @Volatile var lastEventAt = 0L
+        private set
+
+    /** The laptop refused the link: it no longer takes this phone as its pair. Kept across restarts. */
+    private val _refused = MutableStateFlow(false)
+    val refused: StateFlow<Boolean> = _refused.asStateFlow()
+
     fun init(context: Context) {
         app = context.applicationContext
+        _refused.value = prefs().getBoolean(REFUSED, false)
         // While the process lives, a new network is a chance to reach the laptop (check-in).
         app.getSystemService(ConnectivityManager::class.java)
             .registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
@@ -79,18 +89,22 @@ object Core {
         n
     }
 
-    fun release(reason: String) {
+    /**
+     * [close]: once nothing else holds the node, shut it down even with the link up, so the laptop
+     * sees the close at once instead of sending into a process Android is about to freeze.
+     */
+    fun release(reason: String, close: Boolean = false) {
         scope.launch {
             lock.withLock {
                 if (!holds.remove(reason)) return@withLock
                 _held.value = holds.toSet()
                 node?.setStay(stayLocked())
             }
-            // A hold is often handed on (a share to SyncService); don't restart the endpoint in between.
+            // A hold is often handed on (a share to SyncWorker); don't restart the endpoint in between.
             delay(STOP_GRACE_MS)
             lock.withLock {
                 val n = node ?: return@withLock
-                if (holds.isEmpty() && !n.isConnected()) stopLocked()
+                if (holds.isEmpty() && (close || !n.isConnected())) stopLocked()
             }
         }
     }
@@ -138,23 +152,28 @@ object Core {
     private suspend fun stopLocked() {
         val n = node ?: return
         node = null
-        val queued = runCatching { n.status().queued }.getOrDefault(0uL)
+        val status = runCatching { n.status() }.getOrNull()
+        val queued = status?.queued ?: 0uL
         n.shutdown()
         n.close()
         _connected.value = false
         Log.i(TAG, "node stopped, $queued queued")
         if (queued > 0uL) OutboxWorker.schedule(app)
+        status?.let { Notifier.stuck(app, it) }
     }
 
     private fun refresh(n: TetherNode) {
         runCatching {
-            _status.value = n.status()
+            val s = n.status()
+            _status.value = s
             _messages.value = n.recent(HISTORY)
+            if (s.queued == 0uL) Notifier.cancelStuck(app)
         }.onFailure { Log.w(TAG, "refresh failed", it) }
     }
 
     /** Called on a Rust runtime thread. */
     private fun handle(n: TetherNode, event: Event) {
+        lastEventAt = SystemClock.elapsedRealtime()
         when (event) {
             is Event.Connected -> {
                 _connected.value = true
@@ -174,7 +193,15 @@ object Core {
                 _progress.value = p
                 return
             }
-            is Event.Paired, is Event.Unpaired -> {}
+            is Event.Paired, is Event.Unpaired -> setRefused(false)
+            is Event.Refused -> {
+                setRefused(true)
+                return
+            }
+            is Event.SendFailed -> {
+                Notifier.sendFailed(app, event.id, event.name, event.reason)
+                return
+            }
             is Event.MediaCmd -> {
                 PhoneListener.command(event.cmd)
                 return
@@ -196,6 +223,8 @@ object Core {
         if (m.state != MsgState.QUEUED && m.state != MsgState.INCOMING && m.id in _progress.value) {
             _progress.value = _progress.value - m.id
         }
+        // Anything getting through means the laptop takes us as its pair again.
+        if (m.state == MsgState.DELIVERED || m.state == MsgState.RECEIVED) setRefused(false)
         if (m.fromMe) {
             // The copy made for sending is no longer needed once the laptop has it (or never will).
             if (m.state == MsgState.DELIVERED || m.state == MsgState.EXPIRED || m.state == MsgState.CANCELLED) {
@@ -222,7 +251,17 @@ object Core {
         }
     }
 
+    private fun setRefused(on: Boolean) {
+        if (_refused.value == on) return
+        _refused.value = on
+        prefs().edit().putBoolean(REFUSED, on).apply()
+        if (on) Notifier.refused(app) else Notifier.cancelRefused(app)
+    }
+
+    private fun prefs() = app.getSharedPreferences("core", Context.MODE_PRIVATE)
+
     const val UI = "ui"
     const val MEDIA = "media"
     private const val STOP_GRACE_MS = 2_000L
+    private const val REFUSED = "refused"
 }

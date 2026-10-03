@@ -122,6 +122,7 @@ async fn queued_while_offline_is_delivered_later() {
     let f = a.send_file(&file).await.unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(a.status().unwrap().queued, 2);
+    assert_eq!(a.status().unwrap().oldest_queued_ms, Some(t.ts_ms));
 
     // b comes back on a new port, with its old state.
     let b = start(d.path(), "b").await;
@@ -137,6 +138,30 @@ async fn queued_while_offline_is_delivered_later() {
     assert_eq!(std::fs::read(saved).unwrap(), b"not really a png");
 
     wait_for(&mut ea, |e| msg_in(e, f.id, State::Delivered)).await;
+    assert_eq!(a.status().unwrap().queued, 0);
+    assert_eq!(a.status().unwrap().oldest_queued_ms, None);
+}
+
+#[tokio::test]
+async fn a_file_gone_before_sending_fails_and_is_cancelled() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    b.shutdown().await;
+    let file = d.path().join("gone.pdf");
+    std::fs::write(&file, b"soon deleted").unwrap();
+    let f = a.send_file(&file).await.unwrap();
+    std::fs::remove_file(&file).unwrap();
+
+    let b = start(d.path(), "b").await;
+    let mut ea = a.events();
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    let e = wait_for(&mut ea, |e| matches!(e, Event::SendFailed { .. })).await;
+    let Event::SendFailed { id, name, .. } = e else { unreachable!() };
+    assert_eq!((id, name.as_str()), (f.id, "gone.pdf"));
+    // The peer dropped it and confirmed, as with a cancel.
+    wait_for(&mut ea, |e| msg_in(e, f.id, State::Cancelled)).await;
+    assert_eq!(b.db_state(f.id), State::Cancelled);
     assert_eq!(a.status().unwrap().queued, 0);
 }
 
@@ -195,6 +220,19 @@ async fn cancel_stops_a_file_midway() {
 }
 
 #[tokio::test]
+async fn the_peer_unpairing_reports_refused() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    let mut ea = a.events();
+    a.connect().await.unwrap();
+    b.unpair().unwrap();
+    wait_for(&mut ea, |e| matches!(e, Event::Refused)).await;
+    // Dialing again is refused at the door, and says so again.
+    let _ = a.connect().await;
+    wait_for(&mut ea, |e| matches!(e, Event::Refused)).await;
+}
+
+#[tokio::test]
 async fn cancel_while_offline_reaches_the_peer_later() {
     let d = tempfile::tempdir().unwrap();
     let (a, b) = paired(d.path()).await;
@@ -229,6 +267,7 @@ async fn idle_link_closes_unless_asked_to_stay() {
     wait_for(&mut ea, |e| matches!(e, Event::Connected)).await;
     tokio::time::sleep(Duration::from_millis(2000)).await;
     assert!(a.is_connected(), "b asked to stay connected");
+    assert!(a.peer_stays() && !b.peer_stays());
 
     b.set_stay(false);
     wait_for(&mut ea, |e| matches!(e, Event::Disconnected)).await;

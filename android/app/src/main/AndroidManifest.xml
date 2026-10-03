@@ -9,11 +9,11 @@
     <!-- Transfer progress as a Live Update (status-bar chip); the user can turn it off. -->
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Ring: the alarm screen over the lock screen. Android 14+ may need the user's grant. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- "Unrestricted" battery is the exemption that lets media and ring start SyncService from
-         the background. -->
+    <!-- "Unrestricted" battery lets a transfer start TransferService from the background and keeps
+         the network up through Doze while media plays. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- App names for mirrored notifications and the media player. -->
@@ -78,7 +78,7 @@
             android:name=".RingStopReceiver"
             android:exported="false" />
 
-        <!-- Reply / Mark as read on the chat notification, Cancel on a transfer. -->
+        <!-- Reply / Mark as read / Copy on the chat notification, Cancel on a transfer, Retry when stuck. -->
         <receiver
             android:name=".ChatActionReceiver"
             android:exported="false" />
@@ -94,12 +94,11 @@
             </intent-filter>
         </service>
 
-        <!-- Keeps the process up while linked: a sync after an FCM wake or a share (stops once the
-             link idles out), media playing, or a ring. -->
+        <!-- Keeps the process up through a long file transfer; its notification is the progress. -->
         <service
-            android:name=".SyncService"
+            android:name=".TransferService"
             android:exported="false"
-            android:foregroundServiceType="remoteMessaging" />
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name=".WakeMessagingService"

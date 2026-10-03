@@ -44,7 +44,7 @@ class ShareActivity : Activity() {
                         withContext(Dispatchers.IO) { Thumbs.save(this@ShareActivity, m.id, f) }
                     }
                     if (files.isEmpty()) node.sendText(text!!)
-                    SyncService.start(this@ShareActivity, "share")
+                    SyncWorker.start(this@ShareActivity, "share")
                     Shortcuts.used(this@ShareActivity)
                     if (files.isEmpty()) "Sent to Laptop" else "Sending ${files.size} to Laptop"
                 }

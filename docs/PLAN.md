@@ -69,8 +69,10 @@ time, which the relay makes almost always.
 **Phone app** (Kotlin/Compose):
 - **Wake, then connect (battery).** When idle, the phone runs no endpoint and holds no connection.
   The laptop wakes it with a content-free high-priority FCM data message. The phone then runs a
-  short foreground service (type `remoteMessaging`) that dials, syncs, and stops after about 60 s
-  with no traffic. It stays connected only while media is playing, the chat is open, or the app is
+  short expedited job with no notification (`SyncWorker`, 2026-10-03; it replaced a `remoteMessaging`
+  foreground service and its "Syncing with Laptop" notification) that dials, syncs, and ends once the
+  link is quiet with nothing pending. Long transfers run in a `dataSync` foreground service whose
+  notification is the transfer progress. It stays connected only while media is playing, the chat is open, or the app is
   in the foreground (`StayConnected`). The phone sends its FCM token as `Frame::PushToken`.
   Details are in CLAUDE.md. Check battery use after a day, under Settings → Battery for Tether.
 - Direct Share: `res/xml/shortcuts.xml` share-target + `ShortcutManagerCompat.pushDynamicShortcut`

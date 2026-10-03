@@ -9,10 +9,18 @@ import android.util.Log
 import androidx.core.app.RemoteInput
 import kotlinx.coroutines.launch
 
-/** The chat notification's Reply, Mark as read and Copy, and a transfer notification's Cancel. */
+/**
+ * The chat notification's Reply, Mark as read and Copy, the transfer notification's Cancel and the
+ * stuck notice's Retry now.
+ */
 class ChatActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
+        if (intent.action == RETRY) {
+            Notifier.cancelStuck(app)
+            SyncWorker.start(app, "retry")
+            return
+        }
         if (intent.action == COPY) {
             // Android 13+ confirms the copy itself. The notification stays, so a reply can follow.
             intent.getStringExtra(TEXT)?.let {
@@ -35,10 +43,8 @@ class ChatActionReceiver : BroadcastReceiver() {
                             Core.release(HOLD)
                         }
                     }
-                    CANCEL -> intent.getStringExtra(ID)?.let { id ->
-                        Core.withNode { it.cancel(id) }
-                        Notifier.cancelTransfer(app, id)
-                    }
+                    // The batch notification goes away by itself once nothing is in flight.
+                    CANCEL -> intent.getStringArrayExtra(IDS)?.forEach { id -> Core.withNode { it.cancel(id) } }
                 }
             } catch (e: Exception) {
                 Log.w("Tether", "notification action ${intent.action} failed", e)
@@ -55,8 +61,7 @@ class ChatActionReceiver : BroadcastReceiver() {
             node.sendText(text)
             node.markRead()
             Notifier.replied(app, text)
-            // A notification action may start a foreground service; if not, dial while still held.
-            if (!SyncService.tryStart(app, "reply")) Core.connect()
+            SyncWorker.start(app, "reply")
         } finally {
             Core.release(HOLD)
         }
@@ -67,7 +72,8 @@ class ChatActionReceiver : BroadcastReceiver() {
         const val MARK_READ = "com.kivan.tether.MARK_READ"
         const val CANCEL = "com.kivan.tether.CANCEL"
         const val COPY = "com.kivan.tether.COPY"
-        const val ID = "id"
+        const val RETRY = "com.kivan.tether.RETRY"
+        const val IDS = "ids"
         const val TEXT = "text"
         private const val HOLD = "notification"
 

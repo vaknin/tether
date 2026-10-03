@@ -146,6 +146,8 @@ pub struct Status {
     pub peer: Option<PeerInfo>,
     pub connected: bool,
     pub queued: u64,
+    /// When the oldest queued item was queued (ms since the epoch); none while nothing is queued.
+    pub oldest_queued_ms: Option<i64>,
     pub unread: u64,
 }
 
@@ -238,6 +240,10 @@ pub enum Event {
     Progress { id: String, done: u64, total: u64 },
     MediaCmd { cmd: MediaCmd },
     StopRing,
+    /// The laptop closed the link because it no longer takes this phone as its pair.
+    Refused,
+    /// A file of mine couldn't be sent (gone or changed); it is cancelled.
+    SendFailed { id: String, name: String, reason: String },
     /// From the laptop on an app channel: a queued item (`id` set; mark it with `app_done`), a
     /// view (`view`, `id` set: the channel's new state, nothing to mark; read it with `app_view`),
     /// or a live message (`id` none).
@@ -273,6 +279,8 @@ impl Event {
             }
             node::Event::MediaCmd { cmd } => Event::MediaCmd { cmd: cmd.into() },
             node::Event::StopRing => Event::StopRing,
+            node::Event::Refused => Event::Refused,
+            node::Event::SendFailed { id, name, reason } => Event::SendFailed { id: id.to_string(), name, reason },
             node::Event::App { id, channel, data, from_me: false, view } => {
                 Event::App { id: id.map(|i| i.to_string()), channel, data, view }
             }
@@ -340,12 +348,18 @@ impl TetherNode {
             peer: s.peer.map(Into::into),
             connected: s.connected,
             queued: s.queued as u64,
+            oldest_queued_ms: s.oldest_queued_ms,
             unread: s.unread,
         })
     }
 
     pub fn is_connected(&self) -> bool {
         self.node.is_connected()
+    }
+
+    /// The laptop asked the link to stay open (e.g. `tether notifications --fresh`).
+    pub fn peer_stays(&self) -> bool {
+        self.node.peer_stays()
     }
 
     /// The newest `limit` messages, oldest first.

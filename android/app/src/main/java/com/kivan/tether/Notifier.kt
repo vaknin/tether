@@ -12,6 +12,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
+import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationCompat.MessagingStyle
@@ -21,36 +22,42 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.MsgKind
+import com.kivan.tether.core.Status
 
 /**
  * Every high-priority FCM wake must end in a visible notification, or Android throttles FCM.
- * Chat, pings and received files share one conversation notification with the laptop.
+ * Chat, pings and received files share one conversation notification with the laptop. Nothing is
+ * shown just because the phone is syncing: only news, transfer progress and problems.
  */
 object Notifier {
-    const val SYNC = "sync"
     private const val MESSAGES = "messages"
     private const val TRANSFERS = "transfers"
     private const val RING = "ring"
-    const val SYNC_ID = 1
+    private const val PROBLEMS = "problems"
+    /** The transfer batch, also [TransferService]'s foreground notification. */
+    const val TRANSFER_ID = 1
     private const val RING_ID = 2
+    private const val STUCK_ID = 3
+    private const val REFUSED_ID = 4
+    private const val FAILED_TAG = "failed"
+    /** Queued this long without reaching the laptop counts as stuck. */
+    private const val STUCK_AFTER_MS = 30 * 60_000L
     private const val CHAT_TAG = "chat"
     private const val APP_TAG = "app"
     /** Each Tether channel's notification channel is `app.<name>`, in this group. */
     private const val APP_PREFIX = "app."
     private const val APP_GROUP = "apps"
-    private const val TRANSFER_TAG = "transfer"
     private const val MAX_LINES = 10
     const val REPLY_KEY = "reply"
 
     fun channels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)
-        // Received files used to have their own channel; they are lines in the chat now.
+        // Received files used to have their own channel; they are lines in the chat now. Syncing
+        // no longer shows anything.
         nm.deleteNotificationChannel("files")
+        nm.deleteNotificationChannel("sync")
         nm.createNotificationChannels(
             listOf(
-                NotificationChannel(SYNC, "Syncing", NotificationManager.IMPORTANCE_MIN).apply {
-                    description = "Shown while the phone syncs with the laptop, or stays linked while media plays"
-                },
                 NotificationChannel(MESSAGES, "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "Chat, pings and files from the laptop"
                 },
@@ -61,6 +68,9 @@ object Notifier {
                 NotificationChannel(RING, "Ring", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "The laptop is looking for the phone"
                     setSound(null, null)
+                },
+                NotificationChannel(PROBLEMS, "Problems", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Messages stuck on the phone, a file that couldn't be sent, or the laptop no longer paired"
                 },
             ),
         )
@@ -73,14 +83,6 @@ object Notifier {
         .setIcon(IconCompat.createWithBitmap(avatar(context)))
         .setImportant(true)
         .build()
-
-    /** [linked]: held open for media rather than a one-off sync. */
-    fun sync(context: Context, linked: Boolean): Notification =
-        Notification.Builder(context, SYNC)
-            .setSmallIcon(R.drawable.ic_notify)
-            .setContentTitle(if (linked) "Connected to Laptop" else "Syncing with Laptop")
-            .setContentIntent(openApp(context))
-            .build()
 
     fun ring(context: Context) {
         val full = PendingIntent.getActivity(
@@ -220,23 +222,37 @@ object Notifier {
     }
 
     /**
-     * A file transfer in flight: a progress notification that Android 16+ promotes to a Live
-     * Update (status-bar chip) while the user allows it.
+     * The transfer batch ([Transfers]) as a progress notification, which Android 16+ promotes to a
+     * Live Update (status-bar chip) while the user allows it. Null when notifications are off.
      */
-    fun transfer(context: Context, id: String, name: String, sending: Boolean?, done: Long, total: Long) {
+    fun transfer(context: Context, items: List<Transfers.Item>, inFlight: Set<String>): Notification? {
         val nm = context.getSystemService(NotificationManager::class.java)
-        if (!nm.areNotificationsEnabled()) return
+        if (!nm.areNotificationsEnabled()) return null
+        return transferNotification(context, items, inFlight).also { nm.notify(TRANSFER_ID, it) }
+    }
+
+    fun transferNotification(context: Context, items: List<Transfers.Item>, inFlight: Set<String>): Notification {
+        val total = items.sumOf { it.total }
+        val done = items.sumOf { if (it.finished) it.total else it.done }
         val permille = if (total > 0) (done * 1000 / total).toInt().coerceIn(0, 1000) else 0
         val pct = "${permille / 10}%"
-        val title = when (sending) {
-            true -> "Sending $name"
-            false -> "Receiving $name"
-            null -> name
+        val title = when {
+            items.isEmpty() -> "Transfers"
+            items.size == 1 -> when (items[0].sending) {
+                true -> "Sending ${items[0].name}"
+                false -> "Receiving ${items[0].name}"
+                null -> items[0].name
+            }
+            items.all { it.sending == true } -> "Sending ${items.size} files"
+            items.all { it.sending == false } -> "Receiving ${items.size} files"
+            else -> "Transferring ${items.size} files"
         }
+        val sizes = "${Formatter.formatShortFileSize(context, done)} of ${Formatter.formatShortFileSize(context, total)}"
+        val count = if (items.size > 1) "${items.count { it.finished }} of ${items.size} · " else ""
         val b = NotificationCompat.Builder(context, TRANSFERS)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(title)
-            .setContentText("$pct · ${Formatter.formatShortFileSize(context, done)} of ${Formatter.formatShortFileSize(context, total)}")
+            .setContentText("$count$pct · $sizes")
             .setStyle(
                 NotificationCompat.ProgressStyle()
                     .addProgressSegment(NotificationCompat.ProgressStyle.Segment(1000))
@@ -248,20 +264,86 @@ object Notifier {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
-            .setContentIntent(openApp(context))
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(openChannel(context, Channels.CHAT))
         // Only the sender can cancel a file (the core's cancel matches my own files).
-        if (sending == true) {
+        val mine = items.filter { it.sending == true && it.id in inFlight }.map { it.id }
+        if (mine.isNotEmpty()) {
             val cancel = PendingIntent.getBroadcast(
-                context, id.hashCode(), ChatActionReceiver.intent(context, ChatActionReceiver.CANCEL).putExtra(ChatActionReceiver.ID, id),
-                PendingIntent.FLAG_IMMUTABLE,
+                context, 4,
+                ChatActionReceiver.intent(context, ChatActionReceiver.CANCEL).putExtra(ChatActionReceiver.IDS, mine.toTypedArray()),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             b.addAction(NotificationCompat.Action.Builder(0, "Cancel", cancel).build())
         }
-        nm.notify(TRANSFER_TAG, id.hashCode(), b.build())
+        return b.build()
     }
 
-    fun cancelTransfer(context: Context, id: String) {
-        context.getSystemService(NotificationManager::class.java).cancel(TRANSFER_TAG, id.hashCode())
+    fun cancelTransfer(context: Context) {
+        context.getSystemService(NotificationManager::class.java).cancel(TRANSFER_ID)
+    }
+
+    /**
+     * Items of mine queued for [STUCK_AFTER_MS] without reaching the laptop: one notice, with
+     * Retry now. Cleared once the outbox is empty.
+     */
+    fun stuck(context: Context, status: Status) {
+        val oldest = status.oldestQueuedMs
+        if (status.queued == 0uL || oldest == null) return cancelStuck(context)
+        if (System.currentTimeMillis() - oldest < STUCK_AFTER_MS) return
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (!nm.areNotificationsEnabled()) return
+        val n = status.queued.toInt()
+        val retry = PendingIntent.getBroadcast(
+            context, 5, ChatActionReceiver.intent(context, ChatActionReceiver.RETRY), PendingIntent.FLAG_IMMUTABLE,
+        )
+        val since = DateUtils.formatDateTime(context, oldest, DateUtils.FORMAT_SHOW_TIME)
+        val b = NotificationCompat.Builder(context, PROBLEMS)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setContentTitle(if (n == 1) "1 message not delivered to Laptop" else "$n messages not delivered to Laptop")
+            .setContentText("Waiting since $since. Tether keeps trying.")
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openChannel(context, Channels.CHAT))
+            .addAction(NotificationCompat.Action.Builder(0, "Retry now", retry).build())
+        nm.notify(STUCK_ID, b.build())
+    }
+
+    fun cancelStuck(context: Context) {
+        context.getSystemService(NotificationManager::class.java).cancel(STUCK_ID)
+    }
+
+    /** The laptop refused the link: it doesn't take this phone as its pair any more. */
+    fun refused(context: Context) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (!nm.areNotificationsEnabled()) return
+        val b = NotificationCompat.Builder(context, PROBLEMS)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setContentTitle("Laptop doesn't recognise this phone")
+            .setContentText("Unpair here, then run tether pair on the laptop and scan the code.")
+            .setStyle(NotificationCompat.BigTextStyle())
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openApp(context))
+        nm.notify(REFUSED_ID, b.build())
+    }
+
+    fun cancelRefused(context: Context) {
+        context.getSystemService(NotificationManager::class.java).cancel(REFUSED_ID)
+    }
+
+    /** A file of mine the core gave up on (gone, or changed while sending); it is cancelled. */
+    fun sendFailed(context: Context, id: String, name: String, reason: String) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (!nm.areNotificationsEnabled()) return
+        val b = NotificationCompat.Builder(context, PROBLEMS)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setContentTitle("Couldn't send $name")
+            .setContentText(reason.replaceFirstChar { it.uppercase() } + ".")
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .setContentIntent(openChannel(context, Channels.CHAT))
+            .setAutoCancel(true)
+        nm.notify(FAILED_TAG, id.hashCode(), b.build())
     }
 
     /** One notification channel per Tether channel that may notify; the rest are deleted. */

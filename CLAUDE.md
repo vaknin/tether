@@ -22,8 +22,11 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   After daemon changes: reinstall, then `systemctl --user restart tether`.
 - `android/`: Kotlin/Compose app `com.kivan.tether` (toolchain copied from ~/Projects/chordhand).
   Gradle runs cargo-ndk and uniffi-bindgen itself (`buildSrc/.../RustTasks.kt`). `Core.kt` owns the
-  node: it runs only while held (UI, `SyncService` after FCM wake or share, `OutboxWorker` retries)
-  or a link is open, then shuts down. FCM is configured from `fcm.*` in `android/local.properties`.
+  node: it runs only while held (UI, `SyncWorker` after FCM wake, share or reply, `OutboxWorker`
+  retries, `TransferService`) or a link is open, then shuts down. `SyncWorker` is an expedited job with
+  no notification; it ends once the link has been quiet 10 s with nothing queued, no transfer, no ring
+  and no `peer_stays()` (the laptop asked to keep the link, e.g. `notifications --fresh`), because the
+  expedited quota is small. FCM is configured from `fcm.*` in `android/local.properties`.
   Release signing reads `~/.config/tether/keystore.properties`.
   `Native.load` (in `TetherApp`) loads the .so through the JVM and hands iroh the app context, so it
   reads the phone's DNS servers; it must run before the first node start. The phone's mDNS send
@@ -39,18 +42,23 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   Each line is appended to the posted notification, which holds the only state. Images show
   inline (MediaStore URI), other files are 📎 lines plus Open. Reply (RemoteInput), Mark as read and Copy
   (only when the newest line is a text; copies that text) go through `ChatActionReceiver` (a reply
-  queues `sendText` and starts `SyncService` "reply").
-  It clears when the chat opens. `Transfers` shows a progress notification (ProgressStyle, Live
-  Update chip, Cancel only when sending: the core cancels only my own files) for a transfer that
-  runs past 2 s.
+  queues `sendText` and starts `SyncWorker`).
+  It clears when the chat opens. `Transfers` shows one progress notification per batch of overlapping
+  transfers ("Sending 3 files"; ProgressStyle, Live Update chip, Cancel only when sending: the core
+  cancels only my own files) once a transfer runs past 2 s; it is the notification of
+  `TransferService` (FGS type `dataSync`), which keeps the process up through the batch.
+  The `problems` channel has three notices: delivery stuck (queued 30 min, Retry now; posted by
+  `OutboxWorker` and when the node stops, cleared on refresh), pairing lost (`Event::Refused`, the
+  laptop closed with not-paired; also a banner in the chat that opens unpair) and send failed
+  (`Event::SendFailed`: the file went missing or shrank; the peer drops its `.part`).
+  There is no "syncing" or "connected" notification.
 - Phase 3 on the phone: `PhoneListener` (NotificationListenerService) mirrors notifications only
   over a link that is already up (a new link gets a snapshot) and owns `MediaMirror`. While a
-  session plays, MediaMirror holds the node (`media` hold, stay on), runs `SyncService` as
-  "Connected to Laptop", and lets go 5 min after pause. It skips KDE Connect's sessions
+  session plays, MediaMirror holds the node (`media` hold, stay on) with no notification or service
+  of its own (the media session's own notification is enough), and lets go 5 min after pause. It skips KDE Connect's sessions
   (`org.kde.kdeconnect_tp`): they mirror the laptop's MPRIS players, ours included, and would loop. KDE Connect is gone since the cut-over; the skip is harmless and stays.
-  Starting the service from the listener needs battery "Unrestricted" (granted on the Pixel via
-  `dumpsys deviceidle whitelist +com.kivan.tether`); without it the hold still dials, unprotected
-  from Doze. `Ringer` + `RingActivity`: alarm stream at max, full-screen Stop, 5 min cap.
+  Battery is "Unrestricted" on the Pixel (`dumpsys deviceidle whitelist +com.kivan.tether`), which
+  also lets `TransferService` start from the background. `Ringer` + `RingActivity`: alarm stream at max, full-screen Stop, 5 min cap.
 - App channels (`docs/PLAN.md`, "App channels"): `apps.rs` reads the manifests
   `~/.config/tether/apps/<name>.toml` (at start and `tether channels --reload`), publishes the list
   as the `_channels` view, and starts a channel's app on demand (`exec` via `sh -c`). Channel data

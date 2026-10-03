@@ -104,6 +104,8 @@ pub struct Status {
     pub peer: Option<PeerInfo>,
     pub connected: bool,
     pub queued: usize,
+    /// When the oldest item of the outbox was queued; none while it is empty.
+    pub oldest_queued_ms: Option<i64>,
     pub unread: u64,
 }
 
@@ -125,6 +127,12 @@ pub enum Event {
     StopRing,
     /// Received messages were marked read (the laptop's unread badge clears).
     Read,
+    /// The peer closed the link because it doesn't take us as its pair (it unpaired, or paired
+    /// with another device). Re-pairing is the only fix.
+    Refused,
+    /// A file of mine can't be sent (gone, or changed while sending): it is cancelled, so the
+    /// peer drops what it has, and this says why.
+    SendFailed { id: Uuid, name: String, reason: String },
     /// An app channel's item or view (`id` set, queued) or live message (`id` none). It is not
     /// chat, and only that channel's client handles it. Mine are emitted when queued, so a wake
     /// can follow. `view`: the channel's whole state, replacing the sender's previous one.
@@ -281,13 +289,14 @@ impl Node {
 
     pub fn status(&self) -> Result<Status> {
         let i = &self.inner;
-        let (queued, unread) = i.db(|s| Ok((s.outbox()?.0.len(), s.unread()?)))?;
+        let (outbox, unread) = i.db(|s| Ok((s.outbox()?.0, s.unread()?)))?;
         Ok(Status {
             id: i.ep.id().to_string(),
             name: i.cfg.name.clone(),
             peer: i.peer(),
             connected: self.is_connected(),
-            queued,
+            queued: outbox.len(),
+            oldest_queued_ms: outbox.iter().map(|m| m.ts_ms).min(),
             unread,
         })
     }
@@ -445,6 +454,11 @@ impl Node {
     pub fn set_stay(&self, stay: bool) {
         self.inner.stay.store(stay, Ordering::SeqCst);
         self.send_live(Frame::StayConnected(stay));
+    }
+
+    /// The peer asked the link to stay open (`set_stay` on its side).
+    pub fn peer_stays(&self) -> bool {
+        self.inner.current().is_some_and(|l| l.activity.peer_stay.load(Ordering::SeqCst))
     }
 
     /// Dials the peer unless already connected.
@@ -649,6 +663,12 @@ impl Inner {
             if let Err(e) = me.drive(&link, rx).await {
                 debug!(serial = link.serial, "link ended: {e:#}");
             }
+            if let Some(iroh::endpoint::ConnectionError::ApplicationClosed(c)) = link.conn.close_reason()
+                && c.error_code == CLOSE_NOT_PAIRED.into()
+            {
+                info!("the peer refused us: not paired");
+                me.emit(Event::Refused);
+            }
             link.conn.close(CLOSE_BYE.into(), b"bye");
             let was_current = {
                 let mut slot = me.link.lock().unwrap();
@@ -821,6 +841,19 @@ impl Inner {
         Ok(())
     }
 
+    /// Gives up on a file of mine that can't be sent: cancelled like [`Node::cancel`], so the
+    /// peer drops its part, plus [`Event::SendFailed`] with the reason.
+    fn fail_send(&self, link: &Link, msg: &Message, reason: &str) -> Result<()> {
+        warn!("file {} can't be sent: {reason}", msg.id);
+        if let Some(m) = self.db(|s| s.cancel(msg.id))? {
+            self.emit(Event::Message(m));
+            let _ = link.tx.send(Frame::Cancel { id: msg.id });
+        }
+        let name = msg.file_name.clone().unwrap_or_else(|| "file".into());
+        self.emit(Event::SendFailed { id: msg.id, name, reason: reason.into() });
+        Ok(())
+    }
+
     fn still(&self, id: Uuid, state: State) -> Result<bool> {
         Ok(self.db(|s| s.get(id))?.is_some_and(|m| m.state == state))
     }
@@ -841,9 +874,7 @@ impl Inner {
         let mut f = match tokio::fs::File::open(&path).await {
             Ok(f) => f,
             Err(e) => {
-                if let Some(m) = self.db(|s| s.set_state(id, State::Expired))? {
-                    self.emit(Event::Message(m));
-                }
+                self.fail_send(link, &msg, "the file is gone")?;
                 return Err(e).with_context(|| format!("open {}", path.display()));
             }
         };
@@ -864,6 +895,8 @@ impl Inner {
             let want = buf.len().min((size - done) as usize);
             let n = f.read(&mut buf[..want]).await?;
             if n == 0 {
+                let _ = s.reset(RESET_CANCELLED.into());
+                self.fail_send(link, &msg, "the file changed while sending")?;
                 bail!("{} shrank while sending", path.display());
             }
             s.write_all(&buf[..n]).await?;

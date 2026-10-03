@@ -24,6 +24,12 @@ pub async fn run(node: Node) {
                     warn!("desktop side effect for {} failed: {e:#}", m.id);
                 }
             }
+            Ok(Event::SendFailed { name, reason, .. }) => {
+                let body = format!("Couldn't send {name}: {reason}");
+                if let Err(e) = toast(&["-g", "󰀦", "Tether", &body], OPEN_CHAT).await {
+                    warn!("send-failed toast: {e:#}");
+                }
+            }
             Ok(_) | Err(RecvError::Lagged(_)) => {}
             Err(RecvError::Closed) => return,
         }

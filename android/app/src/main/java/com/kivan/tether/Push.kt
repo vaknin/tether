@@ -40,7 +40,7 @@ object Push {
 
 class WakeMessagingService : com.google.firebase.messaging.FirebaseMessagingService() {
     override fun onMessageReceived(message: com.google.firebase.messaging.RemoteMessage) {
-        if (message.data["t"] == "wake") SyncService.start(this, "wake")
+        if (message.data["t"] == "wake") SyncWorker.start(this, "wake")
     }
 
     override fun onNewToken(token: String) {
