@@ -367,6 +367,12 @@ impl Store {
         Ok(ids.iter().filter_map(|i| Uuid::parse_str(i).ok()).collect())
     }
 
+    #[cfg(test)]
+    pub fn clear_path(&self, id: Uuid) -> Result<()> {
+        self.db.execute("UPDATE messages SET path = NULL WHERE id = ?1", [id.to_string()])?;
+        Ok(())
+    }
+
     pub fn set_path(&self, id: Uuid, path: &Path) -> Result<Option<Message>> {
         self.db.execute(
             "UPDATE messages SET path = ?2 WHERE id = ?1",

@@ -882,7 +882,11 @@ impl Inner {
             .db(|s| s.get(id))?
             .filter(|m| m.from_me && m.kind == "file" && m.state == State::Queued)
             .context("not a queued file of mine")?;
-        let path = msg.path.clone().context("file has no local path")?;
+        // A queued file with no path can never be sent: fail it once instead of on every link.
+        let Some(path) = msg.path.clone() else {
+            self.fail_send(link, &msg, "the file has no local copy")?;
+            bail!("file {id} has no local path");
+        };
         let size = msg.file_size.unwrap_or(0);
         let mut f = match tokio::fs::File::open(&path).await {
             Ok(f) => f,

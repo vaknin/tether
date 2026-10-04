@@ -166,6 +166,27 @@ async fn a_file_gone_before_sending_fails_and_is_cancelled() {
 }
 
 #[tokio::test]
+async fn a_file_without_a_path_fails_once_instead_of_every_link() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    b.shutdown().await;
+    let file = d.path().join("lost.pdf");
+    std::fs::write(&file, b"x").unwrap();
+    let f = a.send_file(&file).await.unwrap();
+    // Rows like this were found on the laptop (2026-10-04), retried on every link forever.
+    a.inner.db(|s| s.clear_path(f.id)).unwrap();
+
+    let b = start(d.path(), "b").await;
+    let mut ea = a.events();
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    let e = wait_for(&mut ea, |e| matches!(e, Event::SendFailed { .. })).await;
+    assert!(matches!(e, Event::SendFailed { id, .. } if id == f.id));
+    wait_for(&mut ea, |e| msg_in(e, f.id, State::Cancelled)).await;
+    assert_eq!(a.status().unwrap().queued, 0);
+}
+
+#[tokio::test]
 async fn file_resumes_from_partial_download() {
     let d = tempfile::tempdir().unwrap();
     let (a, b) = paired(d.path()).await;
