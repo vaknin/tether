@@ -134,6 +134,7 @@ import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.MsgKind
 import com.kivan.tether.core.MsgState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -629,6 +630,8 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
     val haptics = LocalHapticFeedback.current
     val m = row.m
     val mine = m.fromMe
+    val scope = rememberCoroutineScope()
+    var copied by remember { mutableStateOf(false) }
     val bg = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
     val fg = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     // Round everywhere except where this bubble meets the next one from the same sender.
@@ -659,6 +662,11 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
         {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("message", text))
+            scope.launch {
+                copied = true
+                delay(1200)
+                copied = false
+            }
         }
     }
 
@@ -690,7 +698,7 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
                 else -> Box(Modifier.padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)) {
                     val linkColor = if (mine) fg else MaterialTheme.colorScheme.primary
                     TextWithMeta(remember(m.text, linkColor) { linkified(m.text.orEmpty(), linkColor) }, fg) {
-                        Meta(m, fg.copy(alpha = 0.72f))
+                        Meta(m, fg.copy(alpha = 0.72f), copied)
                     }
                 }
             }
@@ -757,7 +765,7 @@ private fun FileChip(m: ChatMessage, progress: Pair<Long, Long>?, fg: Color) {
  * A file I'm still sending gets a Cancel; the laptop drops what it got.
  */
 @Composable
-private fun Meta(m: ChatMessage, color: Color) {
+private fun Meta(m: ChatMessage, color: Color, copied: Boolean = false) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -773,7 +781,12 @@ private fun Meta(m: ChatMessage, color: Color) {
             )
             Spacer(Modifier.width(6.dp))
         }
-        Text(timeOf(ctx, m), style = MaterialTheme.typography.labelSmall, color = color)
+        Text(
+            if (copied) "Copied" else timeOf(ctx, m),
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = if (copied) FontWeight.Bold else null,
+        )
         if (m.state == MsgState.CANCELLED) {
             Spacer(Modifier.width(4.dp))
             Text("Cancelled", style = MaterialTheme.typography.labelSmall, color = color)

@@ -172,6 +172,7 @@ BorderSurface {
           && model.ts - prev.ts < 120000
       }
       readonly property int maxBubble: Math.round(list.width * 0.8)
+      property bool copied: false
 
       width: list.width
       height: (system ? sysText.implicitHeight : bubble.height) + (grouped ? Style.space(2) : Style.space(7))
@@ -206,9 +207,12 @@ BorderSurface {
               else ui.openFile(model.path)
             } else {
               ui.copy(model.text)
+              row.copied = true
+              copiedTimer.restart()
             }
           }
         }
+        Timer { id: copiedTimer; interval: 1200; onTriggered: row.copied = false }
 
         Column {
           id: content
@@ -335,13 +339,14 @@ BorderSurface {
               id: meta
               text: {
                 var t = Qt.formatTime(new Date(model.ts), "HH:mm")
+                if (row.copied) return "󰄬 Copied"
                 if (model.state === "cancelled") return t + "  cancelled"
                 if (!row.mine) return t
                 if (model.state === "queued") return t + "  󰥔"
                 if (model.state === "expired") return t + "  not delivered"
                 return t + "  ✓✓"
               }
-              color: model.state === "expired" ? Color.urgent : chat.muted
+              color: row.copied ? Color.accent : model.state === "expired" ? Color.urgent : chat.muted
               font.family: chat.fontFamily
               font.pixelSize: Style.font.caption
             }
