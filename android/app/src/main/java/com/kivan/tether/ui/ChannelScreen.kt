@@ -32,6 +32,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -72,6 +74,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -441,16 +444,82 @@ private fun ListBlock(b: JSONObject) {
                             }
                         }
                         if (it.optString("text").isNotEmpty()) Text(it.optString("text"), style = MaterialTheme.typography.bodyMedium)
+                        val details = it.optString("details")
+                        if (details.isNotEmpty()) Details(id, details)
                         val actions = objects(it.optJSONArray("actions"))
                         // A thread post's buttons answer with that action.
                         val buttons = objects(it.optJSONArray("buttons"))
                         if (actions.isNotEmpty() || buttons.isNotEmpty()) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { ItemActions(b.optString("id"), id, actions + buttons) }
                         }
+                        it.optJSONObject("reply")?.let { r -> ItemReply(b.optString("id"), id, r) }
                     }
                 }
             }
         }
+    }
+}
+
+/** A list item's `details`: a small toggle under its text; open or shut survives view reloads. */
+@Composable
+private fun Details(item: String, details: String) {
+    val ch = LocalCh.current
+    val key = "${ch.name}/$item"
+    val open = Channels.expanded[key] == true
+    Text(
+        if (open) "Details ▴" else "Details ▾",
+        style = MaterialTheme.typography.labelMedium,
+        color = ch.accent,
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { Channels.expanded[key] = !open }.padding(vertical = 2.dp),
+    )
+    if (open) {
+        SelectionContainer {
+            Text(
+                details,
+                style = MaterialTheme.typography.bodySmall.auto(details),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/**
+ * A list item's `reply` box (a free-text answer): one line and a button, sending
+ * `{"action":<reply id>,"value":{"item","text"}}`. Sent texts wait under it (⏳) until a view
+ * lists their uid or drops the item.
+ */
+@Composable
+private fun ItemReply(block: String, item: String, r: JSONObject) {
+    val ch = LocalCh.current
+    val key = "${ch.name}/$block/$item/reply"
+    val pending by Channels.pending.collectAsState()
+    val text = Channels.drafts[key].orEmpty()
+    val placeholder = r.optString("placeholder").ifEmpty { "Answer…" }
+    val submit = {
+        val t = text.trim()
+        if (t.isNotEmpty()) {
+            Channels.reply(ch.name, block, item, r.optString("id"), t)
+            Channels.drafts.remove(key)
+        }
+    }
+    for (p in pending["${ch.name}/$block/$item"].orEmpty()) {
+        Text("⏳ ${p.text}", style = MaterialTheme.typography.bodyMedium.auto(p.text), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { Channels.drafts[key] = it },
+            placeholder = { Text(placeholder, style = LocalTextStyle.current.auto(placeholder)) },
+            textStyle = LocalTextStyle.current.auto(text),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { submit() }),
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ch.accent, cursorColor = ch.accent),
+            modifier = Modifier.weight(1f),
+        )
+        ActionButton(r.optString("submit").ifEmpty { "Send" }, "primary", small = true, enabled = text.isNotBlank(), onClick = submit)
     }
 }
 

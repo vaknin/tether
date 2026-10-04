@@ -51,8 +51,11 @@ fun textRtl(s: String): Boolean {
     return false
 }
 
-/** A compose block's text that was sent but isn't in a view yet (the ⏳ echo). */
-data class Pending(val uid: String, val text: String)
+/**
+ * A compose block's text that was sent but isn't in a view yet (the ⏳ echo). A list item's reply
+ * also has [item]: its echo also goes once a view no longer lists that item (it was answered).
+ */
+data class Pending(val uid: String, val text: String, val item: String? = null)
 
 /**
  * App channels on the phone: the channel list (`_channels`), each channel's view (with live
@@ -75,7 +78,7 @@ object Channels {
     val views: StateFlow<Map<String, JSONObject>> = _views.asStateFlow()
     private val _threads = MutableStateFlow<Map<String, List<AppHistoryItem>>>(emptyMap())
     val threads: StateFlow<Map<String, List<AppHistoryItem>>> = _threads.asStateFlow()
-    /** "<channel>/<compose id>" → sent texts no view lists yet. */
+    /** "<channel>/<compose id>" (a reply: "<channel>/<list id>/<item id>") → sent texts no view lists yet. */
     private val _pending = MutableStateFlow<Map<String, List<Pending>>>(emptyMap())
     val pending: StateFlow<Map<String, List<Pending>>> = _pending.asStateFlow()
 
@@ -83,6 +86,8 @@ object Channels {
     val drafts = mutableStateMapOf<String, String>()
     /** Chosen chips by "<channel>/<compose id>". */
     val chips = mutableStateMapOf<String, List<String>>()
+    /** List items whose `details` are open, by "<channel>/<item id>"; kept across view reloads. */
+    val expanded = mutableStateMapOf<String, Boolean>()
 
     /** The open screen: null is the list, [CHAT] the chat, else a channel name. */
     private val _open = MutableStateFlow<String?>(null)
@@ -242,13 +247,24 @@ object Channels {
         _pending.value = _pending.value + (k to (_pending.value[k].orEmpty() + Pending(uid, text)))
     }
 
-    /** Drops each echo whose uid a view now lists. */
+    /**
+     * Answers a list item's `reply` box with `{"action":<reply id>,"value":{"item","text"}}`; the
+     * text shows as pending under the item until a view lists the uid or drops the item.
+     */
+    fun reply(name: String, block: String, item: String, action: String, text: String) {
+        val k = "$name/$block/$item"
+        val uid = act(name, JSONObject().put("action", action).put("value", JSONObject().put("item", item).put("text", text)))
+        _pending.value = _pending.value + (k to (_pending.value[k].orEmpty() + Pending(uid, text, item)))
+    }
+
+    /** Drops each echo whose uid a view now lists, and each reply whose item the view dropped. */
     private fun prunePending() {
         val now = _pending.value
         if (now.isEmpty()) return
         val left = now.mapValues { (k, list) ->
-            val ids = itemIds(_views.value[k.substringBefore('/')])
-            list.filter { it.uid !in ids }
+            val view = _views.value[k.substringBefore('/')]
+            val ids = itemIds(view)
+            list.filter { it.uid !in ids && (it.item == null || view == null || it.item in ids) }
         }.filterValues { it.isNotEmpty() }
         if (left != now) _pending.value = left
     }

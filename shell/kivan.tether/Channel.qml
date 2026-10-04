@@ -7,7 +7,7 @@
 // each list/checklist row by its own text, and aligns each text and box by its own content.
 //
 // The blocks are rebuilt whenever a new view arrives, so what is being typed lives in `drafts`
-// (by block and field id) and the focused box gets its focus back.
+// (by block and field id), open list details in `expanded`, and the focused box gets its focus back.
 import QtQuick
 import QtQuick.Controls as QQC
 import qs.Commons
@@ -48,6 +48,7 @@ BorderSurface {
   property var drafts: ({})        // "<block>/<field>" → text; "<block>/chips" → [ids]
   property string focusKey: ""     // the box that had focus, to give it back after a rebuild
   property string armed: ""        // an action waiting for its confirming second press
+  property var expanded: ({})      // "<channel>/<item id>" → true: that list item's details are open
 
   LayoutMirroring.enabled: rtl
   LayoutMirroring.childrenInherit: true
@@ -61,6 +62,7 @@ BorderSurface {
   function draft(key, fallback) { return drafts[key] !== undefined ? drafts[key] : (fallback || "") }
   // A new object each time: reassigning the same one doesn't notify the bindings on it.
   function setDraft(key, value) { var d = Object.assign({}, drafts); d[key] = value; drafts = d }
+  function toggleExpanded(key) { var e = Object.assign({}, expanded); e[key] = !e[key]; expanded = e }
   function clearDrafts(prefix) {
     var d = ({})
     for (var k in drafts) if (k.indexOf(prefix + "/") !== 0) d[k] = drafts[k]
@@ -338,8 +340,10 @@ BorderSurface {
   Component {
     id: listC
     Column {
+      id: lst
       property var b: ({})
-      function box() { return null }
+      property var boxes: ({})        // the items' reply boxes by key, to give focus back
+      function box(key) { return key !== "" && boxes[key] ? boxes[key] : null }
       spacing: Style.space(5)
       Label {
         visible: !(b.items && b.items.length)
@@ -354,6 +358,19 @@ BorderSurface {
           readonly property var it: modelData
           // In auto the row (meta, chips, buttons) runs the way its own text does.
           readonly property bool flip: ch.autoDir && ch.rtlOf(it.text || it.title || "")
+          readonly property string openKey: ch.name + "/" + it.id
+          // `reply`: `{"action":<reply id>,"uid","value":{"item","text"}}`; the text waits under the
+          // item (⏳) until a view lists the uid or no longer lists the item.
+          function sendReply() {
+            var t = replyBox.input.text.trim()
+            if (!t || !it.reply) return
+            var u = ch.uid()
+            ch.send({ action: it.reply.id, uid: u, value: { item: it.id, text: t } })
+            if (ch.ui) ch.ui.addPending(ch.name, b.id + "/" + it.id, u, t, it.id)
+            ch.clearDrafts(b.id + "/" + it.id)
+            replyBox.input.text = ""
+            ch.focusKey = replyBox.key
+          }
           LayoutMirroring.enabled: ch.autoDir ? flip : ch.rtl
           LayoutMirroring.childrenInherit: true
           width: parent ? parent.width : 0
@@ -376,6 +393,33 @@ BorderSurface {
               }
             }
             Label { width: parent.width; text: row.it.text || ""; flipped: row.flip }
+            // `details`: shut behind a small toggle; open or shut survives view reloads.
+            Row {
+              width: parent.width       // so the toggle sits at the start side of a mirrored row
+              visible: !!row.it.details
+              Label {
+                width: implicitWidth
+                text: ch.expanded[row.openKey] ? "Details ▴" : "Details ▾"
+                color: ch.accent
+                small: true
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: ch.toggleExpanded(row.openKey) }
+              }
+            }
+            TextEdit {
+              visible: !!row.it.details && !!ch.expanded[row.openKey]
+              width: parent.width
+              text: row.it.details || ""
+              readOnly: true
+              selectByMouse: true
+              wrapMode: TextEdit.Wrap
+              color: ch.muted
+              selectionColor: Style.selectionFillFor(ch.fg, ch.accent)
+              selectedTextColor: ch.fg
+              horizontalAlignment: ch.alignOf(text, row.flip)
+              font.family: ch.fontFamily
+              font.pixelSize: Style.font.caption
+            }
             Row {
               width: parent.width       // a full-width Row starts at the right in rtl
               spacing: Style.space(5)
@@ -400,6 +444,31 @@ BorderSurface {
                   small: true
                   onClicked: ch.send({ action: modelData.id, value: { item: row.it.id } })
                 }
+              }
+            }
+            Repeater {
+              model: row.it.reply && ch.ui ? ch.ui.pendingFor(ch.name, b.id + "/" + row.it.id) : []
+              Label { required property var modelData; text: "⏳ " + modelData.text; color: ch.muted; flipped: row.flip }
+            }
+            Row {
+              width: parent.width
+              spacing: Style.space(6)
+              visible: !!row.it.reply
+              Box {
+                id: replyBox
+                width: parent.width - replyBtn.width - parent.spacing
+                key: b.id + "/" + row.it.id + "/reply"
+                placeholder: row.it.reply && row.it.reply.placeholder ? row.it.reply.placeholder : "Answer…"
+                onEnter: row.sendReply()
+                Component.onCompleted: { var m = lst.boxes; m[key] = input; lst.boxes = m }
+              }
+              Btn {
+                id: replyBtn
+                anchors.bottom: parent.bottom
+                label: row.it.reply && row.it.reply.submit ? row.it.reply.submit : "Send"
+                style: "primary"
+                small: true
+                onClicked: row.sendReply()
               }
             }
           }

@@ -34,7 +34,8 @@ Item {
   property string channel: ""               // "" is the chat
   property var channels: []                 // `tether channels --json`
   property var threadItems: []              // the open thread channel's items
-  property var pending: ({})                // "<channel>/<compose id>" → [{uid, text}] not in a view yet
+  property var pending: ({})                // "<channel>/<compose id>" → [{uid, text}] not in a view yet;
+                                            // a list item's reply: "<channel>/<list id>/<item id>" → [{uid, text, item}]
   property bool switcher: false             // the Ctrl+K list
   readonly property var current: {
     for (var i = 0; i < channels.length; i++) if (channels[i].name === channel) return channels[i]
@@ -269,24 +270,26 @@ Item {
 
   function pendingFor(name, id) { return pending[name + "/" + id] || [] }
 
-  function addPending(name, id, uid, text) {
+  function addPending(name, id, uid, text, item) {
     var p = Object.assign({}, pending), k = name + "/" + id   // a new object, so bindings notice
-    p[k] = (p[k] || []).concat([{ uid: uid, text: text }])
+    p[k] = (p[k] || []).concat([{ uid: uid, text: text, item: item }])
     pending = p
   }
 
-  // An echo goes once a view lists an item with its uid.
+  // An echo goes once a view lists an item with its uid; a reply's also once the view no longer
+  // lists its item (the question was answered and dropped).
   function prunePending() {
     var p = ({}), changed = false
     for (var k in pending) {
-      var name = k.slice(0, k.indexOf("/")), ids = ({})
+      var name = k.slice(0, k.indexOf("/")), ids = ({}), seen = false
       for (var i = 0; i < channels.length; i++) {
         if (channels[i].name !== name || !channels[i].view || !channels[i].view.blocks) continue
+        seen = true
         var bs = channels[i].view.blocks
         for (var j = 0; j < bs.length; j++)
           for (var n = 0; bs[j].items && n < bs[j].items.length; n++) ids[bs[j].items[n].id] = true
       }
-      var left = pending[k].filter(function(e) { return !ids[e.uid] })
+      var left = pending[k].filter(function(e) { return !ids[e.uid] && !(e.item && seen && !ids[e.item]) })
       if (left.length !== pending[k].length) changed = true
       if (left.length) p[k] = left
     }
