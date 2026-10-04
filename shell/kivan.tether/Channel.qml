@@ -131,7 +131,7 @@ BorderSurface {
       var p = d.post || d
       var text = typeof d === "string" ? d : (p.text || (d.action ? "↳ " + d.action : ""))
       list.push({
-        id: it.id, text: text,
+        id: it.id, title: p.title || "", text: text,
         meta: (it.from_me ? "" : "↩ ") + Qt.formatDateTime(new Date(it.ts_ms), "d/M HH:mm"),
         buttons: p.actions || []
       })

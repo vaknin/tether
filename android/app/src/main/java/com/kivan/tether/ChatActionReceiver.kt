@@ -10,8 +10,8 @@ import androidx.core.app.RemoteInput
 import kotlinx.coroutines.launch
 
 /**
- * The chat notification's Reply, Mark as read and Copy, the transfer notification's Cancel and the
- * stuck notice's Retry now.
+ * The chat notification's Reply, Mark as read and Copy, the transfer notification's Cancel, the
+ * stuck notice's Retry now and a channel notification's buttons.
  */
 class ChatActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -35,7 +35,9 @@ class ChatActionReceiver : BroadcastReceiver() {
             Core.scope.launch {
                 try {
                     Channels.act(ch, org.json.JSONObject().put("action", id))
-                    Notifier.clearApp(app, ch)
+                    // Only the tapped notification; buttons from before tags clear the channel's.
+                    val tag = intent.getStringExtra(NOTE_TAG)
+                    if (tag != null) Notifier.cancelApp(app, tag, intent.getIntExtra(NOTE_ID, 0)) else Notifier.clearApp(app, ch)
                     SyncWorker.start(app, "action")
                 } catch (e: Exception) {
                     Log.w("Tether", "app action $id on $ch failed", e)
@@ -93,6 +95,8 @@ class ChatActionReceiver : BroadcastReceiver() {
         const val APP_ACTION = "com.kivan.tether.APP_ACTION"
         const val CHANNEL = "channel"
         const val ACTION_ID = "action_id"
+        const val NOTE_TAG = "note_tag"
+        const val NOTE_ID = "note_id"
         const val IDS = "ids"
         const val TEXT = "text"
         private const val HOLD = "notification"

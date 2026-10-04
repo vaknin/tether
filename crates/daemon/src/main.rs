@@ -125,6 +125,13 @@ enum Cmd {
         channel: String,
         #[arg(required = true)]
         text: Vec<String>,
+        /// The notification's title on the phone (default: the channel's title).
+        #[arg(long)]
+        title: Option<String>,
+        /// Gives the post its own notification on the phone, kept apart from the channel's other
+        /// posts; a later post with the same tag replaces it without alerting again.
+        #[arg(long)]
+        tag: Option<String>,
         /// A button under the post; the phone's tap comes back to the channel as that action.
         #[arg(long = "action", value_name = "ID:LABEL")]
         actions: Vec<String>,
@@ -391,8 +398,8 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Post { channel, text, actions } => {
-            let data = post(text.join(" "), &actions)?.to_string();
+        Cmd::Post { channel, text, title, tag, actions } => {
+            let data = post(text.join(" "), title.as_deref(), tag.as_deref(), &actions)?.to_string();
             call(&sock, &Request::AppSend { channel, data, live: false, replace: false }).await?;
             println!("queued");
             Ok(())
@@ -455,8 +462,13 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
 }
 
 /// A thread post: `{"post":{"text","actions":[{"id","label"}]?}}` from `ID:LABEL` pairs.
-fn post(text: String, actions: &[String]) -> Result<Value> {
+fn post(text: String, title: Option<&str>, tag: Option<&str>, actions: &[String]) -> Result<Value> {
     let mut p = serde_json::json!({ "text": text });
+    for (k, v) in [("title", title), ("tag", tag)] {
+        if let Some(v) = v.filter(|v| !v.is_empty()) {
+            p[k] = v.into();
+        }
+    }
     if !actions.is_empty() {
         let list = actions
             .iter()
@@ -656,10 +668,16 @@ mod tests {
 
     #[test]
     fn posts_and_thread_lines() {
-        let p = post("hi".into(), &["ok:OK".into(), "no:Not now".into()]).unwrap();
+        let p = post("hi".into(), None, None, &["ok:OK".into(), "no:Not now".into()]).unwrap();
         assert_eq!(p, json!({"post": {"text": "hi", "actions": [{"id": "ok", "label": "OK"}, {"id": "no", "label": "Not now"}]}}));
-        assert_eq!(post("hi".into(), &[]).unwrap(), json!({"post": {"text": "hi"}}));
-        assert!(post("hi".into(), &["nolabel".into()]).is_err());
+        assert_eq!(post("hi".into(), None, None, &[]).unwrap(), json!({"post": {"text": "hi"}}));
+        assert!(post("hi".into(), None, None, &["nolabel".into()]).is_err());
+        let q = post("Merge now?".into(), Some("dibs: web"), Some("q-12"), &["yes:Merge".into()]).unwrap();
+        assert_eq!(
+            q,
+            json!({"post": {"text": "Merge now?", "title": "dibs: web", "tag": "q-12", "actions": [{"id": "yes", "label": "Merge"}]}})
+        );
+        assert_eq!(post("hi".into(), Some(""), Some(""), &[]).unwrap(), json!({"post": {"text": "hi"}}), "empty flags are left out");
 
         assert_eq!(thread_line(&json!({"from_me": true, "data": p})), "laptop: hi");
         assert_eq!(thread_line(&json!({"from_me": false, "data": {"text": "yes"}})), "phone: yes");

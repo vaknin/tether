@@ -161,7 +161,13 @@ object Channels {
                     _views.value = _views.value + (e.channel to v)
                     prunePending()
                     val c = info(e.channel) ?: return
-                    if (v.optInt("badge", -1) == 0) Notifier.clearApp(app, e.channel)
+                    // Nothing waiting: all of the channel's notifications go. `open_tags` lists the
+                    // tagged posts still open; the others were answered (maybe on the laptop).
+                    val open = v.optJSONArray("open_tags")
+                    when {
+                        v.optInt("badge", -1) == 0 -> Notifier.clearApp(app, e.channel)
+                        open != null -> Notifier.keepApp(app, e.channel, (0 until open.length()).map { open.optString(it) }.toSet())
+                    }
                     val note = v.optJSONObject("notify")
                     if (c.notify && note != null && !showing(c.name)) {
                         Notifier.app(app, c, note.optString("title", c.title), note.optString("text"))
@@ -178,15 +184,21 @@ object Channels {
         }.onFailure { Log.w(TAG, "channel event failed", it) }
     }
 
-    // A thread post (or any queued item from the laptop) is a notification unless it is on screen.
+    /**
+     * A thread post (or any queued item from the laptop) is a notification unless it is on screen:
+     * titled by its `title` (else the channel's), and its own notification when it has a `tag`.
+     */
     private fun post(c: ChannelInfo, data: String) {
         if (!c.notify || showing(c.name)) return
         val d = parse(data) ?: return
-        val text = d.optJSONObject("post")?.optString("text") ?: d.optString("text")
-        val actions = d.optJSONObject("post")?.optJSONArray("actions")?.let { a ->
+        val p = d.optJSONObject("post")
+        val text = p?.optString("text") ?: d.optString("text")
+        val title = p?.optString("title").orEmpty().ifEmpty { c.title }
+        val tag = p?.optString("tag")?.takeIf { it.isNotEmpty() }
+        val actions = p?.optJSONArray("actions")?.let { a ->
             (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { it.optString("id") to it.optString("label") }
         }.orEmpty()
-        if (text.isNotBlank()) Notifier.app(app, c, c.title, text, actions)
+        if (text.isNotBlank()) Notifier.app(app, c, title, text, actions, tag)
     }
 
     // A live `{"patch":{"<block id>":{…}}}` replaces those fields until the next view.

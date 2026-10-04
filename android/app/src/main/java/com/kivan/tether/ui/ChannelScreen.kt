@@ -777,6 +777,7 @@ private fun threadBlocks(ctx: android.content.Context, items: List<AppHistoryIte
         list.put(
             JSONObject()
                 .put("id", it.id)
+                .put("title", d?.optJSONObject("post")?.optString("title").orEmpty())
                 .put("text", postText(d))
                 .put("meta", (if (it.fromMe) "" else "↩ ") + time)
                 .put("buttons", d?.optJSONObject("post")?.optJSONArray("actions") ?: JSONArray()),

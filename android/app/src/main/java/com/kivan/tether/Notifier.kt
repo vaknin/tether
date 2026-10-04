@@ -365,10 +365,25 @@ object Notifier {
             .forEach { nm.deleteNotificationChannel(it.id) }
     }
 
-    /** A channel's news (a view's `notify`, a thread post); one notification per channel, replaced. */
-    fun app(context: Context, c: ChannelInfo, title: String, text: String, actions: List<Pair<String, String>> = emptyList()) {
+    /**
+     * A channel's news (a view's `notify`, a thread post). Without [tag], one notification per
+     * channel, replaced; with one (a post's `tag`), one per tag, so each keeps its own buttons. A
+     * replaced notification doesn't alert again.
+     */
+    fun app(
+        context: Context,
+        c: ChannelInfo,
+        title: String,
+        text: String,
+        actions: List<Pair<String, String>> = emptyList(),
+        tag: String? = null,
+    ) {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
+        val noteTag = if (tag != null) "$APP_TAG:${c.name}:$tag" else APP_TAG
+        val noteId = if (tag != null) 0 else c.name.hashCode()
+        // Request codes differ per notification and button, so one's buttons never replace another's.
+        val code = (if (tag != null) noteTag else "$APP_TAG:${c.name}").hashCode()
         val b = NotificationCompat.Builder(context, APP_PREFIX + c.name)
             .setSmallIcon(R.drawable.ic_notify)
             .setLargeIcon(glyph(c, 192))
@@ -379,21 +394,46 @@ object Notifier {
             .setShortcutId(Shortcuts.channelId(c.name))
             .setContentIntent(openChannel(context, c.name))
             .setAutoCancel(true)
-        // Buttons run in the background, so they work from the lock screen without unlocking.
+            .setOnlyAlertOnce(true)
+        // Buttons run in the background, so they work from the lock screen without unlocking. A tap
+        // clears only its own notification.
         for ((i, a) in actions.take(3).withIndex()) {
             val pi = PendingIntent.getBroadcast(
-                context, c.name.hashCode() * 31 + i,
+                context, code * 31 + i,
                 ChatActionReceiver.intent(context, ChatActionReceiver.APP_ACTION)
-                    .putExtra(ChatActionReceiver.CHANNEL, c.name).putExtra(ChatActionReceiver.ACTION_ID, a.first),
+                    .putExtra(ChatActionReceiver.CHANNEL, c.name).putExtra(ChatActionReceiver.ACTION_ID, a.first)
+                    .putExtra(ChatActionReceiver.NOTE_TAG, noteTag).putExtra(ChatActionReceiver.NOTE_ID, noteId),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             b.addAction(NotificationCompat.Action.Builder(0, a.second, pi).setShowsUserInterface(false).build())
         }
-        nm.notify(APP_TAG, c.name.hashCode(), b.build())
+        nm.notify(noteTag, noteId, b.build())
     }
 
+    /** All of a channel's notifications: the untagged one and each tagged post's. */
     fun clearApp(context: Context, name: String) {
-        context.getSystemService(NotificationManager::class.java).cancel(APP_TAG, name.hashCode())
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.cancel(APP_TAG, name.hashCode())
+        cancelTagged(nm, name) { true }
+    }
+
+    /** A view's `open_tags`: the channel's tagged notifications not in [open] were answered. */
+    fun keepApp(context: Context, name: String, open: Set<String>) {
+        cancelTagged(context.getSystemService(NotificationManager::class.java), name) { it !in open }
+    }
+
+    /** One notification, as a button on it names it ([app]). */
+    fun cancelApp(context: Context, tag: String, id: Int) {
+        context.getSystemService(NotificationManager::class.java).cancel(tag, id)
+    }
+
+    // Cancels the channel's tagged notifications (`app:<channel>:<tag>`) whose tag [drop] picks.
+    private fun cancelTagged(nm: NotificationManager, name: String, drop: (String) -> Boolean) {
+        val prefix = "$APP_TAG:$name:"
+        for (sbn in nm.activeNotifications) {
+            val t = sbn.tag ?: continue
+            if (t.startsWith(prefix) && drop(t.removePrefix(prefix))) nm.cancel(t, sbn.id)
+        }
     }
 
     /** Opens the app on a channel ([Channels.CHAT]: the chat). */
