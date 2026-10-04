@@ -8,19 +8,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.kivan.tether.ui.TetherTheme
+import com.kivan.tether.ui.theme.AppTheme
+import com.kivan.tether.ui.theme.AppType
+import com.kivan.tether.ui.theme.Eyebrow
+import com.kivan.tether.ui.theme.Palette
+import com.kivan.tether.ui.theme.Pill
+import com.kivan.tether.ui.theme.Space
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -38,19 +41,23 @@ class RingActivity : ComponentActivity() {
             }
         }
         setContent {
-            TetherTheme {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            AppTheme {
+                Surface(Modifier.fillMaxSize(), color = Palette.Bg) {
                     Column(
                         Modifier.fillMaxSize().padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(32.dp, Alignment.CenterVertically),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text("Laptop is ringing your phone", style = MaterialTheme.typography.headlineSmall)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Space.S)) {
+                            Eyebrow("Ring", dot = true)
+                            Text("Laptop is ringing your phone", style = AppType.title, color = Palette.Text)
+                        }
                         Button(
                             onClick = { Ringer.stop(this@RingActivity, fromLaptop = false) },
-                            shape = CircleShape,
+                            shape = Pill,
+                            colors = ButtonDefaults.buttonColors(containerColor = Palette.Danger, contentColor = Palette.OnDanger),
                             modifier = Modifier.size(200.dp),
-                        ) { Text("Stop", fontSize = 32.sp) }
+                        ) { Text("Stop", style = AppType.heroSmall) }
                     }
                 }
             }

@@ -66,7 +66,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -133,6 +132,11 @@ import com.kivan.tether.Thumbs
 import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.MsgKind
 import com.kivan.tether.core.MsgState
+import com.kivan.tether.ui.theme.AppType
+import com.kivan.tether.ui.theme.Eyebrow
+import com.kivan.tether.ui.theme.Palette
+import com.kivan.tether.ui.theme.Pill
+import com.kivan.tether.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -146,7 +150,7 @@ import kotlin.math.max
 @Composable
 fun TetherScreen() {
     val status by Core.status.collectAsState()
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    Surface(Modifier.fillMaxSize(), color = Palette.Bg) {
         val s = status
         when {
             s == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -183,13 +187,14 @@ private fun PairScreen() {
     }
 
     Column(
-        Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(horizontal = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(horizontal = Space.XL),
+        verticalArrangement = Arrangement.spacedBy(Space.L, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Avatar(R.drawable.ic_laptop, 96.dp)
-        Spacer(Modifier.height(4.dp))
-        Text("Link your laptop", style = MaterialTheme.typography.headlineMedium)
+        Avatar(R.drawable.lucide_laptop, 96.dp)
+        Spacer(Modifier.height(Space.XS))
+        Eyebrow("Not paired")
+        Text("Link your laptop", style = AppType.title)
         Text(
             "Run tether pair on the laptop and scan the QR code it shows. The code works once, for 5 minutes.",
             style = MaterialTheme.typography.bodyLarge,
@@ -200,6 +205,7 @@ private fun PairScreen() {
         Button(
             enabled = !busy,
             modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = MaterialTheme.shapes.medium,
             onClick = {
                 val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
                 GmsBarcodeScanning.getClient(ctx, options).startScan()
@@ -207,31 +213,24 @@ private fun PairScreen() {
                     .addOnFailureListener { error = it.message }
             },
         ) {
-            Icon(painterResource(R.drawable.ic_qr), null, Modifier.size(20.dp))
+            Icon(painterResource(R.drawable.lucide_qr_code), null, Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
             Text("Scan QR code", style = MaterialTheme.typography.titleMedium)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            HorizontalDivider(Modifier.weight(1f))
-            Text(
-                "or paste the code",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-            HorizontalDivider(Modifier.weight(1f))
-        }
+        Eyebrow("or paste the code", Modifier.padding(top = Space.S))
         OutlinedTextField(
             value = code,
             onValueChange = { code = it },
             singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            placeholder = { Text("tether:1:…") },
+            shape = MaterialTheme.shapes.small,
+            textStyle = AppType.mono,
+            placeholder = { Text("tether:1:…", style = AppType.mono) },
             modifier = Modifier.fillMaxWidth(),
         )
         FilledTonalButton(
             enabled = !busy && code.startsWith("tether:"),
             modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = MaterialTheme.shapes.medium,
             onClick = { pair(code) },
         ) { Text("Pair") }
         if (busy) CircularProgressIndicator()
@@ -299,7 +298,7 @@ internal fun PeerBar(peerName: String, queued: ULong, onBack: (() -> Unit)?) {
     if (confirmUnpair) {
         AlertDialog(
             onDismissRequest = { confirmUnpair = false },
-            icon = { Icon(painterResource(R.drawable.ic_link_off), null) },
+            icon = { Icon(painterResource(R.drawable.lucide_unlink), null) },
             title = { Text("Unpair from $peerName?") },
             text = { Text("To link again, run tether pair on the laptop and scan the new code.") },
             confirmButton = {
@@ -319,11 +318,22 @@ internal fun PeerBar(peerName: String, queued: ULong, onBack: (() -> Unit)?) {
 /** The laptop refused the link (it unpaired, or paired with another phone): re-pairing is the fix. */
 @Composable
 private fun RefusedBanner(onUnpair: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.errorContainer) {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.padding(horizontal = Space.L, vertical = Space.XS),
+    ) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            Modifier.fillMaxWidth().padding(start = Space.L, end = Space.S, top = Space.XS, bottom = Space.XS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Icon(
+                painterResource(R.drawable.lucide_circle_alert),
+                null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(Space.M))
             Text(
                 "The laptop doesn't recognise this phone. Unpair, then pair again.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -387,39 +397,38 @@ private fun TopBar(
     onUnpair: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    val online = Gruvbox.green
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+    val online = Palette.Success
+    Surface(color = Palette.Bg) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().height(68.dp).padding(start = 8.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             onBack?.let { BackButton(it) }
             Row(
-                Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
+                Modifier.weight(1f).clip(MaterialTheme.shapes.medium)
                     .clickable(enabled = !connected && !connecting, onClick = onRetry)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box {
-                    Avatar(R.drawable.ic_laptop, 44.dp)
+                    Avatar(R.drawable.lucide_laptop, 44.dp)
                     Box(
                         Modifier.align(Alignment.BottomEnd).size(14.dp).clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceContainer).padding(2.5.dp).clip(CircleShape)
+                            .background(Palette.Bg).padding(2.5.dp).clip(CircleShape)
                             .background(if (connected) online else MaterialTheme.colorScheme.outline),
                     )
                 }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(peerName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(Space.M))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     val line = when {
                         connected -> "Connected"
                         connecting -> "Connecting…"
                         else -> "Offline · tap to reconnect"
                     } + if (queued > 0uL) " · $queued waiting" else ""
+                    Eyebrow(line, color = if (connected) online else Palette.Muted)
                     Text(
-                        line,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (connected) online else MaterialTheme.colorScheme.onSurfaceVariant,
+                        peerName,
+                        style = AppType.heading,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -428,13 +437,13 @@ private fun TopBar(
             Box {
                 IconButton(onClick = { menu = true }) {
                     BadgedBox(badge = { if (setupMissing > 0) Badge() }) {
-                        Icon(painterResource(R.drawable.ic_more), "More")
+                        Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More")
                     }
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
                         text = { Text(if (setupMissing > 0) "Finish phone setup ($setupMissing)" else "Phone setup") },
-                        leadingIcon = { Icon(painterResource(R.drawable.ic_tune), null) },
+                        leadingIcon = { Icon(painterResource(R.drawable.lucide_sliders_horizontal), null) },
                         onClick = {
                             menu = false
                             onSetup()
@@ -442,7 +451,7 @@ private fun TopBar(
                     )
                     DropdownMenuItem(
                         text = { Text("Unpair") },
-                        leadingIcon = { Icon(painterResource(R.drawable.ic_link_off), null) },
+                        leadingIcon = { Icon(painterResource(R.drawable.lucide_unlink), null) },
                         onClick = {
                             menu = false
                             onUnpair()
@@ -476,7 +485,7 @@ private fun EmptyChat(peerName: String) {
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Avatar(R.drawable.ic_laptop, 72.dp)
+        Avatar(R.drawable.lucide_laptop, 72.dp)
         Text("Say hi to $peerName", style = MaterialTheme.typography.titleLarge)
         Text(
             "Messages and files wait here until the laptop is reachable, then go through on their own.",
@@ -569,7 +578,7 @@ private fun MessageList(messages: List<ChatMessage>, progress: Map<String, Pair<
             exit = fadeOut() + scaleOut(),
         ) {
             SmallFloatingActionButton(onClick = { scope.launch { state.animateScrollToItem(0) } }) {
-                Icon(painterResource(R.drawable.ic_arrow_down), "Latest")
+                Icon(painterResource(R.drawable.lucide_arrow_down), "Latest")
             }
         }
     }
@@ -577,14 +586,8 @@ private fun MessageList(messages: List<ChatMessage>, progress: Map<String, Pair<
 
 @Composable
 private fun DayHeader(label: String) {
-    Box(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-        )
+    Box(Modifier.fillMaxWidth().padding(top = Space.XL, bottom = Space.S), contentAlignment = Alignment.Center) {
+        Eyebrow(label)
     }
 }
 
@@ -592,15 +595,15 @@ private fun DayHeader(label: String) {
 private fun EventChip(m: ChatMessage) {
     val ctx = LocalContext.current
     val (icon, label) = when (m.kind) {
-        MsgKind.RING -> R.drawable.ic_vibrate to (if (m.fromMe) "You rang the laptop" else "The laptop rang this phone")
-        else -> R.drawable.ic_bell to buildString {
+        MsgKind.RING -> R.drawable.lucide_vibrate to (if (m.fromMe) "You rang the laptop" else "The laptop rang this phone")
+        else -> R.drawable.lucide_bell to buildString {
             append(if (m.fromMe) "You pinged" else "Ping")
             m.text?.takeIf { it.isNotBlank() }?.let { append(": ").append(it) }
         }
     }
     Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
         Row(
-            Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.tertiaryContainer)
+            Modifier.clip(Pill).background(MaterialTheme.colorScheme.tertiaryContainer)
                 .padding(start = 12.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -616,7 +619,7 @@ private fun EventChip(m: ChatMessage) {
                 modifier = Modifier.weight(1f, fill = false),
             )
             Spacer(Modifier.width(8.dp))
-            Text(timeOf(ctx, m), style = MaterialTheme.typography.labelSmall, color = fg.copy(alpha = 0.7f))
+            Text(timeOf(ctx, m), style = AppType.mono, color = fg.copy(alpha = 0.7f))
         }
     }
 }
@@ -635,8 +638,8 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
     val bg = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
     val fg = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     // Round everywhere except where this bubble meets the next one from the same sender.
-    val big = 20.dp
-    val small = 6.dp
+    val big = 14.dp
+    val small = 4.dp
     val shape = if (mine) {
         RoundedCornerShape(big, if (row.first) big else small, if (row.last) big else small, big)
     } else {
@@ -690,7 +693,7 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
                         modifier = Modifier.width(w).aspectRatio(ratio),
                     )
                     Box(
-                        Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(CircleShape)
+                        Modifier.align(Alignment.BottomEnd).padding(Space.S).clip(Pill)
                             .background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 8.dp, vertical = 2.dp),
                     ) { Meta(m, Color.White) }
                 }
@@ -722,9 +725,9 @@ private fun FileChip(m: ChatMessage, progress: Pair<Long, Long>?, fg: Color) {
     Column(Modifier.padding(start = 10.dp, end = 12.dp, top = 10.dp, bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(fg.copy(alpha = 0.14f)),
+                Modifier.size(44.dp).clip(MaterialTheme.shapes.small).background(fg.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center,
-            ) { Icon(painterResource(R.drawable.ic_file), null, tint = fg, modifier = Modifier.size(22.dp)) }
+            ) { Icon(painterResource(R.drawable.lucide_file), null, tint = fg, modifier = Modifier.size(22.dp)) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.widthIn(min = 120.dp)) {
                 Text(
@@ -743,7 +746,7 @@ private fun FileChip(m: ChatMessage, progress: Pair<Long, Long>?, fg: Color) {
                             Formatter.formatShortFileSize(ctx, progress.second)
                     else -> listOfNotNull(size, ext).joinToString(" · ")
                 }
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = fg.copy(alpha = 0.72f))
+                Text(sub, style = AppType.small.copy(fontFeatureSettings = "tnum"), color = fg.copy(alpha = 0.72f))
             }
         }
         if (progress != null && progress.second > 0) {
@@ -772,10 +775,10 @@ private fun Meta(m: ChatMessage, color: Color, copied: Boolean = false) {
         if (m.fromMe && m.kind == MsgKind.FILE && m.state == MsgState.QUEUED) {
             Text(
                 "✕ Cancel",
-                style = MaterialTheme.typography.labelSmall,
+                style = AppType.small,
                 color = color,
                 modifier = Modifier
-                    .clip(CircleShape)
+                    .clip(Pill)
                     .clickable { scope.launch { Core.withNode { n -> runCatching { n.cancel(m.id) } } } }
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             )
@@ -783,20 +786,20 @@ private fun Meta(m: ChatMessage, color: Color, copied: Boolean = false) {
         }
         Text(
             if (copied) "Copied" else timeOf(ctx, m),
-            style = MaterialTheme.typography.labelSmall,
+            style = if (copied) AppType.small else AppType.mono,
             color = color,
             fontWeight = if (copied) FontWeight.Bold else null,
         )
         if (m.state == MsgState.CANCELLED) {
             Spacer(Modifier.width(4.dp))
-            Text("Cancelled", style = MaterialTheme.typography.labelSmall, color = color)
+            Text("Cancelled", style = AppType.small, color = color)
             return@Row
         }
         if (!m.fromMe) return@Row
         val (icon, desc) = when (m.state) {
-            MsgState.QUEUED -> R.drawable.ic_schedule to "Waiting"
-            MsgState.DELIVERED -> R.drawable.ic_done_all to "Delivered"
-            MsgState.EXPIRED -> R.drawable.ic_error to "Not delivered"
+            MsgState.QUEUED -> R.drawable.lucide_clock to "Waiting"
+            MsgState.DELIVERED -> R.drawable.lucide_check_check to "Delivered"
+            MsgState.EXPIRED -> R.drawable.lucide_circle_alert to "Not delivered"
             else -> return@Row
         }
         Spacer(Modifier.width(3.dp))
@@ -860,14 +863,14 @@ private fun InputBar(draft: String, onDraft: (String) -> Unit, onAttach: () -> U
         verticalAlignment = Alignment.Bottom,
     ) {
         Surface(
-            shape = RoundedCornerShape(26.dp),
+            shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.weight(1f),
         ) {
             Row(verticalAlignment = Alignment.Bottom) {
                 IconButton(onClick = onAttach, modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)) {
                     Icon(
-                        painterResource(R.drawable.ic_attach),
+                        painterResource(R.drawable.lucide_paperclip),
                         "Send a file",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -899,8 +902,9 @@ private fun InputBar(draft: String, onDraft: (String) -> Unit, onAttach: () -> U
         FilledIconButton(
             enabled = draft.isNotBlank(),
             onClick = onSend,
+            shape = MaterialTheme.shapes.medium,
             modifier = Modifier.size(52.dp),
-        ) { Icon(painterResource(R.drawable.ic_send), "Send", Modifier.size(22.dp)) }
+        ) { Icon(painterResource(R.drawable.lucide_send_horizontal), "Send", Modifier.size(22.dp)) }
     }
 }
 
@@ -942,7 +946,8 @@ private val setupItems = listOf(
 private fun SetupSheet(granted: List<Boolean>) {
     val ctx = LocalContext.current
     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
-        Text("Phone setup", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
+        Eyebrow("Optional", Modifier.padding(horizontal = Space.XL))
+        Text("Phone setup", style = AppType.title, modifier = Modifier.padding(horizontal = Space.XL))
         Text(
             "Chat and files work without these.",
             style = MaterialTheme.typography.bodyMedium,
@@ -957,9 +962,9 @@ private fun SetupSheet(granted: List<Boolean>) {
                 modifier = Modifier.padding(horizontal = 8.dp),
                 trailingContent = {
                     if (ok) {
-                        Icon(painterResource(R.drawable.ic_check), "Allowed", tint = MaterialTheme.colorScheme.primary)
+                        Icon(painterResource(R.drawable.lucide_check), "Allowed", tint = Palette.Success)
                     } else {
-                        FilledTonalButton(onClick = {
+                        FilledTonalButton(shape = MaterialTheme.shapes.medium, onClick = {
                             runCatching { ctx.startActivity(item.intent(ctx)) }.onFailure {
                                 item.fallback?.let { runCatching { ctx.startActivity(Intent(it)) } }
                             }

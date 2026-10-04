@@ -14,6 +14,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationCompat.MessagingStyle
 import androidx.core.app.Person
@@ -23,6 +24,7 @@ import androidx.core.graphics.drawable.IconCompat
 import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.MsgKind
 import com.kivan.tether.core.Status
+import com.kivan.tether.ui.theme.Palette
 
 /**
  * Every high-priority FCM wake must end in a visible notification, or Android throttles FCM.
@@ -92,7 +94,7 @@ object Notifier {
             context, 0, Intent(context, RingStopReceiver::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
         val n = Notification.Builder(context, RING)
-            .setSmallIcon(R.drawable.ic_notify)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Laptop is ringing your phone")
             .setCategory(Notification.CATEGORY_ALARM)
             .setOngoing(true)
@@ -161,7 +163,7 @@ object Notifier {
         style.addMessage(line)
 
         val b = NotificationCompat.Builder(context, MESSAGES)
-            .setSmallIcon(R.drawable.ic_notify)
+            .setSmallIcon(R.drawable.ic_notification)
             .setStyle(style)
             .setShortcutId(Shortcuts.ID)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
@@ -248,7 +250,7 @@ object Notifier {
         val sizes = "${Formatter.formatShortFileSize(context, done)} of ${Formatter.formatShortFileSize(context, total)}"
         val count = if (items.size > 1) "${items.count { it.finished }} of ${items.size} · " else ""
         val b = NotificationCompat.Builder(context, TRANSFERS)
-            .setSmallIcon(R.drawable.ic_notify)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText("$count$pct · $sizes")
             .setStyle(
@@ -300,7 +302,7 @@ object Notifier {
         )
         val since = DateUtils.formatDateTime(context, oldest, DateUtils.FORMAT_SHOW_TIME)
         val b = NotificationCompat.Builder(context, PROBLEMS)
-            .setSmallIcon(R.drawable.ic_notify)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(if (n == 1) "1 message not delivered to Laptop" else "$n messages not delivered to Laptop")
             .setContentText("Waiting since $since. Tether keeps trying.")
             .setCategory(NotificationCompat.CATEGORY_STATUS)
@@ -319,7 +321,7 @@ object Notifier {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
         val b = NotificationCompat.Builder(context, PROBLEMS)
-            .setSmallIcon(R.drawable.ic_notify)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Laptop doesn't recognise this phone")
             .setContentText("Unpair here, then run tether pair on the laptop and scan the code.")
             .setStyle(NotificationCompat.BigTextStyle())
@@ -338,7 +340,7 @@ object Notifier {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
         val b = NotificationCompat.Builder(context, PROBLEMS)
-            .setSmallIcon(R.drawable.ic_notify)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Couldn't send $name")
             .setContentText(reason.replaceFirstChar { it.uppercase() } + ".")
             .setCategory(NotificationCompat.CATEGORY_ERROR)
@@ -385,12 +387,12 @@ object Notifier {
         // Request codes differ per notification and button, so one's buttons never replace another's.
         val code = (if (tag != null) noteTag else "$APP_TAG:${c.name}").hashCode()
         val b = NotificationCompat.Builder(context, APP_PREFIX + c.name)
-            .setSmallIcon(R.drawable.ic_notify)
+            .setSmallIcon(R.drawable.ic_notification)
             .setLargeIcon(glyph(c, 192))
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setColor(c.accent ?: 0xFFFABD2F.toInt())
+            .setColor(c.accent ?: Palette.Accent.toArgb())
             .setShortcutId(Shortcuts.channelId(c.name))
             .setContentIntent(openChannel(context, c.name))
             .setAutoCancel(true)
@@ -460,9 +462,9 @@ object Notifier {
     fun glyph(c: ChannelInfo, size: Int): Bitmap {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c.accent ?: 0xFFFABD2F.toInt() })
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c.accent ?: Palette.Accent.toArgb() })
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF1D2021.toInt()
+            color = Palette.OnAccent.toArgb()
             textSize = size * 0.5f
             textAlign = Paint.Align.CENTER
             typeface = Typeface.DEFAULT_BOLD
@@ -480,14 +482,14 @@ object Notifier {
 
     @Volatile private var avatarCache: Bitmap? = null
 
-    /** The laptop glyph on a gruvbox circle. */
+    /** The laptop glyph on an accent circle. */
     private fun avatar(context: Context): Bitmap = avatarCache ?: run {
         val size = 192
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF83A598.toInt() })
-        val glyph = ContextCompat.getDrawable(context, R.drawable.ic_laptop)!!.mutate()
-        glyph.setTint(0xFF1D2021.toInt())
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.Accent.toArgb() })
+        val glyph = ContextCompat.getDrawable(context, R.drawable.lucide_laptop)!!.mutate()
+        glyph.setTint(Palette.OnAccent.toArgb())
         val inset = size / 5
         glyph.setBounds(inset, inset, size - inset, size - inset)
         glyph.draw(canvas)

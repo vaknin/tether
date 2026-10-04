@@ -13,19 +13,19 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.kivan.tether.ui.TetherScreen
-import com.kivan.tether.ui.TetherTheme
+import com.kivan.tether.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Always dark (gruvbox), so the bar icons stay light.
+        // Always dark (the design language has no light theme), so the bar icons stay light.
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         if (savedInstanceState == null) route(intent)
-        setContent { TetherTheme { TetherScreen() } }
+        setContent { AppTheme { TetherScreen() } }
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -45,7 +45,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,7 +71,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -87,6 +85,12 @@ import com.kivan.tether.Dir
 import com.kivan.tether.R
 import com.kivan.tether.Shortcuts
 import com.kivan.tether.core.AppHistoryItem
+import com.kivan.tether.ui.theme.AppType
+import com.kivan.tether.ui.theme.Eyebrow
+import com.kivan.tether.ui.theme.GeistMono
+import com.kivan.tether.ui.theme.Palette
+import com.kivan.tether.ui.theme.Pill
+import com.kivan.tether.ui.theme.Space
 import com.kivan.tether.textRtl
 import kotlinx.coroutines.delay
 import org.json.JSONArray
@@ -105,17 +109,20 @@ internal fun ChannelList(peerName: String, queued: ULong) {
 
     Column(Modifier.fillMaxSize()) {
         PeerBar(peerName, queued, onBack = null)
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = 8.dp)) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = Space.S)) {
             item(key = Channels.CHAT) {
                 val last = messages.lastOrNull()
                 EntryRow(
-                    icon = { Avatar(R.drawable.ic_laptop, 48.dp) },
+                    icon = { Avatar(R.drawable.lucide_laptop, 48.dp) },
                     title = "Chat",
                     line = last?.let { it.text ?: it.fileName?.let { f -> "📎 $f" } } ?: "Messages, files and pings",
                     badge = status?.unread?.toInt() ?: 0,
                     onClick = { Channels.show(Channels.CHAT) },
                     menu = null,
                 )
+            }
+            if (list.isNotEmpty()) item(key = "_eyebrow") {
+                Eyebrow("Channels", Modifier.padding(start = Space.L, end = Space.L, top = Space.XL, bottom = Space.XS))
             }
             items(list, key = { it.name }) { c ->
                 val v = views[c.name]
@@ -163,13 +170,13 @@ private fun EntryRow(
         Row(
             Modifier.fillMaxWidth()
                 .combinedClickable(onClick = onClick, onLongClick = { if (menu != null) open = true })
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = Space.L, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             icon()
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = AppType.heading, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (line.isNotEmpty()) {
                     Text(
                         line,
@@ -182,7 +189,7 @@ private fun EntryRow(
             }
             if (badge > 0) {
                 Spacer(Modifier.width(10.dp))
-                Badge(containerColor = MaterialTheme.colorScheme.primary) { Text("$badge") }
+                Badge(containerColor = Palette.Accent, contentColor = Palette.OnAccent) { Text("$badge", style = AppType.small.copy(fontFeatureSettings = "tnum")) }
             }
         }
         if (menu != null) {
@@ -209,7 +216,7 @@ internal fun Glyph(c: ChannelInfo, size: Int) {
     ) {
         Text(
             c.glyph,
-            color = Gruvbox.bg0h,
+            color = Palette.OnAccent,
             fontWeight = FontWeight.Bold,
             style = if (size >= 40) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleSmall,
         )
@@ -218,7 +225,7 @@ internal fun Glyph(c: ChannelInfo, size: Int) {
 
 @Composable
 internal fun BackButton(onBack: () -> Unit) {
-    IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), "Back") }
+    IconButton(onClick = onBack) { Icon(painterResource(R.drawable.lucide_arrow_left), "Back") }
 }
 
 // --- A channel ------------------------------------------------------------------------------------
@@ -291,8 +298,8 @@ internal fun ChannelScreen(name: String) {
             )
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(Space.L),
+                verticalArrangement = Arrangement.spacedBy(Space.M),
             ) {
                 val body = blocks.filter { it.optString("type") != "header" }
                 itemsIndexed(body, key = { i, b -> b.optString("id").ifEmpty { "#$i" } }) { _, b -> Block(b) }
@@ -314,22 +321,22 @@ internal fun ChannelScreen(name: String) {
 private fun ChannelBar(c: ChannelInfo, title: String, subtitle: String) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+    Surface(color = Palette.Bg) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().height(68.dp).padding(start = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BackButton { Channels.show(null) }
             Glyph(c, 40)
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(Space.M))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium.auto(title), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
+                Text(title, style = AppType.heading.auto(title), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
                 if (subtitle.isNotEmpty()) {
                     Text(subtitle, style = MaterialTheme.typography.bodySmall.auto(subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
                 }
             }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more), "More") }
+                IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
                         text = { Text("Add to home screen") },
@@ -375,9 +382,9 @@ private fun Block(b: JSONObject) {
 }
 
 private fun tone(t: String, accent: Color): Color = when (t) {
-    "error" -> Gruvbox.red
-    "warn" -> Gruvbox.yellow
-    "ok" -> Gruvbox.green
+    "error" -> Palette.Danger
+    "warn" -> Palette.Warning
+    "ok" -> Palette.Success
     else -> accent
 }
 
@@ -386,7 +393,7 @@ private fun Notice(b: JSONObject) {
     val color = tone(b.optString("tone"), LocalCh.current.accent)
     Surface(
         color = color.copy(alpha = 0.14f),
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, color.copy(alpha = 0.45f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -398,18 +405,18 @@ private fun Notice(b: JSONObject) {
 private fun TextBlock(b: JSONObject) {
     val context = LocalContext.current
     val text = b.optString("text")
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
         Box {
             SelectionContainer {
                 Text(
                     text,
                     style = MaterialTheme.typography.bodyMedium.auto(text),
-                    fontFamily = if (b.optBoolean("mono")) FontFamily.Monospace else null,
+                    fontFamily = if (b.optBoolean("mono")) GeistMono else null,
                     modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 40.dp),
                 )
             }
             IconButton(onClick = { copy(context, text) }, modifier = Modifier.align(Alignment.TopEnd)) {
-                Icon(painterResource(R.drawable.ic_copy), "Copy", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(painterResource(R.drawable.lucide_copy), "Copy", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -431,15 +438,15 @@ private fun ListBlock(b: JSONObject) {
         for (it in items) {
             val id = it.optString("id")
             RowDir("${it.optString("title")}\n${it.optString("text")}") {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(Space.M), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         val chips = strings(it.optJSONArray("chips"))
                         val meta = it.optString("meta")
                         val title = it.optString("title")
                         if (meta.isNotEmpty() || title.isNotEmpty() || chips.isNotEmpty()) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterVertically))
-                                if (title.isNotEmpty()) Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterVertically))
+                                if (meta.isNotEmpty()) Text(meta, style = AppType.mono, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterVertically))
+                                if (title.isNotEmpty()) Text(title, style = AppType.label, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterVertically))
                                 for (chip in chips) Tag(chip, ch.accent)
                             }
                         }
@@ -470,7 +477,7 @@ private fun Details(item: String, details: String) {
         if (open) "Details ▴" else "Details ▾",
         style = MaterialTheme.typography.labelMedium,
         color = ch.accent,
-        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { Channels.expanded[key] = !open }.padding(vertical = 2.dp),
+        modifier = Modifier.clip(MaterialTheme.shapes.small).clickable { Channels.expanded[key] = !open }.padding(vertical = 2.dp),
     )
     if (open) {
         SelectionContainer {
@@ -515,7 +522,7 @@ private fun ItemReply(block: String, item: String, r: JSONObject) {
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { submit() }),
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.small,
             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ch.accent, cursorColor = ch.accent),
             modifier = Modifier.weight(1f),
         )
@@ -555,8 +562,8 @@ private fun confirmOf(a: JSONObject): String? {
 private fun Tag(text: String, accent: Color) {
     Text(
         text,
-        style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(accent.copy(alpha = 0.3f)).padding(horizontal = 8.dp, vertical = 2.dp),
+        style = AppType.small,
+        modifier = Modifier.clip(Pill).background(accent.copy(alpha = 0.3f)).padding(horizontal = 8.dp, vertical = 2.dp),
     )
 }
 
@@ -580,7 +587,7 @@ private fun Checklist(b: JSONObject) {
                     Checkbox(
                         checked = checked,
                         onCheckedChange = { toggle() },
-                        colors = CheckboxDefaults.colors(checkedColor = ch.accent, checkmarkColor = Gruvbox.bg0),
+                        colors = CheckboxDefaults.colors(checkedColor = ch.accent, checkmarkColor = Palette.OnAccent),
                     )
                     Text(
                         it.optString("label"),
@@ -637,6 +644,7 @@ private fun Compose(b: JSONObject) {
                             }
                         },
                         label = { Text(c.optString("label")) },
+                        shape = Pill,
                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ch.accent.copy(alpha = 0.35f)),
                     )
                 }
@@ -649,7 +657,7 @@ private fun Compose(b: JSONObject) {
                 placeholder = { Text(b.optString("placeholder"), style = LocalTextStyle.current.auto(b.optString("placeholder"))) },
                 textStyle = LocalTextStyle.current.auto(text),
                 maxLines = 6,
-                shape = RoundedCornerShape(16.dp),
+                shape = MaterialTheme.shapes.small,
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ch.accent, cursorColor = ch.accent),
                 modifier = Modifier.weight(1f),
             )
@@ -673,7 +681,7 @@ private fun Form(b: JSONObject) {
                 placeholder = { Text(f.optString("placeholder")) },
                 singleLine = !f.optBoolean("multi"),
                 minLines = if (f.optBoolean("multi")) 3 else 1,
-                shape = RoundedCornerShape(12.dp),
+                shape = MaterialTheme.shapes.small,
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ch.accent, focusedLabelColor = ch.accent, cursorColor = ch.accent),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -693,8 +701,8 @@ private fun Form(b: JSONObject) {
 @Composable
 private fun Progress(b: JSONObject) {
     val ch = LocalCh.current
-    Surface(color = ch.accent.copy(alpha = 0.12f), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Surface(color = ch.accent.copy(alpha = 0.12f), shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = Space.M, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(Modifier.size(20.dp), color = ch.accent, strokeWidth = 2.5.dp)
             Spacer(Modifier.width(12.dp))
             Text(b.optString("text"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -737,12 +745,13 @@ private fun ActionButton(label: String, style: String, small: Boolean = false, e
             enabled = enabled,
             contentPadding = pad,
             modifier = mod,
+            shape = MaterialTheme.shapes.medium,
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (style == "danger") Gruvbox.red else accent,
-                contentColor = Gruvbox.bg0h,
+                containerColor = if (style == "danger") Palette.Danger else accent,
+                contentColor = if (style == "danger") Palette.OnDanger else Palette.OnAccent,
             ),
         ) { Text(label, fontWeight = FontWeight.SemiBold) }
-        else -> OutlinedButton(onClick = onClick, enabled = enabled, contentPadding = pad, modifier = mod) {
+        else -> OutlinedButton(onClick = onClick, enabled = enabled, contentPadding = pad, modifier = mod, shape = MaterialTheme.shapes.medium) {
             Text(label, color = MaterialTheme.colorScheme.onSurface)
         }
     }
