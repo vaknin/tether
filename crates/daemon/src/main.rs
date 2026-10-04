@@ -9,6 +9,7 @@ mod ipc;
 mod lists;
 mod mpris;
 mod pick;
+mod viewcheck;
 
 use std::{path::PathBuf, process::ExitCode, time::Duration};
 
@@ -145,7 +146,14 @@ enum Cmd {
         reload: bool,
     },
     /// Publish a channel's view (its JSON state) from a file, or from stdin without one or with `-`.
-    View { channel: String, file: Option<PathBuf> },
+    /// With --check, only check a view against what the phone and the panel draw (docs/PLAN.md
+    /// "Blocks"): `tether view --check [<file>|-]`; exit 1 with the problems listed.
+    View {
+        #[arg(long)]
+        check: bool,
+        channel: Option<String>,
+        file: Option<PathBuf>,
+    },
     /// Send the channel's app an action, as the panel would (e.g. '{"action":"refresh"}').
     Action { channel: String, json: String },
     /// Create, change or remove a channel's manifest (~/.config/tether/apps/<name>.toml).
@@ -408,7 +416,27 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             print_channels(&sock, json, reload).await
         }
         Cmd::Channel { cmd } => channel(&sock, cmd).await,
-        Cmd::View { channel, file } => {
+        Cmd::View { check: true, channel, file } => {
+            let file = file.or(channel.map(PathBuf::from));
+            let data = match file {
+                Some(f) if f.as_os_str() != "-" => {
+                    std::fs::read_to_string(&f).with_context(|| format!("read {}", f.display()))?
+                }
+                _ => std::io::read_to_string(std::io::stdin()).context("read stdin")?,
+            };
+            let v: Value = serde_json::from_str(&data).context("a view is JSON")?;
+            let problems = viewcheck::check(&v);
+            if problems.is_empty() {
+                println!("ok");
+                return Ok(());
+            }
+            for p in &problems {
+                println!("{p}");
+            }
+            std::process::exit(1);
+        }
+        Cmd::View { check: false, channel, file } => {
+            let channel = channel.context("which channel? `tether view <channel> [<file>|-]`")?;
             let data = match file {
                 Some(f) if f.as_os_str() != "-" => {
                     std::fs::read_to_string(&f).with_context(|| format!("read {}", f.display()))?
@@ -417,6 +445,10 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             };
             let v: Value = serde_json::from_str(&data).context("a view is JSON")?;
             anyhow::ensure!(v.is_object(), "a view is a JSON object");
+            // Published anyway (the renderers skip what they don't know), but said.
+            for p in viewcheck::check(&v) {
+                eprintln!("tether view: {p}");
+            }
             let data = v.to_string();
             call(&sock, &Request::AppSend { channel, data, live: false, replace: true }).await?;
             println!("queued");

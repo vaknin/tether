@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "badge": 2,
+  "notify": {"title": "Demo", "text": "Something new"},
+  "open_tags": ["7"],
+  "blocks": [
+    {"type": "header", "title": "Demo", "subtitle": "every block the renderers draw"},
+    {"type": "notice", "id": "n", "text": "All good.", "tone": "ok"},
+    {"type": "text", "id": "log", "text": "line one\nline two", "mono": true},
+    {"type": "list", "id": "open", "empty": "Nothing waiting", "items": [
+      {"id": "7", "title": "Install the update?", "text": "Two fixes.", "meta": "dibs", "chips": ["new"],
+       "actions": [{"id": "a7", "label": "Install"}, {"id": "d7", "label": "Skip", "confirm": true}],
+       "details": "- fix one\n- fix two", "reply": {"id": "r7", "placeholder": "Answer…", "submit": "Send"}}
+    ]},
+    {"type": "checklist", "id": "items", "items": [{"id": "milk", "label": "Milk", "checked": false, "actions": [{"id": "rm", "label": "✕", "confirm": true}]}]},
+    {"type": "compose", "id": "say", "placeholder": "Message…", "submit": "Send", "multi": true, "chips": [{"id": "urgent", "label": "Urgent"}]},
+    {"type": "form", "id": "f", "submit": "Save", "fields": [{"id": "name", "label": "Name", "placeholder": "…", "value": "x", "multi": false}]},
+    {"type": "progress", "id": "p", "text": "Working…", "cancel": {"id": "stop", "label": "Stop"}},
+    {"type": "buttons", "id": "b", "items": [{"id": "go", "label": "Go", "style": "primary"}, {"id": "no", "label": "Delete", "style": "danger", "confirm": true}]}
+  ]
+}

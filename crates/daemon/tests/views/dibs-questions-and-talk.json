@@ -1,0 +1,68 @@
+{
+    "v": 1,
+    "badge": 0,
+    "blocks": [
+        {
+            "type": "list",
+            "id": "open",
+            "items": [],
+            "empty": "Nothing waiting"
+        },
+        {
+            "type": "list",
+            "id": "tasks",
+            "items": [
+                {
+                    "id": "t1",
+                    "title": "Task research-e-ink-readers",
+                    "meta": "starting, 0 h 0 min",
+                    "text": "research e-ink readers",
+                    "actions": []
+                }
+            ],
+            "empty": ""
+        },
+        {
+            "type": "list",
+            "id": "talk",
+            "items": [
+                {
+                    "id": "u1",
+                    "text": "what is running right now?",
+                    "meta": "you"
+                },
+                {
+                    "id": "s2",
+                    "text": "Nothing is running. Send task: <what> to start one.",
+                    "meta": "dibs"
+                },
+                {
+                    "id": "u2",
+                    "text": "thanks, and the tether update?",
+                    "meta": "you"
+                },
+                {
+                    "id": "u3",
+                    "text": "task: research e-ink readers",
+                    "meta": "you"
+                },
+                {
+                    "id": "u4",
+                    "text": "still there?",
+                    "meta": "you"
+                }
+            ],
+            "empty": "Write to dibs below: a question, or task: <what> to start a task."
+        },
+        {
+            "type": "compose",
+            "id": "say",
+            "placeholder": "Message dibs\u2026",
+            "submit": "Send"
+        }
+    ],
+    "open_tags": [
+        "1",
+        "s2"
+    ]
+}

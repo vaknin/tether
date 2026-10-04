@@ -1,0 +1,49 @@
+{
+    "v": 1,
+    "badge": 0,
+    "blocks": [
+        {
+            "type": "notice",
+            "id": "usage",
+            "text": "Out of usage until 16:43. dibs carries on by itself then.",
+            "tone": "warn"
+        },
+        {
+            "type": "list",
+            "id": "open",
+            "items": [],
+            "empty": "Nothing waiting"
+        },
+        {
+            "type": "list",
+            "id": "talk",
+            "items": [
+                {
+                    "id": "u1",
+                    "text": "are you there?",
+                    "meta": "you"
+                },
+                {
+                    "id": "s2",
+                    "text": "You're out of usage, so no session can answer yet. I'll answer then (16:43).",
+                    "meta": "dibs"
+                },
+                {
+                    "id": "u2",
+                    "text": "hello?",
+                    "meta": "you"
+                }
+            ],
+            "empty": "Write to dibs below: a question, or task: <what> to start a task."
+        },
+        {
+            "type": "compose",
+            "id": "say",
+            "placeholder": "Message dibs\u2026",
+            "submit": "Send"
+        }
+    ],
+    "open_tags": [
+        "s2"
+    ]
+}

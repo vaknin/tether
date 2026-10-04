@@ -66,7 +66,10 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   never enters the chat; the socket has `app_send/app_subscribe/app_action/channels/thread/list`.
   Create and change channels with `tether channel add|set|rm|ls` (`channel_cmd.rs`), not by hand.
   `show = both|phone|laptop|none` decides where a channel appears (`none`: only apps use it);
-  `dir = auto` (default) gives each text its own direction. Built-in kinds are channels the daemon
+  `dir = auto` (default) gives each text its own direction.
+  `tether view --check [<file>|-]` (`viewcheck.rs`) checks a view against the blocks the phone and the panel
+  draw (docs/PLAN.md "Blocks"); fixture views, dibs's included, are in `crates/daemon/tests/views` and
+  must pass. Publishing a view prints the same problems to stderr. Built-in kinds are channels the daemon
   runs itself: `kind = "list"` (`lists.rs`, `tether list <ch> add|ls|done|undo|rm|clear`) is a
   to-do/shopping list for any channel name, whose state lives in `~/.local/state/tether/lists/`
   and which an app reads with `tether list <ch> ls --pending --json`. New kinds follow that pattern.
