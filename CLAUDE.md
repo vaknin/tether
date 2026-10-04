@@ -95,6 +95,9 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
 - Logging: the ffi's filter is `info,tether_core=debug,iroh=warn,swarm_discovery=error`
   (`crates/ffi/src/lib.rs`), because swarm_discovery logs every failed mDNS send (EPERM) on the phone.
 
+## Commits
+End every commit message with one line `For you: <what the user will notice, in plain words>` (e.g. `For you: the phone stops showing "Queued 4".`). dibs's update question shows these lines instead of the commit titles, which the user found unreadable. A commit the user won't notice (docs, tests) can skip it.
+
 ## Build and test
 Rust is pinned in `mise.toml` (1.98.1). Run `cargo test` and `cargo build --release`.
 Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linux-android` target and
