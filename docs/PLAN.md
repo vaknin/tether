@@ -171,7 +171,7 @@ Daemon: manifests (`apps.rs`, `toml` crate; a bad file is logged and skipped), `
 `thread`, and the watch notice. Socket sends refuse `_`-names (the daemon's own). FCM: a queued view
 wakes only with a non-null top-level `notify`. CLI: `post`, `channels`, `view`, `action`, `thread`.
 ffi: `Event::App.view`, `app_view`, `app_history` (`AppHistoryItem`); `send_app` now dials too.
-Manifest defaults: `title` = name, `glyph` = its first letter, `dir` ltr, `kind` app with `exec`
+Manifest defaults: `title` = name, `glyph` = its first letter, `dir` auto, `kind` app with `exec`
 else thread, `share` false, `notify` true; channels list order is by name.
 
 ### Model
@@ -194,25 +194,39 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 - Taken/delivered `app` items older than 30 days are pruned when the store opens.
 
 ### Data (JSON in `data`; Tether reads only what it draws)
-- View (app → phone/panel, `replace`): `{"v":1, "blocks":[…], "badge":N?, "notify":{"title","text"}?}`.
+- View (app → phone/panel, `replace`): `{"v":1, "blocks":[…], "badge":N?, "notify":{"title","text"}?, "open_tags":[…]?}`.
   `notify` is shown as a notification when that view arrives on the phone (if the channel's
-  manifest allows it); `badge` is the channel's count in the list and the panel strip.
+  manifest allows it); `badge` is the channel's count in the list and the panel strip; `badge: 0`
+  clears all of the channel's notifications on the phone. `open_tags` (2026-10-04) lists the tags
+  of the posts still open: when the view arrives, the phone cancels the channel's tagged
+  notifications not in it, so a question answered anywhere (the laptop too) leaves the lock screen.
+  An app keeps a post's tag in `open_tags` while it is open. Without `open_tags` nothing changes.
   A queued view wakes the phone (FCM) only when it has `notify`; otherwise it waits for the next
   connection, since apps republish their view on every small change.
 - Action (phone/panel → app, queued): `{"action":"<id>", "from":"phone"|"laptop", "uid":"<uuid>",
   "ts":<sender's clock, ms since epoch>, "value":…?, "fields":{…}?}`. `uid` is made by the sender; an app that turns it into a list item
   uses it as the item id, so the sender can drop its pending echo.
 - Live (`Frame::App`): `{"patch":{"<block id>":{…fields to replace}}}` (progress text, say).
-- Thread post (laptop → phone, queued): `{"post":{"text":"…","actions":[{"id","label"}]?}}`;
-  a reply is `{"text":"…","from":…}` or an action.
+- Thread post (laptop → phone, queued): `{"post":{"text":"…","title":"…"?,"tag":"…"?,"actions":[{"id","label"}]?}}`;
+  a reply is `{"text":"…","from":…}` or an action. On the phone `title` is the notification's
+  title (else the channel's; the thread shows it too). Without `tag` a channel has one
+  notification, replaced by its next post; a post with a `tag` gets its own (Android tag
+  `app:<channel>:<tag>`), so one question doesn't take another's buttons, and a later post with
+  the same tag replaces just that one. Channel notifications alert once: a replacement is silent.
+  A button tap cancels only its own notification. Every post wakes the phone (FCM), as before.
 - Channel `_channels` (daemon → phone, a view): `{"v":1,"channels":[{name,title,glyph,accent,dir,kind,share,notify}]}`.
 
 ### Blocks (`{"type":…, "id":…?}` plus the fields below; unknown types are skipped)
 - `header {title, subtitle?}`
 - `notice {text, tone: info|ok|warn|error}`
 - `text {text, mono?}`: multi-line, selectable (a report, say).
-- `list {items:[{id, title?, text, meta?, chips?:[str], actions?:[{id,label,confirm?}]}], empty?}`:
-  an item action sends `{"action":<action id>,"value":{"item":<item id>}}`.
+- `list {items:[{id, title?, text, meta?, chips?:[str], actions?:[{id,label,confirm?}], details?, reply?}], empty?}`:
+  an item action sends `{"action":<action id>,"value":{"item":<item id>}}`. `details` (2026-10-04) is
+  long text behind a small "Details ▾" toggle under the item's text (selectable, line breaks kept;
+  open or shut survives view reloads). `reply` (2026-10-04) `{id, placeholder?: "Answer…", submit?: "Send"}`
+  is a one-line box under the item for a free-text answer: it sends
+  `{"action":<reply id>,"uid","value":{"item":<item id>,"text"}}`, and the text shows as pending (⏳)
+  under the item until a view lists an item with that uid or no longer lists the item.
 - `checklist {items:[{id,label,checked,actions?:[{id,label,confirm?}]}]}`: a tap sends
   `{"action":<block id>,"value":{"item","checked"}}`; an item action (like a list item's) sends
   `{"action":<action id>,"value":{"item":<item id>}}`.
@@ -261,10 +275,10 @@ request, a CLI group, an arm in `apps::run`).
   `channels` (manifests + newest view + badge each), `channels_reload`, `thread{channel,limit}`.
   `watch` also streams `{"type":"app","channel","view":bool}` change notices (no data) for views and
   thread items, so the panel can re-read.
-- CLI: `tether post <ch> <text…> [--action id:label]…`, `tether channels [--json] [--reload]`,
+- CLI: `tether post <ch> <text…> [--title T] [--tag K] [--action id:label]…`, `tether channels [--json] [--reload]`,
   `tether view <ch> [<file>|-]` (publish a view), `tether action <ch> <json>`, `tether thread <ch> [--json]`,
   `tether channel add|set|rm|ls`, `tether list <ch> …` (built-in `list` kind, above).
-- Panel (QML): **built 2026-10-02, not live yet** (the live plugin links to the main checkout).
+- Panel (QML): **built 2026-10-02 and live** (checked end to end with teen-app, below).
   `Channel.qml` draws the blocks (RTL by mirroring; drafts kept by block/field across view
   reloads; ⏳ echo until a view lists the uid; confirm = second press within 4 s); `Panel.qml`
   has the strip (Chat + channels with badges), Ctrl+1…9, Ctrl+K switcher, reload on watch `app`
@@ -273,8 +287,8 @@ request, a CLI group, an arm in `apps::run`).
   toggleChannel teen` (bound 2026-10-02; removed 2026-10-03: the owner uses teen-app's own window on
   the laptop, so `teen.toml` has `laptop = false` and חפיפה stays on the phone only). `TETHER_PANEL_OUTPUT=<output>` is the test mode: that
   output, keyboard focus None (OnDemand took the owner's keystrokes once on a headless output).
-  Checked in an isolated `qs -p` with a fake CLI: rendering of every block, RTL, the action JSON.
-  Not checked: real clicks/keys, Exclusive focus, dropdown with the strip, a real watch notice.
+  Checked in an isolated `qs -p` with a fake CLI: rendering of every block, RTL, the action JSON;
+  then live with teen-app (typing, Enter, Esc). Not checked: Exclusive focus, dropdown with the strip.
   Live progress patches don't reach the panel (watch drops id-less `Event::App`). 
 - Phone: **built and installed 2026-10-02** (merged to master; daemon reinstalled the same day; the
   phone connected and took `_channels`, no crash; the screen itself not yet seen). `Channels.kt` holds the `_channels` list, each view (live `patch` applied until the next
@@ -283,8 +297,8 @@ request, a CLI group, an arm in `apps::run`).
   Chat first, then channels with badges; long press → pin. `ChannelScreen` draws the blocks in the
   channel's direction (Compose `LayoutDirection`), confirm = second press within 4 s. Actions go out
   with `Core.acquire` as queued items (`from:"phone"`, uid, ts). Notifications: channel `app.<name>`
-  (group "Channels") per notifying channel; a view's `notify` and thread posts post one per channel
-  unless it is on screen. Shortcuts `ch.<name>`: dynamic (launcher menu), pinnable, Direct Share
+  (group "Channels") per notifying channel; a view's `notify` and untagged thread posts post one per
+  channel, tagged posts one per tag, unless the channel is on screen (opening it clears them all). Shortcuts `ch.<name>`: dynamic (launcher menu), pinnable, Direct Share
   (category SHARE_TEXT, text/plain) for `share` channels; shared text lands in the first compose.
   Not checked on a device: everything visual, shortcuts, share, notifications.
 - **Checked end to end with teen-app (2026-10-02 evening, made-up data):** phone (adb) RTL layout,
@@ -310,9 +324,10 @@ Research write-up: https://claude.ai/artifact/KEF8NckdLpSGJagxA14wWC. The plan i
   - It carries the user's messages, files, reminders and suspend-guard.
   - Agents don't `tether ping` or `tether msg` the user about their work; they go through dibs.
   - The source of the duplicate pings the user saw is still unconfirmed. In the repos and laptop config, `tether ping` is run only by the reminder `notify` script and suspend-guard.
-- **Stage 1 notifications:**
+- **Stage 1 notifications (built 2026-10-04):**
   - `Notifier.app` alerts once per change.
-  - One dibs question no longer removes another's lock-screen buttons. Today there is one notification per channel, replaced each time.
+  - One dibs question need not remove another's lock-screen buttons: a post with `--tag` gets its own notification, and a view's `open_tags` clears the answered ones. dibs uses both on its side.
+  - Short cards, also for dibs: a list item's `details` (behind a toggle) and `reply` (a free-text answer box); a post's `--title`.
 - **Stage 2:** `tether view --check` validates a view against the blocks `ChannelScreen.kt` and `Channel.qml` draw. Fixture views, dibs's included, are tested here.
 - **Stage 3:**
   - A committed `dibs.toml` and CI, so cloud branches arrive as update questions.

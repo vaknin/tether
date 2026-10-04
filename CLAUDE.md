@@ -70,6 +70,9 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   runs itself: `kind = "list"` (`lists.rs`, `tether list <ch> add|ls|done|undo|rm|clear`) is a
   to-do/shopping list for any channel name, whose state lives in `~/.local/state/tether/lists/`
   and which an app reads with `tether list <ch> ls --pending --json`. New kinds follow that pattern.
+  Channel notifications (`Notifier.app`) alert once: one per channel, or one per post `tag`
+  (`tether post --tag`, Android tag `app:<channel>:<tag>`); a button tap cancels only its own, and a
+  view's `open_tags` cancels the tagged ones it no longer lists.
 - Daemon Phase 3: `mpris.rs` (zbus) holds `org.mpris.MediaPlayer2.tether.pixel` only while the
   phone reports a session. `tether notifications --fresh` wakes the phone (FCM), waits for the
   snapshot and keeps the link up 2 min (rami-login polls it). `tether ring --stop`.
