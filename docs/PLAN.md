@@ -295,3 +295,25 @@ request, a CLI group, an arm in `apps::run`).
   on focus and on `body` height change), since with many notes the compose box was below the
   visible area. A stale view: with no app instance running, `tether channels` showed the last
   published view, not the app's current state.
+
+## Tether's role next to dibs and Capture (decided 2026-10-04)
+Research write-up: https://claude.ai/artifact/KEF8NckdLpSGJagxA14wWC. The plan is recorded in full in dibs's `docs/PLAN.md`.
+
+**The user decided to keep three repos and give each one job.** Tether is where the user sees and answers things: chat, files and channels on the phone and in the laptop panel. dibs decides. Capture holds the notes. A dibs+Tether Cargo workspace is reconsidered only after stage 3 below, and only if branches that must change both repos stay common.
+
+**What this means for Tether:**
+- **The `dibs` channel is phone-only.**
+  - dibs creates the channel itself with `show = "phone"`.
+  - On the laptop, dibs questions stay in dibs's own widget.
+  - The panel no longer draws a second copy.
+- **The Laptop chat is for the user.**
+  - It carries the user's messages, files, reminders and suspend-guard.
+  - Agents don't `tether ping` or `tether msg` the user about their work; they go through dibs.
+  - The source of the duplicate pings the user saw is still unconfirmed. In the repos and laptop config, `tether ping` is run only by the reminder `notify` script and suspend-guard.
+- **Stage 1 notifications:**
+  - `Notifier.app` alerts once per change.
+  - One dibs question no longer removes another's lock-screen buttons. Today there is one notification per channel, replaced each time.
+- **Stage 2:** `tether view --check` validates a view against the blocks `ChannelScreen.kt` and `Channel.qml` draw. Fixture views, dibs's included, are tested here.
+- **Stage 3:**
+  - A committed `dibs.toml` and CI, so cloud branches arrive as update questions.
+  - The badge and the panel share one `tether watch` instead of running two.
