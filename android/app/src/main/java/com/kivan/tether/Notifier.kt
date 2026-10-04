@@ -394,7 +394,9 @@ object Notifier {
             .setShortcutId(Shortcuts.channelId(c.name))
             .setContentIntent(openChannel(context, c.name))
             .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
+            // A tagged post updated in place doesn't alert again; a new untagged post (it replaces
+            // the channel's one) does, as before.
+            .setOnlyAlertOnce(tag != null)
         // Buttons run in the background, so they work from the lock screen without unlocking. A tap
         // clears only its own notification.
         for ((i, a) in actions.take(3).withIndex()) {
@@ -417,9 +419,21 @@ object Notifier {
         cancelTagged(nm, name) { true }
     }
 
-    /** A view's `open_tags`: the channel's tagged notifications not in [open] were answered. */
+    /**
+     * A view's `open_tags`: the channel's tagged notifications not in [open] were answered. One
+     * posted in the last [FRESH_MS] stays: the view may have been made before its post (the app
+     * publishes both, and they can cross), and the next view lists it.
+     */
     fun keepApp(context: Context, name: String, open: Set<String>) {
-        cancelTagged(context.getSystemService(NotificationManager::class.java), name) { it !in open }
+        val fresh = System.currentTimeMillis() - FRESH_MS
+        cancelTagged(context.getSystemService(NotificationManager::class.java), name, fresh) { it !in open }
+    }
+
+    private const val FRESH_MS = 15_000L
+
+    /** The channel's one untagged notification (an older app's post, or a view's `notify`). */
+    fun cancelUntagged(context: Context, name: String) {
+        context.getSystemService(NotificationManager::class.java).cancel(APP_TAG, name.hashCode())
     }
 
     /** One notification, as a button on it names it ([app]). */
@@ -428,11 +442,11 @@ object Notifier {
     }
 
     // Cancels the channel's tagged notifications (`app:<channel>:<tag>`) whose tag [drop] picks.
-    private fun cancelTagged(nm: NotificationManager, name: String, drop: (String) -> Boolean) {
+    private fun cancelTagged(nm: NotificationManager, name: String, before: Long = Long.MAX_VALUE, drop: (String) -> Boolean) {
         val prefix = "$APP_TAG:$name:"
         for (sbn in nm.activeNotifications) {
             val t = sbn.tag ?: continue
-            if (t.startsWith(prefix) && drop(t.removePrefix(prefix))) nm.cancel(t, sbn.id)
+            if (t.startsWith(prefix) && sbn.postTime < before && drop(t.removePrefix(prefix))) nm.cancel(t, sbn.id)
         }
     }
 

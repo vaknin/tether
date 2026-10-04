@@ -161,12 +161,17 @@ object Channels {
                     _views.value = _views.value + (e.channel to v)
                     prunePending()
                     val c = info(e.channel) ?: return
-                    // Nothing waiting: all of the channel's notifications go. `open_tags` lists the
-                    // tagged posts still open; the others were answered (maybe on the laptop).
+                    // `open_tags` lists the tagged posts still current; the others were answered (maybe
+                    // on the laptop). It wins over the badge: a channel with nothing waiting can still
+                    // have news showing (a reply, a card). Without it: nothing waiting, all go.
                     val open = v.optJSONArray("open_tags")
+                    val nothingWaiting = v.optInt("badge", -1) == 0
                     when {
-                        v.optInt("badge", -1) == 0 -> Notifier.clearApp(app, e.channel)
-                        open != null -> Notifier.keepApp(app, e.channel, (0 until open.length()).map { open.optString(it) }.toSet())
+                        open != null -> {
+                            Notifier.keepApp(app, e.channel, (0 until open.length()).map { open.optString(it) }.toSet())
+                            if (nothingWaiting) Notifier.cancelUntagged(app, e.channel)
+                        }
+                        nothingWaiting -> Notifier.clearApp(app, e.channel)
                     }
                     val note = v.optJSONObject("notify")
                     if (c.notify && note != null && !showing(c.name)) {
