@@ -198,13 +198,13 @@ BorderSurface {
 
         MouseArea {
           anchors.fill: parent
-          cursorShape: row.image || row.fileChip ? Qt.PointingHandCursor : Qt.ArrowCursor
+          cursorShape: Qt.PointingHandCursor
           acceptedButtons: Qt.LeftButton | Qt.RightButton
           onClicked: function(mouse) {
             if (row.image || row.fileChip) {
               if (mouse.button === Qt.RightButton) chat.openMenu(bubble.mapToItem(chat, mouse.x, mouse.y), model.path, row.image)
               else ui.openFile(model.path)
-            } else if (mouse.button === Qt.RightButton) {
+            } else {
               ui.copy(model.text)
             }
           }

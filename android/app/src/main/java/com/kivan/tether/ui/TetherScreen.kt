@@ -668,7 +668,7 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
     ) {
         Box(
             Modifier.widthIn(max = maxWidth).clip(shape).background(bg)
-                .combinedClickable(enabled = open != null || copy != null, onClick = { open?.invoke() }, onLongClick = copy),
+                .combinedClickable(enabled = open != null || copy != null, onClick = { (open ?: copy)?.invoke() }, onLongClick = copy),
         ) {
             when {
                 thumb != null -> {
