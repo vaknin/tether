@@ -131,6 +131,21 @@ pub async fn write_msg<T: Serialize>(w: &mut (impl AsyncWrite + Unpin), msg: &T)
 pub async fn read_msg<T: for<'de> Deserialize<'de>>(
     r: &mut (impl AsyncRead + Unpin),
 ) -> Result<Option<T>> {
+    match read_raw(r).await? {
+        Some(buf) => Ok(Some(postcard::from_bytes(&buf)?)),
+        None => Ok(None),
+    }
+}
+
+/// Reads one control frame. The inner error is a frame that arrived whole but doesn't decode (a
+/// newer peer's): the stream is still in step, so the caller can skip it.
+pub async fn read_frame(
+    r: &mut (impl AsyncRead + Unpin),
+) -> Result<Option<std::result::Result<Frame, postcard::Error>>> {
+    Ok(read_raw(r).await?.map(|buf| postcard::from_bytes(&buf)))
+}
+
+async fn read_raw(r: &mut (impl AsyncRead + Unpin)) -> Result<Option<Vec<u8>>> {
     let mut len = [0u8; 4];
     match r.read_exact(&mut len).await {
         Ok(_) => {}
@@ -143,12 +158,27 @@ pub async fn read_msg<T: for<'de> Deserialize<'de>>(
     }
     let mut buf = vec![0u8; len as usize];
     r.read_exact(&mut buf).await.context("truncated frame")?;
-    Ok(Some(postcard::from_bytes(&buf)?))
+    Ok(Some(buf))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_frame_that_does_not_decode_is_skipped_and_the_next_one_reads() {
+        let mut buf = Vec::new();
+        write_msg(&mut buf, &Frame::StopRing).await.unwrap();
+        // A newer peer's frame: an enum variant this build doesn't have.
+        buf.extend_from_slice(&4u32.to_be_bytes());
+        buf.extend_from_slice(&[200, 1, 2, 3]);
+        write_msg(&mut buf, &Frame::Ack { id: Uuid::nil() }).await.unwrap();
+        let mut r = buf.as_slice();
+        assert_eq!(read_frame(&mut r).await.unwrap().unwrap().unwrap(), Frame::StopRing);
+        assert!(read_frame(&mut r).await.unwrap().unwrap().is_err());
+        assert_eq!(read_frame(&mut r).await.unwrap().unwrap().unwrap(), Frame::Ack { id: Uuid::nil() });
+        assert!(read_frame(&mut r).await.unwrap().is_none());
+    }
 
     #[tokio::test]
     async fn frames_round_trip() {

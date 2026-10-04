@@ -232,7 +232,12 @@ impl Store {
     /// Stores an item from the peer. Returns `(message, is_new)`.
     pub fn receive(&self, item: &Item) -> Result<(Message, bool)> {
         if let Some(m) = self.get(item.id)? {
-            return Ok((m, false));
+            if !ghost_of(&m, item) {
+                return Ok((m, false));
+            }
+            // A sender that misread its own stored drop resent it as a nameless file
+            // (until 2026-10-04); now the real item is here, it replaces that row.
+            self.db.execute("DELETE FROM messages WHERE id = ?1", [m.id.to_string()])?;
         }
         let state = match item.body {
             Body::File { .. } => State::Incoming,
@@ -245,13 +250,15 @@ impl Store {
         Ok((msg, true))
     }
 
-    /// A `drop` item removes the channel's items and views (the drop itself is stored after, so
-    /// it is acked and deduped like any item).
+    /// A `drop` item removes the channel's items and views from before it (the drop itself is
+    /// stored after, so it is acked and deduped like any item). One that lands late (the peer was
+    /// offline, or too old to read it) leaves what its sender posted since: the channel was
+    /// set up again after the drop.
     fn drop_thread_for(&self, m: &Message) -> Result<()> {
         if m.kind == "drop" {
             self.db.execute(
-                "DELETE FROM messages WHERE kind IN ('app', 'view') AND channel = ?1",
-                [&m.channel],
+                "DELETE FROM messages WHERE kind IN ('app', 'view') AND channel = ?1 AND ts_ms <= ?2",
+                params![m.channel, m.ts_ms],
             )?;
         }
         Ok(())
@@ -457,6 +464,16 @@ impl Store {
     }
 }
 
+/// A row stored from a drop that its sender resent as a file with no name and no size (a laptop
+/// before 2026-10-04 read stored drops back as files), while `item` is that id's real body.
+fn ghost_of(m: &Message, item: &Item) -> bool {
+    !m.from_me
+        && m.kind == "file"
+        && m.file_name.as_deref().unwrap_or("").is_empty()
+        && m.file_size.unwrap_or(0) == 0
+        && !matches!(item.body, Body::File { .. })
+}
+
 fn to_message(item: &Item, from_me: bool, path: Option<PathBuf>, state: State, read: bool) -> Message {
     let mut channel = None;
     let (kind, text, file_name, file_size, sha256) = match &item.body {
@@ -511,6 +528,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
             "ring" => "ring",
             "app" => "app",
             "view" => "view",
+            "drop" => "drop",
             _ => "file",
         },
         text: r.get(6)?,
@@ -574,6 +592,31 @@ mod tests {
         assert!(b.app_channels().unwrap().is_empty());
         assert_eq!(b.recent(10).unwrap().len(), 1, "the drop isn't chat");
         assert!(!b.receive(&drop.item()).unwrap().1, "deduped, so it is acked once");
+    }
+
+    #[test]
+    fn a_stored_drop_reads_back_as_a_drop() {
+        let a = Store::open_in_memory().unwrap();
+        a.enqueue(Body::DropChannel("teen".into()), None, None).unwrap();
+        let (out, _) = a.outbox().unwrap();
+        assert_eq!(out[0].kind, "drop");
+        assert_eq!(out[0].item().body, Body::DropChannel("teen".into()), "not a nameless file");
+    }
+
+    #[test]
+    fn a_late_drop_keeps_what_was_posted_after_it() {
+        let a = Store::open_in_memory().unwrap();
+        let b = Store::open_in_memory().unwrap();
+        let old = a.enqueue(app("old view", true), None, None).unwrap();
+        b.receive(&old.item()).unwrap();
+        let drop = a.enqueue(Body::DropChannel("teen".into()), None, None).unwrap();
+        // The peer missed the drop (offline, or too old to read it); the channel was set up again.
+        let mut fresh = a.enqueue(app("new view", true), None, None).unwrap().item();
+        fresh.ts_ms = drop.ts_ms + 1;
+        b.receive(&fresh).unwrap();
+        b.receive(&drop.item()).unwrap();
+        let v = b.app_view("teen").unwrap().expect("the newer view survives");
+        assert_eq!(v.id, fresh.id);
     }
 
     #[test]

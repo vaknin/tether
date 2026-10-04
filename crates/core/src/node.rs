@@ -37,7 +37,7 @@ use crate::{
     files,
     proto::{
         ALPN, Body, FileHeader, Frame, MediaCmd, MediaState, PAIR_ALPN, PairReply, PairRequest,
-        PhoneNotif, read_msg, write_msg,
+        PhoneNotif, read_frame, read_msg, write_msg,
     },
     store::{Message, State, Store, now_ms},
 };
@@ -157,6 +157,8 @@ struct Inner {
     kick: Notify,
     stay: AtomicBool,
     receiving: Mutex<HashSet<Uuid>>,
+    /// Ids the peer asked bytes for that aren't a file of mine, logged once each.
+    odd_wants: Mutex<HashSet<Uuid>>,
     media: Mutex<Option<MediaState>>,
     notifs: Mutex<Vec<PhoneNotif>>,
 }
@@ -252,6 +254,7 @@ impl Node {
             kick: Notify::new(),
             stay: AtomicBool::new(false),
             receiving: Mutex::new(HashSet::new()),
+            odd_wants: Mutex::new(HashSet::new()),
             media: Mutex::new(None),
             notifs: Mutex::new(Vec::new()),
         });
@@ -731,9 +734,14 @@ impl Inner {
             anyhow::Ok(())
         };
         let reader = async {
-            while let Some(f) = read_msg::<Frame>(&mut recv).await? {
+            while let Some(f) = read_frame(&mut recv).await? {
                 act.touch();
-                self.on_frame(link, f).await?;
+                match f {
+                    Ok(f) => self.on_frame(link, f).await?,
+                    // A newer peer's frame (a kind of item this build doesn't know): skip it, so the
+                    // rest of the link still works. Its item stays queued on the peer until we update.
+                    Err(e) => debug!(serial = link.serial, "skipped a frame this build can't read: {e}"),
+                }
             }
             anyhow::Ok(())
         };
@@ -797,6 +805,9 @@ impl Inner {
                 }
             }
             Frame::FileWant { id, offset } => {
+                if self.odd_want(id)? {
+                    return Ok(());
+                }
                 let (me, link) = (self.clone(), link.clone());
                 tokio::spawn(async move {
                     if let Err(e) = me.stream_file(&link, id, offset).await {
@@ -852,6 +863,22 @@ impl Inner {
             }
         }
         Ok(())
+    }
+
+    /// A `FileWant` for something that isn't a file of mine (true: nothing to stream). Logged once
+    /// per id and otherwise ignored: the item stays queued until the peer reads it right (an older
+    /// phone kept a drop the laptop had resent as a nameless file; its update replaces that row,
+    /// applies the drop and acks it).
+    fn odd_want(&self, id: Uuid) -> Result<bool> {
+        let msg = self.db(|s| s.get(id))?;
+        if msg.as_ref().is_some_and(|m| m.from_me && m.kind == "file") {
+            return Ok(false);
+        }
+        if self.odd_wants.lock().unwrap().insert(id) {
+            let what = msg.map_or("unknown".to_string(), |m| format!("{} ({:?}, from_me {})", m.kind, m.state, m.from_me));
+            warn!("the peer asked for the bytes of {id}, which isn't a file of mine: {what}");
+        }
+        Ok(true)
     }
 
     /// Gives up on a file of mine that can't be sent: cancelled like [`Node::cancel`], so the

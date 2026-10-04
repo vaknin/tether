@@ -49,6 +49,17 @@ impl Node {
     }
 }
 
+/// A delivered drop emits no event (it isn't chat), so poll.
+async fn until_delivered(n: &Node, id: Uuid) {
+    timeout(WAIT, async {
+        while n.db_state(id) != State::Delivered {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("not delivered");
+}
+
 fn msg_in(e: &Event, id: Uuid, state: State) -> bool {
     matches!(e, Event::Message(m) if m.id == id && m.state == state)
 }
@@ -183,6 +194,58 @@ async fn a_file_without_a_path_fails_once_instead_of_every_link() {
     let e = wait_for(&mut ea, |e| matches!(e, Event::SendFailed { .. })).await;
     assert!(matches!(e, Event::SendFailed { id, .. } if id == f.id));
     wait_for(&mut ea, |e| msg_in(e, f.id, State::Cancelled)).await;
+    assert_eq!(a.status().unwrap().queued, 0);
+}
+
+#[tokio::test]
+async fn a_file_want_for_something_not_a_file_of_mine_is_ignored() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    b.shutdown().await;
+    let drop = a.inner.db(|s| s.enqueue(Body::DropChannel("dibs".into()), None, None)).unwrap();
+    // A peer that took the drop for a file it waits bytes for asks for them on every link.
+    let b = start(d.path(), "b").await;
+    let fake = crate::proto::Item { id: drop.id, seq: drop.seq, ts_ms: drop.ts_ms, expires_ms: None,
+        body: Body::File { name: "x".into(), size: 10, sha256: [0; 32] } };
+    b.inner.db(|s| s.receive(&fake)).unwrap();
+
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    timeout(WAIT, async {
+        while !a.inner.odd_wants.lock().unwrap().contains(&drop.id) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the FileWant never came");
+    // Nothing was streamed or failed: it waits, and the link carries on.
+    assert_eq!(a.db_state(drop.id), State::Queued);
+    let mut eb = b.events();
+    let m = a.send_text("still fine").unwrap();
+    wait_for(&mut eb, |e| msg_in(e, m.id, State::Received)).await;
+}
+
+#[tokio::test]
+async fn a_ghost_file_from_a_misread_drop_becomes_the_drop() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    let post = a.inner.db(|s| s.enqueue(Body::App { channel: "ramitest".into(), data: "{}".into(), replace: false }, None, None)).unwrap();
+    b.shutdown().await;
+    let drop = a.inner.db(|s| s.enqueue(Body::DropChannel("ramitest".into()), None, None)).unwrap();
+    // The laptop used to resend its stored drops as nameless files, so the phone kept one of
+    // these, waiting for bytes, and the laptop failed it on every link (2026-10-04).
+    let b = start(d.path(), "b").await;
+    b.inner.db(|s| s.receive(&post.item())).unwrap();
+    let ghost = crate::proto::Item { id: drop.id, seq: drop.seq, ts_ms: drop.ts_ms, expires_ms: None,
+        body: Body::File { name: String::new(), size: 0, sha256: [0; 32] } };
+    b.inner.db(|s| s.receive(&ghost)).unwrap();
+
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    until_delivered(&a, drop.id).await;
+    let row = b.inner.db(|s| s.get(drop.id)).unwrap().unwrap();
+    assert_eq!(row.kind, "drop");
+    assert!(b.inner.db(|s| s.app_channels()).unwrap().is_empty(), "the drop went through");
     assert_eq!(a.status().unwrap().queued, 0);
 }
 
