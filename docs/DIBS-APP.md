@@ -24,7 +24,9 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
      it was; a tap opens it whole (the task's report, its other lines, then all of what they asked, folded
      again since it was written for the agent), a long press copies it. dibs folds the lines (`src/recap.rs`): a task's `dibs did`s, shipped "For you" lines, its
      report and dibs's closing line are one entry, as are a handoff chain's sessions.
-- Above the tabs, when it applies: **"dibs has your phone · Take it back"** (lending, task #19).
+- Above the tabs, two lend toggles, **Phone** and **Laptop** (task #29, the user's word 48): each says "Yours" or
+  "lent to dibs" with dibs's line (until when, who is on it), and one tap lends it or takes it back. A dibs
+  without `lends` gets the older bar, **"dibs has your phone · Take it back"** (task #19).
 
 ## Chat: modern, tidy, never overwhelming (the user, 2026-10-05, words 31 and 32)
 
@@ -87,6 +89,8 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
   "v": 1, "now": 1791213484,
   "state": {"brain": "running|idle|off", "busy": true, "line": "dibs is on it", "usage": "…"?},
   "lend": {"until": 1791215000, "holder": "rami-0f", "waiting": 2, "text": "Until 15:40 · …"}?,
+  "lends": {"phone": {"lent": false, "text": "", "until": null, "action": "phone-lend"},
+            "laptop": {"lent": true, "text": "Until you take it back · rami-0f is on it", "until": 1791240000, "action": "laptop-back"}}?,
   "talk": [{"id": "64", "who": "user|dibs", "text": "full text", "short": "…"?, "ts": 1791212701,
             "note": true?, "ask": {"q": 249, "actions": [{"id","label","style"}], "reply": true,
                                    "outcome": "Inside Tether"?}?,
@@ -114,7 +118,9 @@ Today's ids stay: `a|d|y|n|x|k<id>`, `r<id>` (typed answer), `w<id>` (away "Got 
 (hide), `say` (`value.text`). New: `say` with `value.files` (ids of files sent to the channel, below),
 `peek` (`value.who`), `tell` (`value.task`, `value.text`), `stop` (`value.task`), `reopen` (`value.reopen`: an open
 Recap row's "Open on laptop" resumes that saved chat in a tab on the laptop, task #32), `undo` (`value.item`:
-handed to the brain as the user's request), `phone-back` (task #19).
+handed to the brain as the user's request), `phone-back` (task #19), `phone-lend`, `laptop-lend`, `laptop-back` (task #29: a toggle sends its
+`action` as is; a tap seen more than 10 min late lends nothing, and taps made while an agent works the phone's
+screen lend nothing either).
 `ack-decided` (`value.items`: the decision ids the Waiting tab showed; "Got it to all", questions
 among them stay open). `badges.waiting` counts questions only.
 
