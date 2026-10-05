@@ -38,18 +38,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.EchoRow
 import com.kivan.tether.dibs.LineRow
+import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.duration
 import com.kivan.tether.dibs.ranMinutes
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Palette
+import com.kivan.tether.dibs.ui.theme.Pill
 import com.kivan.tether.dibs.ui.theme.Space
 
 // A task's page (docs/DIBS-APP.md, "Your tasks"): its state and times, its open questions, what it
@@ -178,7 +181,7 @@ private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
         }
     }
     val result = t.result
-    if (result != null && result.shipped.isNotEmpty()) {
+    if (result != null && (result.reportMd || result.shipped.isNotEmpty())) {
         item(key = "_result") { ResultBlock(t) }
     }
     if (t.asked.isNotBlank()) {
@@ -189,6 +192,7 @@ private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
             }
         }
     }
+    item(key = "_transcript") { TranscriptLink(t) }
 }
 
 /** Its state in words, then when it started, how long it ran, when it finished. */
@@ -212,6 +216,17 @@ private fun ResultBlock(t: YourTask) {
     val result = t.result ?: return
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         Section("Result")
+        if (result.reportMd) {
+            Row(
+                Modifier.clip(Pill).background(Palette.AccentDim).clickable { Dibs.open(Page.Report(t.id)) }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(painterResource(R.drawable.lucide_file_text), null, Modifier.size(16.dp), tint = Palette.Accent)
+                Text("Report", style = AppType.label, color = Palette.Accent)
+            }
+        }
         for (s in result.shipped) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 val changes = if (s.changes == 1) "1 change" else "${s.changes} changes"
@@ -224,6 +239,24 @@ private fun ResultBlock(t: YourTask) {
                 }
             }
         }
+    }
+}
+
+/** "Transcript": everything it did and said, from the top, on its own screen. */
+@Composable
+private fun TranscriptLink(t: YourTask) {
+    Row(
+        Modifier.padding(top = Space.S).card().clip(MaterialTheme.shapes.medium).clickable { Dibs.open(Page.Transcript(t.id)) }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(painterResource(R.drawable.lucide_scroll_text), null, Modifier.size(18.dp), tint = Palette.Muted)
+        Column(Modifier.weight(1f)) {
+            Text("Transcript", style = AppType.body, color = Palette.Text)
+            Text("Everything it did and said", style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(18.dp), tint = Palette.Muted)
     }
 }
 

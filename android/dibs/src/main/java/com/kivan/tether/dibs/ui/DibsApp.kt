@@ -107,7 +107,8 @@ fun DibsApp() {
         ) {
             when (page) {
                 is Page.Task -> TaskPage(page.id, view)
-                else -> LaunchedEffect(page) { Dibs.back() }
+                is Page.Transcript -> TranscriptScreen(page.id, view)
+                is Page.Report -> ReportScreen(page.id, view)
             }
         }
         return
