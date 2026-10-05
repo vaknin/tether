@@ -3,6 +3,9 @@ package com.kivan.tether.dibs.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,18 +27,23 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
+import com.kivan.tether.dibs.EchoRow
+import com.kivan.tether.dibs.LineRow
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.duration
@@ -45,8 +53,10 @@ import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
 
 // A task's page (docs/DIBS-APP.md, "Your tasks"): its state and times, its open questions, what it
-// did, its result, what was asked, the transcript, and the chat with its own agent.
+// did, its result, what was asked, the transcript, and the chat with its own agent. The chat goes
+// straight to that agent's session (`task-say`), not to dibs's brain; it reuses the dibs chat's parts.
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TaskPage(id: Long, view: DibsView) {
     val t = view.task(id) ?: return Gone()
@@ -55,18 +65,64 @@ internal fun TaskPage(id: Long, view: DibsView) {
     // Open: it's read, and its ping goes (again whenever new lines arrive while it's open).
     val newest = t.talk.lastOrNull()?.id
     LaunchedEffect(id, newest) { Dibs.seenTask(t) }
+
+    val all by Dibs.pending.collectAsStateWithLifecycle()
+    val pending = remember(all, id) { all.filter { it.task == id } }
+    val look = remember(id, t.label) { ChatLook(name = t.label, hide = false, days = "day:t$id:") }
+    val rows = rememberChatRows(t.talk, pending, look)
+    val echoes = remember(pending) { pending.associateBy { it.uid } }
+
     val state = rememberLazyListState()
+    val last = rows.lastOrNull()
+    val lastMine = last is EchoRow || (last is LineRow && last.line.mine)
+    var placed by remember(id) { mutableStateOf(false) }
+    LaunchedEffect(last?.key, t.busy) {
+        val total = state.layoutInfo.totalItemsCount
+        if (total == 0) return@LaunchedEffect
+        val nearEnd = (state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= total - 3
+        // First: at the top (the report), unless the agent has replied since the page was last open.
+        val follow = if (!placed) {
+            val line = t.talk.lastOrNull()
+            line != null && !line.mine && !line.note && t.talk.any { it.mine } && Dibs.chatSeen[id] != line.id
+        } else {
+            nearEnd || lastMine
+        }
+        placed = true
+        if (follow) state.animateScrollToItem(total - 1)
+    }
+    val newestNow by rememberUpdatedState(newest)
+    DisposableEffect(id) { onDispose { newestNow?.let { Dibs.chatSeen[id] = it } } }
+    // Typing to it: the newest lines stay in sight above the keyboard.
+    val typing = WindowInsets.isImeVisible
+    LaunchedEffect(typing) {
+        val total = state.layoutInfo.totalItemsCount
+        if (typing && total > 0) state.animateScrollToItem(total - 1)
+    }
 
     Column(Modifier.fillMaxSize()) {
         PageBar(t.label, t.project) { TaskActions(t, view, armed) }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
             state = state,
-            contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
-            verticalArrangement = Arrangement.spacedBy(Space.S),
+            contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.S),
         ) {
             summary(t, view, now)
+            item(key = "_chat") {
+                Column(verticalArrangement = Arrangement.spacedBy(Space.XS)) {
+                    Section("Chat")
+                    if (rows.isEmpty()) {
+                        Text(
+                            "Ask ${t.label} about what it did and why, or point it somewhere new. Photos and files can go along too.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Palette.Muted,
+                        )
+                    }
+                }
+            }
+            chatItems(rows, echoes, look)
+            if (t.busy) item(key = "_busy") { Typing("${t.label} is on it") }
         }
+        InputArea(Dibs.box(id), "Message ${t.label}…")
     }
 }
 
@@ -108,7 +164,7 @@ private fun TaskActions(t: YourTask, view: DibsView, armed: Armed) {
 private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
     item(key = "_state") { StateBlock(t, now) }
     val questions = view.questions.filter { it.id in t.questions && "q${it.id}" !in Dibs.answered }
-    items(questions, key = { "q${it.id}" }) { q -> QuestionCard(q, now, Modifier.animateItem()) }
+    items(questions, key = { "q${it.id}" }) { q -> QuestionCard(q, now, Modifier.animateItem().padding(top = Space.S)) }
 
     item(key = "_did") {
         Column(verticalArrangement = Arrangement.spacedBy(Space.XS)) {

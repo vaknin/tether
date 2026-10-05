@@ -148,6 +148,9 @@ object Dibs {
     /** A tab asked for by an intent (a notification, a shortcut), taken by the screen. */
     var tab by mutableStateOf<String?>(null)
 
+    /** Each task's newest chat line when its page was last open: a reply since opens the page at the chat. */
+    val chatSeen = HashMap<Long, String>()
+
     /** The pages over the tabs, the top one last; system back pops it. */
     val pages = mutableStateListOf<Page>()
 
