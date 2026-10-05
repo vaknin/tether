@@ -11,7 +11,6 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import com.kivan.tether.core.TetherNode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -34,7 +33,7 @@ import java.util.concurrent.Executors
  * The phone looks up its port itself (NsdManager) only with ACCESS_LOCAL_NETWORK: without it,
  * Android 17 answers a discovery with a picker screen instead (seen 2026-10-05).
  *
- * Ask: `{"op":"endpoint","enable":bool}`. Answer: `adb_wifi` (Wireless debugging on, null when
+ * Ask: `{"op":"endpoint","id":str,"enable":bool}`. Answer: `id` (the ask's), `adb_wifi` (Wireless debugging on, null when
  * unreadable), `wifi` (on a Wi-Fi network), `addrs` (its IPv4 `ip/prefix`), `port` (the TLS port,
  * checked to be listening; null when not found), `name` (the service name), `can_enable`
  * (WRITE_SECURE_SETTINGS granted), `enabled` (this answer turned it on), `refused` (Android turned it
@@ -45,18 +44,27 @@ object Adb {
     private const val TAG = "Tether"
     private const val SETTING = "adb_wifi_enabled"
     private const val SERVICE = "_adb-tls-connect._tcp"
-    private const val HOLD = "adb"
+    private const val HOLD = "adb:"
     private const val DISCOVER_MS = 6_000L
     private const val ENABLE_MS = 4_000L
     private const val LOCK_MS = 20_000L
     /** Android 17 (API 37) gates mDNS discovery behind this runtime permission. */
     private const val LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
+    /**
+     * Runs NsdManager's callbacks. One for the process, never shut down: NsdManager still delivers
+     * to it after a lookup ends (the unregister confirmation), and a shut-down executor rejects
+     * that on the system's thread, which crashed the app.
+     */
+    private val exec by lazy { Executors.newSingleThreadExecutor() }
 
     fun onAsk(context: Context, data: String) {
         val ask = runCatching { JSONObject(data) }.getOrNull() ?: return
         if (ask.optString("op") != "endpoint") return
+        val id = ask.optString("id")
+        // Each ask holds the node under its own name, so one finishing doesn't drop another's hold.
+        val hold = HOLD + id.ifEmpty { System.nanoTime().toString() }
         Core.scope.launch {
-            val node = Core.acquire(HOLD)
+            val node = Core.acquire(hold)
             val lock = context.getSystemService(WifiManager::class.java)
                 .createMulticastLock("tether-adb").apply { setReferenceCounted(false) }
             lock.acquire()
@@ -67,10 +75,11 @@ object Adb {
             try {
                 val answer = runCatching { answer(context.applicationContext, ask.optBoolean("enable")) }
                     .getOrElse { JSONObject().put("error", it.toString()) }
+                answer.put("id", id)
                 Log.i(TAG, "adb: $answer")
                 node.sendAppLive(CHANNEL, answer.toString())
             } finally {
-                Core.release(HOLD)
+                Core.release(hold)
             }
         }
     }
@@ -134,8 +143,10 @@ object Adb {
     private suspend fun discover(context: Context, own: Set<InetAddress>): Pair<String, Int>? {
         val nsd = context.getSystemService(NsdManager::class.java)
         val found = CompletableDeferred<Pair<String, Int>>()
-        val exec = Executors.newSingleThreadExecutor()
         val resolving = mutableListOf<NsdManager.ServiceInfoCallback>()
+        // Set once the lookup is over: a service found after that (discovery stops asynchronously)
+        // isn't resolved, or its callback would never be unregistered.
+        var over = false
         val listener = object : NsdManager.DiscoveryListener {
             override fun onServiceFound(info: NsdServiceInfo) {
                 val cb = object : NsdManager.ServiceInfoCallback {
@@ -147,8 +158,10 @@ object Adb {
                     override fun onServiceLost() {}
                     override fun onServiceInfoCallbackUnregistered() {}
                 }
-                runCatching { nsd.registerServiceInfoCallback(info, exec, cb) }
-                    .onSuccess { synchronized(resolving) { resolving += cb } }
+                synchronized(resolving) {
+                    if (over) return
+                    runCatching { nsd.registerServiceInfoCallback(info, exec, cb) }.onSuccess { resolving += cb }
+                }
             }
             override fun onServiceLost(info: NsdServiceInfo) {}
             override fun onDiscoveryStarted(serviceType: String) {}
@@ -164,8 +177,10 @@ object Adb {
             withTimeoutOrNull(DISCOVER_MS) { runCatching { found.await() }.getOrNull() }
         } finally {
             runCatching { nsd.stopServiceDiscovery(listener) }
-            synchronized(resolving) { resolving.forEach { runCatching { nsd.unregisterServiceInfoCallback(it) } } }
-            exec.shutdown()
+            synchronized(resolving) {
+                over = true
+                resolving.forEach { runCatching { nsd.unregisterServiceInfoCallback(it) } }
+            }
         }
     }
 

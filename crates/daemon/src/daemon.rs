@@ -39,9 +39,10 @@ const FRESH_HOLD: Duration = Duration::from_secs(120);
 const WAKE_WAIT: Duration = Duration::from_secs(25);
 /// The live channel the phone app answers "where is adb?" on (`Adb.kt`).
 const ADB_CHANNEL: &str = "_adb";
-/// How long `adb` waits for the phone's answer, wake included (the phone may turn Wireless
-/// debugging on and look for its port first, ~10 s at most).
-const ADB_WAIT: Duration = Duration::from_secs(40);
+/// How long `adb` waits for the phone's answer, wake included: a wake can be held back up to
+/// `fcm::WAKE_GAP` after the last one, and the phone may turn Wireless debugging on and look for
+/// its port first (~10 s at most).
+const ADB_WAIT: Duration = Duration::from_secs(60);
 /// After an `adb` request the link stays open this long, so a second ask is instant.
 const ADB_HOLD: Duration = Duration::from_secs(30);
 
@@ -111,11 +112,12 @@ impl Ctx {
     /// Keeps the link open for `dur` (or longer, if an earlier call asked for more).
     fn hold(&self, dur: Duration) {
         let until = Instant::now() + dur;
-        let prev = self.hold_until.lock().unwrap().replace(until);
-        if let Some(p) = prev.filter(|p| *p > until) {
-            *self.hold_until.lock().unwrap() = Some(p);
-        }
-        let start = prev.is_none();
+        let start = {
+            let mut slot = self.hold_until.lock().unwrap();
+            let prev = *slot;
+            *slot = Some(prev.map_or(until, |p| p.max(until)));
+            prev.is_none()
+        };
         self.node.set_stay(true);
         if start {
             let me = self.clone();
@@ -175,13 +177,22 @@ impl Ctx {
         if node.is_connected() {
             return Ok(());
         }
-        if let Some(w) = &self.wake {
-            let _ = w.send(());
-            if tokio::time::timeout(WAKE_WAIT, connected(&mut rx)).await.is_ok_and(|up| up) {
-                return Ok(());
-            }
+        let Some(w) = &self.wake else { return node.connect().await };
+        let _ = w.send(());
+        // Dial meanwhile: a phone that is up (or a wake held back by the FCM gap) needs no wait.
+        let woke = tokio::time::timeout(WAKE_WAIT, connected(&mut rx));
+        tokio::pin!(woke);
+        tokio::select! {
+            r = node.connect() => match r {
+                Ok(()) => return Ok(()),
+                Err(e) if woke.await.is_ok_and(|up| up) => { let _ = e; }
+                Err(e) => return Err(e),
+            },
+            up = &mut woke => if !up.is_ok_and(|up| up) {
+                return node.connect().await;
+            },
         }
-        node.connect().await
+        Ok(())
     }
 
     /// Asks the phone where its adb listens (`tether adb`; dibs reconnects adb with it): wakes it
@@ -191,20 +202,30 @@ impl Ctx {
         let node = &self.node;
         let mut rx = node.events();
         self.hold(ADB_HOLD);
-        let ask = json!({ "op": "endpoint", "enable": enable }).to_string();
+        // The answer echoes the id, so concurrent or late answers go to the right call.
+        let id = uuid::Uuid::new_v4().to_string();
+        let ask = json!({ "op": "endpoint", "id": id, "enable": enable }).to_string();
         let mut linked = node.is_connected();
         let run = async {
-            if !linked {
+            if linked {
+                anyhow::ensure!(node.send_app_live(ADB_CHANNEL, ask.clone()), "the link dropped");
+            } else {
                 let w = self.wake.as_ref().context("the phone isn't connected and there is no FCM key to wake it")?;
                 let _ = w.send(());
-                anyhow::ensure!(connected(&mut rx).await, "the daemon is stopping");
-                linked = true;
             }
-            anyhow::ensure!(node.send_app_live(ADB_CHANNEL, ask), "the link dropped");
             loop {
                 match rx.recv().await {
                     Ok(Event::App { id: None, channel, data, .. }) if channel == ADB_CHANNEL => {
-                        return Ok(parse(&data));
+                        let v = parse(&data);
+                        if v["id"] == id.as_str() {
+                            return Ok(v);
+                        }
+                    }
+                    // Asked again on every new link: when both sides dial at once, the link that
+                    // carried the ask may be the one closed. The phone answers each ask.
+                    Ok(Event::Connected) => {
+                        linked = true;
+                        let _ = node.send_app_live(ADB_CHANNEL, ask.clone());
                     }
                     Err(RecvError::Closed) => anyhow::bail!("the daemon is stopping"),
                     Ok(_) | Err(RecvError::Lagged(_)) => {}
