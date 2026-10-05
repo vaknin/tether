@@ -47,6 +47,8 @@ data class Question(
     val reply: String?,
     val phoneSecs: Long?,
     val phoneUnlock: Boolean,
+    /** Asked by one of the user's tasks ([YourTask.id]). */
+    val task: Long? = null,
 )
 
 data class Decision(val id: Long, val text: String, val why: String, val from: String, val ts: Long, val undo: Boolean, val ack: String)
@@ -64,6 +66,8 @@ data class Task(
     val status: String?,
     /** Its live session's pid: what a peek asks for. */
     val pid: Long? = null,
+    /** dibs started it by itself (not one of the user's tasks). */
+    val background: Boolean = false,
 )
 
 data class Session(val name: String, val repo: String?, val branch: String?, val status: String, val task: String?, val holds: List<String>)
@@ -97,12 +101,14 @@ data class FeedItem(
     val id: String? = null,
     /** Its saved Claude chat, when dibs can resume it in a tab on the laptop (action `reopen`). */
     val reopen: String? = null,
+    /** One of the user's tasks: a tap opens its page (dibs then sends no report or more). */
+    val task: Long? = null,
 ) {
     /** What keeps its row open while new lines arrive. */
     val key: String get() = "feed:" + (id ?: "$ts:$who")
 
     /** A tap shows more than the folded row does. */
-    val opens: Boolean get() = asked != null || more.isNotEmpty() || report != null || reopen != null
+    val opens: Boolean get() = task == null && (asked != null || more.isNotEmpty() || report != null || reopen != null)
 
     /** Everything, as plain text (Copy). */
     fun full(): String = buildString {
@@ -117,7 +123,61 @@ data class Lend(val until: Long?, val holder: String?, val text: String)
 
 data class State(val brain: String?, val busy: Boolean, val line: String?, val usage: String?)
 
-data class Badges(val waiting: Int, val work: Int, val recap: Int)
+data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
+
+/** Where a task's work went: "Shipped to tether · 3 changes" and their For you lines. */
+data class Shipped(val repo: String, val changes: Int, val forYou: List<String>)
+
+data class TaskResult(
+    /** The task wrote a REPORT.md (the phone asks for it with `fetch`). */
+    val reportMd: Boolean,
+    val shipped: List<Shipped>,
+)
+
+/**
+ * One of the user's own tasks (docs/DIBS-APP.md, "Your tasks"): it waits in the Tasks tab from its
+ * start until they tick it off. Its [talk] is the chat with its own agent (who: user, agent, note).
+ */
+data class YourTask(
+    val id: Long,
+    val title: String,
+    val name: String,
+    /** The repo it worked in, or "Other". */
+    val project: String,
+    /** needs | working | paused | done | stopped | failed */
+    val state: String,
+    /** Its newest activity. */
+    val ts: Long,
+    val started: Long,
+    val finished: Long? = null,
+    /** How long it ran, once finished. */
+    val minutes: Long? = null,
+    /** What changed, or what it's doing now. */
+    val line: String = "",
+    /** The user's words, whole. */
+    val asked: String = "",
+    /** Its report, whole, once finished. */
+    val report: String? = null,
+    val result: TaskResult? = null,
+    /** Its open questions' ids (the same as [DibsView.questions]). */
+    val questions: List<Long> = emptyList(),
+    /** Its session is working now. */
+    val busy: Boolean = false,
+    /** It has a live session. */
+    val live: Boolean = false,
+    /** Finished and not opened yet. */
+    val unread: Boolean = false,
+    /** When the user ticked it off. */
+    val ticked: Long? = null,
+    /** The chat with its agent, the last 30 lines, oldest first. */
+    val talk: List<TalkLine> = emptyList(),
+) {
+    /** Its name as the screens show it. */
+    val label: String get() = title.ifBlank { name }.ifBlank { "Task $id" }
+
+    /** It has ended one way or another: done, stopped or failed. */
+    val finishedState: Boolean get() = state == "done" || state == "stopped" || state == "failed"
+}
 
 data class DibsView(
     /** dibs's clock when it published. */
@@ -134,7 +194,11 @@ data class DibsView(
     val feed: List<FeedItem>,
     val lend: Lend?,
     val badges: Badges,
+    /** The user's own tasks; null from a dibs that doesn't send them (it shows the old Work tab). */
+    val yours: List<YourTask>? = null,
 ) {
+    fun task(id: Long): YourTask? = yours?.firstOrNull { it.id == id }
+
     companion object {
         /** The payload of a whole channel view, or null when dibs sent none (an older dibs). */
         fun ofView(view: JSONObject?): DibsView? = view?.optJSONObject("dibs")?.let(::parse)
@@ -154,7 +218,10 @@ data class DibsView(
                 tasks = o.optJSONArray("tasks").objects().map {
                     val started = it.optLong("started")
                     val minutes = if (started > 0) (System.currentTimeMillis() / 1000 - started) / 60 else it.optLong("minutes")
-                    Task(it.optLong("id"), it.optString("name"), it.optString("state"), it.str("repo"), minutes, it.optString("text"), it.str("doing"), it.str("status"), it.optLong("pid").takeIf { p -> p > 0 })
+                    Task(
+                        it.optLong("id"), it.optString("name"), it.optString("state"), it.str("repo"), minutes, it.optString("text"), it.str("doing"),
+                        it.str("status"), it.optLong("pid").takeIf { p -> p > 0 }, it.optBoolean("background"),
+                    )
                 },
                 sessions = o.optJSONArray("sessions").objects().map {
                     Session(it.optString("name"), it.str("repo"), it.str("branch"), it.optString("status"), it.str("task"), it.optJSONArray("holds").strings())
@@ -168,12 +235,52 @@ data class DibsView(
                     FeedItem(
                         it.optLong("ts"), it.optString("kind"), it.optString("who"), it.optString("text"),
                         it.str("repo"), it.str("why"), it.str("asked"), it.optJSONArray("more").strings(), it.str("report"), it.str("id"), it.str("reopen"),
+                        it.long("task"),
                     )
                 },
                 lend = o.optJSONObject("lend")?.let { Lend(it.optLong("until").takeIf { u -> u > 0 }, it.str("holder"), it.optString("text")) },
-                badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap")),
+                badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap"), b.optInt("tasks")),
+                yours = if (o.has("yours")) o.optJSONArray("yours").objects().map(::yourTask) else null,
             )
         }
+
+        private fun yourTask(o: JSONObject): YourTask {
+            val r = o.optJSONObject("result")
+            return YourTask(
+                id = o.optLong("id"),
+                title = o.optString("title"),
+                name = o.optString("name"),
+                project = o.str("project") ?: "Other",
+                state = o.optString("state"),
+                ts = o.optLong("ts"),
+                started = o.optLong("started"),
+                finished = o.long("finished"),
+                minutes = if (o.has("minutes") && !o.isNull("minutes")) o.optLong("minutes") else null,
+                line = o.optString("line"),
+                asked = o.optString("asked"),
+                report = o.str("report"),
+                result = r?.let {
+                    TaskResult(
+                        it.optBoolean("report_md"),
+                        it.optJSONArray("shipped").objects().map { s -> Shipped(s.optString("repo"), s.optInt("changes"), s.optJSONArray("for_you").strings()) },
+                    )
+                },
+                questions = o.optJSONArray("questions").let { a -> if (a == null) emptyList() else (0 until a.length()).map { a.optLong(it) } },
+                busy = o.optBoolean("busy"),
+                live = o.optBoolean("live"),
+                unread = o.optBoolean("unread"),
+                ticked = o.long("ticked"),
+                talk = o.optJSONArray("talk").objects().map { l ->
+                    val who = l.optString("who")
+                    TalkLine(
+                        id = l.optString("id"), n = 0, mine = who == "user", text = l.optString("text"), short = l.str("short"),
+                        note = who == "note", ts = l.optLong("ts"), files = files(l.optJSONArray("files")), ask = null,
+                    )
+                },
+            )
+        }
+
+        private fun files(a: JSONArray?) = a.objects().map { FileRef(it.optString("id"), it.optString("name"), it.optLong("size"), it.optBoolean("image")) }
 
         private fun talkLine(o: JSONObject) = TalkLine(
             id = o.optString("id"),
@@ -183,7 +290,7 @@ data class DibsView(
             short = o.str("short"),
             note = o.optBoolean("note"),
             ts = o.optLong("ts"),
-            files = o.optJSONArray("files").objects().map { FileRef(it.optString("id"), it.optString("name"), it.optLong("size"), it.optBoolean("image")) },
+            files = files(o.optJSONArray("files")),
             ask = o.optJSONObject("ask")?.let { a ->
                 Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"))
             },
@@ -205,6 +312,7 @@ data class DibsView(
                 reply = o.str("reply"),
                 phoneSecs = phone?.optLong("secs"),
                 phoneUnlock = phone?.optBoolean("unlock") == true,
+                task = o.long("task"),
             )
         }
 
@@ -214,6 +322,9 @@ data class DibsView(
 
 /** A string field, or null when it's missing, null or empty. */
 private fun JSONObject.str(k: String): String? = if (isNull(k)) null else optString(k).takeIf { it.isNotEmpty() }
+
+/** A number field, or null when it's missing or null. */
+private fun JSONObject.long(k: String): Long? = if (!has(k) || isNull(k)) null else optLong(k)
 
 private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
 

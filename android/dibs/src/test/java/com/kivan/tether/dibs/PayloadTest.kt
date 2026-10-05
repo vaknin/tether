@@ -128,5 +128,59 @@ class PayloadTest {
         assertEquals("question", q.kind)
         assertNull(q.reply)
         assertNull(q.phoneSecs)
+        assertNull("an older dibs sends no yours: the old Work tab", d.yours)
+        assertNull(q.task)
+    }
+
+    // As dibs's src/yours.rs writes it (app 0.5.0 and newer).
+    @Test
+    fun yourTasks() {
+        val d = DibsView.parse(
+            JSONObject(
+                """{"badges": {"waiting": 1, "work": 0, "recap": 0, "tasks": 2},
+                  "questions": [{"id": 249, "title": "Which one?", "task": 31}],
+                  "recap": {"feed": [{"id": "t31", "ts": 9, "kind": "done", "who": "recap", "text": "Recap folds", "task": 31}]},
+                  "tasks": [{"id": 40, "name": "tidy", "state": "running", "background": true}],
+                  "yours": [
+                    {"id": 31, "title": "Recap: one entry per finished job", "name": "the-dibs-app-s-recap-tab", "project": "tether",
+                     "state": "done", "ts": 1791230000, "started": 1791224300, "finished": 1791230000, "minutes": 95,
+                     "line": "Recap shows one entry per job.", "asked": "make recap tidy", "report": "Did it.",
+                     "result": {"report_md": true, "shipped": [{"repo": "tether", "changes": 3, "for_you": ["Recap is tidy."]}]},
+                     "questions": [249], "busy": false, "live": true, "unread": true,
+                     "talk": [{"id": "t31-4", "who": "agent", "text": "Done, see the report.", "ts": 1791230000},
+                              {"id": "u-9", "who": "user", "text": "why?", "short": "why", "ts": 1791230100,
+                               "files": [{"id": "f1", "name": "a.jpg", "size": 3, "image": true}]},
+                              {"id": "t31-6", "who": "note", "text": "Reopened its chat on the laptop", "ts": 1791230200}]},
+                    {"id": 32, "title": "", "name": "mini-pc", "state": "working", "ts": 5, "started": 4, "ticked": 1791230300}
+                  ]}""",
+            ),
+        )
+        assertEquals(Badges(1, 0, 0, 2), d.badges)
+        assertEquals(31L, d.questions.single().task)
+        assertEquals(31L, d.feed.single().task)
+        assertFalse("a task's row opens its page instead", d.feed.single().opens)
+        assertTrue(d.tasks.single().background)
+        val (t, u) = d.yours!!
+        assertEquals("tether", t.project)
+        assertEquals(1791230000L, t.finished)
+        assertEquals(95L, t.minutes)
+        assertEquals(TaskResult(true, listOf(Shipped("tether", 3, listOf("Recap is tidy.")))), t.result)
+        assertEquals(listOf(249L), t.questions)
+        assertTrue(t.unread && t.live && !t.busy && t.finishedState)
+        assertNull(t.ticked)
+        val (agent, mine, note) = t.talk
+        assertFalse(agent.mine || agent.note)
+        assertTrue(mine.mine)
+        assertEquals("u-9", mine.id)
+        assertEquals("why", mine.short)
+        assertEquals("a.jpg", mine.files.single().name)
+        assertTrue(note.note)
+        assertEquals("Other", u.project)
+        assertEquals("mini-pc", u.label)
+        assertNull(u.finished)
+        assertNull(u.minutes)
+        assertNull(u.result)
+        assertEquals(1791230300L, u.ticked)
+        assertEquals(u, d.task(32))
     }
 }
