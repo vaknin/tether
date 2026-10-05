@@ -35,6 +35,15 @@ const SNAPSHOT_GRACE: Duration = Duration::from_secs(3);
 /// After a `--fresh` request the link stays open this long, so polling (rami-login waiting for an
 /// SMS code) sees new notifications live instead of waking the phone each time.
 const FRESH_HOLD: Duration = Duration::from_secs(120);
+/// How long `connect` waits for a woken phone to dial in.
+const WAKE_WAIT: Duration = Duration::from_secs(25);
+/// The live channel the phone app answers "where is adb?" on (`Adb.kt`).
+const ADB_CHANNEL: &str = "_adb";
+/// How long `adb` waits for the phone's answer, wake included (the phone may turn Wireless
+/// debugging on and look for its port first, ~10 s at most).
+const ADB_WAIT: Duration = Duration::from_secs(40);
+/// After an `adb` request the link stays open this long, so a second ask is instant.
+const ADB_HOLD: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct Ctx {
@@ -99,10 +108,14 @@ impl Ctx {
         Ok(Value::Array(out))
     }
 
-    /// Keeps the link open until `FRESH_HOLD` after the last call.
-    fn hold(&self) {
-        let until = Instant::now() + FRESH_HOLD;
-        let start = self.hold_until.lock().unwrap().replace(until).is_none();
+    /// Keeps the link open for `dur` (or longer, if an earlier call asked for more).
+    fn hold(&self, dur: Duration) {
+        let until = Instant::now() + dur;
+        let prev = self.hold_until.lock().unwrap().replace(until);
+        if let Some(p) = prev.filter(|p| *p > until) {
+            *self.hold_until.lock().unwrap() = Some(p);
+        }
+        let start = prev.is_none();
         self.node.set_stay(true);
         if start {
             let me = self.clone();
@@ -124,7 +137,7 @@ impl Ctx {
     async fn fresh_notifs(&self) -> Result<Value> {
         let node = &self.node;
         let mut rx = node.events();
-        self.hold();
+        self.hold(FRESH_HOLD);
         if !node.is_connected() {
             match &self.wake {
                 Some(w) => {
@@ -152,6 +165,68 @@ impl Ctx {
             let _ = tokio::time::timeout(FRESH_WAIT, wait).await;
         }
         Ok(serde_json::to_value(node.notifs())?)
+    }
+
+    /// Dials the phone, waking it first (its endpoint is off while idle, so a bare dial only reaches
+    /// a phone that is already up).
+    async fn connect(&self) -> Result<()> {
+        let node = &self.node;
+        let mut rx = node.events();
+        if node.is_connected() {
+            return Ok(());
+        }
+        if let Some(w) = &self.wake {
+            let _ = w.send(());
+            if tokio::time::timeout(WAKE_WAIT, connected(&mut rx)).await.is_ok_and(|up| up) {
+                return Ok(());
+            }
+        }
+        node.connect().await
+    }
+
+    /// Asks the phone where its adb listens (`tether adb`; dibs reconnects adb with it): wakes it
+    /// if needed and returns its answer (see `Adb.kt`). With `enable` the phone turns Wireless
+    /// debugging on first, if it may.
+    async fn adb(&self, enable: bool) -> Result<Value> {
+        let node = &self.node;
+        let mut rx = node.events();
+        self.hold(ADB_HOLD);
+        let ask = json!({ "op": "endpoint", "enable": enable }).to_string();
+        let mut linked = node.is_connected();
+        let run = async {
+            if !linked {
+                let w = self.wake.as_ref().context("the phone isn't connected and there is no FCM key to wake it")?;
+                let _ = w.send(());
+                anyhow::ensure!(connected(&mut rx).await, "the daemon is stopping");
+                linked = true;
+            }
+            anyhow::ensure!(node.send_app_live(ADB_CHANNEL, ask), "the link dropped");
+            loop {
+                match rx.recv().await {
+                    Ok(Event::App { id: None, channel, data, .. }) if channel == ADB_CHANNEL => {
+                        return Ok(parse(&data));
+                    }
+                    Err(RecvError::Closed) => anyhow::bail!("the daemon is stopping"),
+                    Ok(_) | Err(RecvError::Lagged(_)) => {}
+                }
+            }
+        };
+        match tokio::time::timeout(ADB_WAIT, run).await {
+            Ok(r) => r,
+            Err(_) if linked => anyhow::bail!("the phone is connected but didn't answer (Tether app older than 0.3.7?)"),
+            Err(_) => anyhow::bail!("the phone didn't wake up (no link within {} s)", ADB_WAIT.as_secs()),
+        }
+    }
+}
+
+/// Waits for the next link; false when the node is gone.
+async fn connected(rx: &mut tokio::sync::broadcast::Receiver<Event>) -> bool {
+    loop {
+        match rx.recv().await {
+            Ok(Event::Connected) => return true,
+            Err(RecvError::Closed) => return false,
+            Ok(_) | Err(RecvError::Lagged(_)) => {}
+        }
     }
 }
 
@@ -312,9 +387,10 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
             Value::Null
         }
         Request::Connect => {
-            node.connect().await?;
+            ctx.connect().await?;
             Value::Null
         }
+        Request::Adb { enable } => ctx.adb(enable).await?,
         Request::AppSend { channel, data, live, replace } => {
             check_channel(&channel)?;
             if live {

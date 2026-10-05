@@ -36,6 +36,12 @@ pub enum Request {
     Json { limit: usize },
     MarkRead,
     Connect,
+    /// Where the phone's adb listens, asked over the link (waking the phone): the phone app's
+    /// answer as JSON. `enable`: turn Wireless debugging on first, if the app may.
+    Adb {
+        #[serde(default)]
+        enable: bool,
+    },
     /// Node events as JSON lines, plus `{"type":"app","channel":…,"view":bool}` when a
     /// channel's view or thread changed (no data: re-read with `channels` or `thread`).
     Watch,

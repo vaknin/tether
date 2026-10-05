@@ -118,8 +118,15 @@ enum Cmd {
     },
     /// Mark all received messages as read.
     Read,
-    /// Dial the phone now.
+    /// Dial the phone now, waking it first.
     Connect,
+    /// Ask the phone where its adb listens (Wi-Fi addresses, Wireless debugging, its port), waking
+    /// it if needed. Prints the phone's answer as JSON; dibs reconnects adb with it.
+    Adb {
+        /// Turn Wireless debugging on first, if the phone app has WRITE_SECURE_SETTINGS.
+        #[arg(long)]
+        enable: bool,
+    },
     /// Stream events as JSON lines.
     Watch,
     /// Post to a channel's thread on the phone (queued, like `msg`), ntfy-style.
@@ -406,6 +413,10 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
         }
         Cmd::Read => call(&sock, &Request::MarkRead).await.map(drop),
         Cmd::Connect => call(&sock, &Request::Connect).await.map(drop),
+        Cmd::Adb { enable } => {
+            println!("{}", call(&sock, &Request::Adb { enable }).await?);
+            Ok(())
+        }
         Cmd::Watch => {
             let (mut lines, _w) = ipc::watch(&sock).await?;
             while let Some(line) = lines.next_line().await? {
