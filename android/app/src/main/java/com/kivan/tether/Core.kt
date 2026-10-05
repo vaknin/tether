@@ -138,6 +138,7 @@ object Core {
             File(app.filesDir, "state").path,
             File(app.filesDir, "incoming").path,
             "Pixel 8",
+            BuildConfig.VERSION_NAME,
         )
         n.setListener(object : EventListener {
             override fun onEvent(event: Event) = handle(n, event)

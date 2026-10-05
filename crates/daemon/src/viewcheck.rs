@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-const TYPES: [&str; 10] = ["header", "notice", "text", "list", "checklist", "compose", "form", "progress", "buttons", "web"];
+const TYPES: [&str; 11] = ["header", "notice", "text", "list", "thread", "checklist", "compose", "form", "progress", "buttons", "web"];
 const TONES: [&str; 4] = ["info", "ok", "warn", "error"];
 const STYLES: [&str; 3] = ["primary", "danger", "plain"];
 
@@ -85,23 +85,21 @@ pub fn check(v: &Value) -> Vec<String> {
                     if let Some(c) = it.get("chips") {
                         p.strings(Some(c), &format!("{at}.chips"));
                     }
-                    p.actions(it.get("actions"), &format!("{at}.actions"));
-                    if let Some(r) = it.get("reply") {
-                        match r.as_object() {
-                            Some(r) => {
-                                p.string(r.get("id"), &format!("{at}.reply.id"), true);
-                                p.string(r.get("placeholder"), &format!("{at}.reply.placeholder"), false);
-                                p.string(r.get("submit"), &format!("{at}.reply.submit"), false);
-                            }
-                            None => p.add(&format!("{at}.reply"), "must be an object {id, placeholder?, submit?}"),
-                        }
+                    p.item_controls(it, at);
+                });
+            }
+            "thread" => {
+                p.string(b.get("empty"), &format!("{at}.empty"), false);
+                p.string(b.get("status"), &format!("{at}.status"), false);
+                p.items(b.get("items"), &at, |p, it, at| {
+                    p.string(it.get("who"), &format!("{at}.who"), true);
+                    p.string(it.get("text"), &format!("{at}.text"), true);
+                    match it.get("ts") {
+                        Some(t) if t.as_u64().is_some() => {}
+                        Some(_) => p.add(&format!("{at}.ts"), "must be a whole number (unix seconds)"),
+                        None => p.add(&format!("{at}.ts"), "missing (unix seconds)"),
                     }
-                    if let Some(d) = it.get("dismiss") {
-                        match d.as_object() {
-                            Some(d) => p.string(d.get("id"), &format!("{at}.dismiss.id"), true),
-                            None => p.add(&format!("{at}.dismiss"), "must be an object {id}"),
-                        }
-                    }
+                    p.item_controls(it, at);
                 });
             }
             "checklist" => {
@@ -151,11 +149,7 @@ pub fn check(v: &Value) -> Vec<String> {
             "buttons" => {
                 p.items(b.get("items"), &at, |p, it, at| {
                     p.string(it.get("label"), &format!("{at}.label"), true);
-                    match it.get("style").and_then(Value::as_str) {
-                        Some(s) if STYLES.contains(&s) => {}
-                        Some(s) => p.add(&format!("{at}.style"), &format!("\"{s}\" isn't primary, danger or plain")),
-                        None => {}
-                    }
+                    p.style(it.get("style"), &format!("{at}.style"));
                 });
             }
             _ => p.add(&at, "is reserved (not drawn yet)"),
@@ -193,15 +187,48 @@ impl Problems {
         }
     }
 
-    /// `{id, label, confirm?}` objects (actions, chips).
+    /// `{id, label, style?, confirm?}` objects (actions, chips).
     fn actions(&mut self, v: Option<&Value>, at: &str) {
         if v.is_none() {
             return;
         }
         self.items(v, at, |p, a, at| {
             p.string(a.get("label"), &format!("{at}.label"), true);
-            p.boolean(a.get("confirm"), &format!("{at}.confirm"));
+            p.style(a.get("style"), &format!("{at}.style"));
+            if a.get("confirm").is_some_and(|c| !c.is_boolean() && !c.is_string()) {
+                p.add(&format!("{at}.confirm"), "must be true, false or the second press's label");
+            }
         });
+    }
+
+    fn style(&mut self, v: Option<&Value>, at: &str) {
+        match v.and_then(Value::as_str) {
+            Some(s) if STYLES.contains(&s) => {}
+            Some(s) => self.add(at, &format!("\"{s}\" isn't primary, danger or plain")),
+            None if v.is_some() => self.add(at, "must be a string"),
+            None => {}
+        }
+    }
+
+    /// A list or thread item's `actions`, `reply` and `dismiss`.
+    fn item_controls(&mut self, it: &serde_json::Map<String, Value>, at: &str) {
+        self.actions(it.get("actions"), &format!("{at}.actions"));
+        if let Some(r) = it.get("reply") {
+            match r.as_object() {
+                Some(r) => {
+                    self.string(r.get("id"), &format!("{at}.reply.id"), true);
+                    self.string(r.get("placeholder"), &format!("{at}.reply.placeholder"), false);
+                    self.string(r.get("submit"), &format!("{at}.reply.submit"), false);
+                }
+                None => self.add(&format!("{at}.reply"), "must be an object {id, placeholder?, submit?}"),
+            }
+        }
+        if let Some(d) = it.get("dismiss") {
+            match d.as_object() {
+                Some(d) => self.string(d.get("id"), &format!("{at}.dismiss.id"), true),
+                None => self.add(&format!("{at}.dismiss"), "must be an object {id}"),
+            }
+        }
     }
 
     /// A list of objects, each with a string `id` unique in the list, checked by `each`.
@@ -285,6 +312,21 @@ mod tests {
             "blocks[4] (buttons).items[0].style: \"big\" isn't primary, danger or plain",
         ];
         assert_eq!(p, want);
+        let t = json!({"v": 1, "blocks": [{"type": "thread", "status": 1, "items": [
+            {"id": "u1", "who": "user", "text": "hi", "ts": 1759640400},
+            {"id": "s2", "text": "hello", "ts": "now", "actions": [{"id": "y", "label": "Yes", "style": "loud", "confirm": 2}]},
+            {"id": "s3", "who": "dibs", "text": "x", "reply": {"placeholder": "Answer…"}, "dismiss": {}},
+        ]}]});
+        assert_eq!(check(&t), [
+            "blocks[0] (thread).status: must be a string",
+            "blocks[0] (thread).items[1].who: missing",
+            "blocks[0] (thread).items[1].ts: must be a whole number (unix seconds)",
+            "blocks[0] (thread).items[1].actions[0].style: \"loud\" isn't primary, danger or plain",
+            "blocks[0] (thread).items[1].actions[0].confirm: must be true, false or the second press's label",
+            "blocks[0] (thread).items[2].ts: missing (unix seconds)",
+            "blocks[0] (thread).items[2].reply.id: missing",
+            "blocks[0] (thread).items[2].dismiss.id: missing",
+        ]);
         assert_eq!(check(&json!([])), ["the view isn't a JSON object"]);
         assert_eq!(check(&json!({"v": 1})), ["blocks: missing (a list of blocks)"]);
     }

@@ -44,6 +44,8 @@ use crate::{
 
 /// The fixed UDP port the laptop listens on, so the firewall needs one rule.
 pub const PORT: u16 = 47114;
+/// The reserved live channel a node tells its app version on (`Config::app_version`).
+const APP_VERSION: &str = "_version";
 const PAIR_TTL: Duration = Duration::from_secs(300);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const CHUNK: usize = 256 * 1024;
@@ -76,6 +78,9 @@ pub struct Config {
     /// Redial with this backoff (min, max) while the outbox has items. The laptop does this as the
     /// fallback when FCM can't wake the phone; the phone leaves it off and dials on demand.
     pub redial: Option<(Duration, Duration)>,
+    /// This app's version, told to the peer on every link (the phone's; `tether status` shows it
+    /// as `phone_app`, so apps send blocks only a new enough phone draws).
+    pub app_version: Option<String>,
 }
 
 impl Config {
@@ -87,6 +92,7 @@ impl Config {
             net: Net::Internet { port: Some(PORT) },
             idle_timeout: Duration::from_secs(60),
             redial: Some((Duration::from_secs(30), Duration::from_secs(300))),
+            app_version: None,
         }
     }
 }
@@ -331,6 +337,11 @@ impl Node {
         self.inner.db(|s| s.get_str("push_token"))
     }
 
+    /// The app version the peer last told (see [`Config::app_version`]); none until it has.
+    pub fn peer_app(&self) -> Result<Option<String>> {
+        self.inner.db(|s| s.get_str("peer_app"))
+    }
+
     /// Forgets the FCM token (FCM said it is no longer registered); the phone sends a fresh one on
     /// its next connect.
     pub fn clear_push_token(&self) -> Result<()> {
@@ -354,6 +365,7 @@ impl Node {
         i.db(|s| {
             s.del_kv("peer_id")?;
             s.del_kv("peer_name")?;
+            s.del_kv("peer_app")?;
             s.del_kv("push_token")
         })?;
         i.drop_link(CLOSE_NOT_PAIRED, b"unpaired");
@@ -724,6 +736,10 @@ impl Inner {
             link.conn.accept_bi().await?
         };
         write_msg(&mut send, &Frame::Hello { name: self.cfg.name.clone() }).await?;
+        // A live frame on a reserved channel, so a peer that predates it drops it unseen.
+        if let Some(v) = &self.cfg.app_version {
+            write_msg(&mut send, &Frame::App { channel: APP_VERSION.into(), data: v.clone() }).await?;
+        }
         let act = &link.activity;
 
         let writer = async {
@@ -828,6 +844,7 @@ impl Inner {
             Frame::PushToken(t) => self.db(|s| s.set_kv("push_token", t.as_bytes()))?,
             Frame::StayConnected(b) => link.activity.peer_stay.store(b, Ordering::SeqCst),
             Frame::Cancel { id } => self.on_cancel(link, id).await?,
+            Frame::App { channel, data } if channel == APP_VERSION => self.db(|s| s.set_kv("peer_app", data.as_bytes()))?,
             Frame::App { channel, data } => {
                 self.emit(Event::App { id: None, channel, data, from_me: false, view: false })
             }

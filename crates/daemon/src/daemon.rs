@@ -370,6 +370,7 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
         Request::Status => {
             let mut v = serde_json::to_value(node.status()?)?;
             v["wake_unanswered"] = ctx.unanswered.load(std::sync::atomic::Ordering::Relaxed).into();
+            v["phone_app"] = node.peer_app()?.into();
             v
         }
         Request::PairOffer => json!({ "code": node.pair_offer() }),

@@ -1,0 +1,63 @@
+{
+    "v": 1,
+    "badge": 1,
+    "blocks": [
+        {
+            "type": "list",
+            "id": "questions",
+            "items": [
+                {
+                    "id": "q12",
+                    "title": "Install the capture update?",
+                    "text": "capture: 2 commits on main (the Ideas panel opens faster)",
+                    "actions": [
+                        {"id": "y12", "label": "Install"},
+                        {"id": "n12", "label": "Not now"}
+                    ],
+                    "reply": {"id": "r12", "placeholder": "Answer…"}
+                }
+            ],
+            "empty": ""
+        },
+        {
+            "type": "list",
+            "id": "tasks",
+            "items": [
+                {
+                    "id": "t5",
+                    "title": "Task build-the-phone-half-of",
+                    "meta": "working, 1 h 10 min",
+                    "text": "tether: build the phone half of dibs brain step 3"
+                }
+            ],
+            "empty": ""
+        },
+        {
+            "type": "thread",
+            "id": "talk",
+            "empty": "Write to dibs below: a question, or task: <what> to start a task.",
+            "status": "dibs is on it",
+            "items": [
+                {"id": "7f1c2a40-0b7e-4f58-9a52-2d8f0f3c1e01", "who": "user", "text": "what is running right now?", "ts": 1759640400, "dismiss": {"id": "h1"}},
+                {"id": "s2", "who": "dibs", "text": "One task: the Tether thread screen, an hour in. Nothing waits on you.", "ts": 1759640460, "dismiss": {"id": "h2"}},
+                {"id": "s3", "who": "dibs", "text": "capture has an update (the Ideas panel opens faster). Install it?", "ts": 1759640470,
+                 "actions": [
+                     {"id": "y12", "label": "Install", "style": "primary"},
+                     {"id": "n12", "label": "Not now"},
+                     {"id": "x12", "label": "Dismiss", "confirm": true}
+                 ],
+                 "reply": {"id": "r12", "placeholder": "Answer…"},
+                 "dismiss": {"id": "h3"}},
+                {"id": "s4", "who": "dibs", "text": "rami wants to push to master.\nAnswered: Approve", "ts": 1759644000, "dismiss": {"id": "h4"}},
+                {"id": "8a2d3b51-1c8f-4a69-8b63-3e9a1a4d2f02", "who": "user", "text": "מה עם העדכון של tether?", "ts": 1759730000, "dismiss": {"id": "h5"}}
+            ]
+        },
+        {
+            "type": "compose",
+            "id": "say",
+            "placeholder": "Message dibs…",
+            "submit": "Send"
+        }
+    ],
+    "open_tags": ["12"]
+}

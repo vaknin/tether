@@ -232,6 +232,17 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
   `dismiss` (2026-10-05) `{id}` lets the user remove the item: swiped away either way on the phone, a
   small ✕ in the panel. It sends `{"action":<dismiss id>,"value":{"item":<item id>}}` like an item
   action, and the item hides at once, until a view no longer lists it (the app drops it).
+- `thread {items:[{id, who, text, ts, actions?, reply?, dismiss?}], status?, empty?}` (2026-10-05, phone app
+  0.3.8; dibs's conversation): a chat. `who` is `"user"` (the user's lines, drawn on the right) or the app's
+  side (any other name, e.g. `"dibs"`, on the left); `ts` is unix seconds (day headers, times, grouping);
+  items are oldest first and the newest 50 are drawn. `actions`, `reply` and `dismiss` are a list item's
+  and send the same. `status` is a small line under the newest bubble ("dibs is on it"); `empty` shows
+  with no items. A `compose` after the thread is its box: its sends show as pending bubbles at the end
+  until an item has the action's uid as its id. On the phone a view with a thread is laid out
+  chat-first: the blocks before it in a top area that folds to "N waiting", the thread filling the
+  screen from its newest line (following new ones), the compose pinned at the bottom. Only phone
+  app 0.3.8+ draws it: an app checks `phone_app` in `tether status --json` (the version the phone
+  tells on every link, null until it has) and sends a `list` to an older one.
 - `checklist {items:[{id,label,checked,actions?:[{id,label,confirm?}]}]}`: a tap sends
   `{"action":<block id>,"value":{"item","checked"}}`; an item action (like a list item's) sends
   `{"action":<action id>,"value":{"item":<item id>}}`.
@@ -241,6 +252,7 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 - `form {id, fields:[{id,label,multi?,placeholder?,value?}], submit}`: sends `{"action":<id>,"fields":{…}}`.
 - `progress {id, text, cancel?:{id,label}}`: indeterminate; live patches change `text`.
 - `buttons {items:[{id,label,style?:primary|danger|plain,confirm?}]}`: sends `{"action":<id>}`.
+  Item actions (list, thread, checklist) take the same `style` (phone app 0.3.8+; plain before).
 - `web`: reserved (a webxdc-style bundle, later).
 
 ### Manifest `~/.config/tether/apps/<name>.toml` (name: `[a-z0-9_-]+`)

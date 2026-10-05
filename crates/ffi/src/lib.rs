@@ -305,12 +305,14 @@ pub struct TetherNode {
 /// Starts the phone's node: n0 relays + mDNS, a random port, and no redial loop (the phone dials
 /// only when it has something to send or was woken).
 #[uniffi::export]
-pub async fn start(state_dir: String, download_dir: String, name: String) -> Res<Arc<TetherNode>> {
+/// `app_version` is told to the laptop on every link (`tether status --json`'s `phone_app`).
+pub async fn start(state_dir: String, download_dir: String, name: String, app_version: String) -> Res<Arc<TetherNode>> {
     init_logging();
     on_rt(async move {
         let mut cfg = Config::new(PathBuf::from(state_dir), PathBuf::from(download_dir), name);
         cfg.net = Net::Internet { port: None };
         cfg.redial = None;
+        cfg.app_version = Some(app_version);
         let node = Node::start(cfg).await?;
         Ok(Arc::new(TetherNode { node, listener: Mutex::new(None) }))
     })
@@ -576,7 +578,7 @@ mod tests {
         let state = dir.join("state").to_string_lossy().into_owned();
         let dl = dir.join("dl").to_string_lossy().into_owned();
         RT.block_on(async {
-            let n = start(state.clone(), dl.clone(), "Phone".into()).await.unwrap();
+            let n = start(state.clone(), dl.clone(), "Phone".into(), "0.0.0".into()).await.unwrap();
             let id = n.status().unwrap().id;
             assert!(n.status().unwrap().peer.is_none());
             // Not paired: queues fine, the background dial just fails.
@@ -584,7 +586,7 @@ mod tests {
             assert_eq!(m.state, MsgState::Queued);
             assert_eq!(m.kind, MsgKind::Text);
             n.shutdown().await;
-            let n = start(state, dl, "Phone".into()).await.unwrap();
+            let n = start(state, dl, "Phone".into(), "0.0.0".into()).await.unwrap();
             assert_eq!(n.status().unwrap().id, id, "key survives a restart");
             let r = n.recent(10).unwrap();
             assert_eq!(r.len(), 1);

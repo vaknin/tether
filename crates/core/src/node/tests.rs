@@ -489,3 +489,31 @@ async fn a_local_app_item_is_pending_and_emitted() {
     assert_eq!(a.status().unwrap().queued, 0, "nothing to send");
     assert_eq!(a.status().unwrap().unread, 0);
 }
+
+#[tokio::test]
+async fn the_peer_tells_its_app_version_on_each_link_and_it_is_not_an_app_item() {
+    let d = tempfile::tempdir().unwrap();
+    let a = start(d.path(), "a").await;
+    let mut cb = config(d.path(), "b");
+    cb.app_version = Some("0.3.7".into());
+    let b = Node::start(cb).await.unwrap();
+    introduce(&a, &b);
+    b.pair(&a.pair_offer()).await.unwrap();
+    assert_eq!(b.peer_app().unwrap(), None, "a has no version to tell");
+
+    let mut ea = a.events();
+    b.connect().await.unwrap();
+    timeout(WAIT, async {
+        while a.peer_app().unwrap().is_none() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("no version");
+    assert_eq!(a.peer_app().unwrap().as_deref(), Some("0.3.7"));
+    while let Ok(e) = ea.try_recv() {
+        assert!(!matches!(e, Event::App { .. }), "the version reached the apps: {e:?}");
+    }
+    a.unpair().unwrap();
+    assert_eq!(a.peer_app().unwrap(), None, "forgotten with the peer");
+}
