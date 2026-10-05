@@ -580,7 +580,9 @@ private fun TextWithMeta(text: AnnotatedString, color: Color, style: TextStyle, 
     }) { measurables, constraints ->
         val gap = 10.dp.roundToPx()
         val t = measurables[0].measure(constraints.copy(minWidth = 0))
-        val mt = measurables[1].measure(Constraints())
+        // [meta] may draw nothing (a line with no time shown): then it's the text alone.
+        val mt = measurables.getOrNull(1)?.measure(Constraints())
+            ?: return@Layout layout(t.width, t.height) { t.place(0, 0) }
         val l = layout[0]
         val lastLine = l?.let { it.lineCount - 1 }
         val lastRight = if (l != null && lastLine != null) l.getLineRight(lastLine).toInt() else t.width
