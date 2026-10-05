@@ -32,6 +32,17 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   reads the phone's DNS servers; it must run before the first node start. The phone's mDNS send
   fails with EPERM (no `MulticastLock`). That's deferred on purpose: a lock costs battery, the home
   Wi-Fi drops client-to-client multicast anyway, and relay plus hole-punching finds the direct path.
+- adb on any network (`Adb.kt`, `tether adb [--enable]`, 2026-10-05): dibs asks where the phone's adb listens
+  when adb can't see it (the phone's Wi-Fi filter drops multicast mDNS while the screen is off). The daemon wakes
+  the phone (FCM), sends a live `App` frame on the reserved channel `_adb` (`{"op":"endpoint","enable":bool}`) and
+  waits up to 40 s for the reply on the same channel: `wifi`, `addrs` (`ip/prefix`), `adb_wifi`, `port` and `name`
+  (NsdManager own-service lookup, the port checked by binding it on loopback), `can_enable`, `enabled`, `refused`.
+  Two permissions are granted once over adb (the user's yes, 2026-10-05): WRITE_SECURE_SETTINGS (turns
+  `adb_wifi_enabled` back on; Android writes 0 back on a network not marked "Always allow", which is `refused`) and
+  ACCESS_LOCAL_NETWORK (Android 17: without it NsdManager opens a picker screen instead of answering, so `Adb.kt`
+  only looks up the port when it's granted). **An APK without these manifest lines drops both grants.** The app
+  holds a multicast lock for 20 s per ask so adb's own mDNS sees the phone meanwhile. `tether connect` now wakes
+  the phone first (it used to only dial, which timed out against an idle phone).
 - Phone root screen: the channel list (`ui/ChannelScreen.kt`, state in `Channels.kt`); the chat is one entry.
 - Phone UI: `ui/TetherScreen.kt` (grouped bubbles, day headers, inline time and ✓✓, links, image
   thumbnails, file chips, setup sheet and unpair in the ⋮ menu). **Design: read `docs/DESIGN.md`
@@ -163,6 +174,6 @@ Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linu
   - MPRIS `org.mpris.MediaPlayer2.tether.pixel` through zbus.
 
 ## Machine notes
-- Phone over adb: `adb connect 192.168.1.245:5555` (the IP on the home Wi-Fi; the `.local` name changes and does not resolve, see `~/.config/system-notes.md`). Always pass `-s`, and check which app
-  has focus before any `adb input`.
+- Phone over adb: `dibs phone connect` finds it on any network (through `tether adb` when mDNS can't); never
+  store or ask for an IP or port. Always pass `-s`, and check which app has focus before any `adb input`.
 - QML plugin edits only take effect after `omarchy restart shell`.

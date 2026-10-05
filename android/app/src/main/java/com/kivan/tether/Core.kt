@@ -211,6 +211,10 @@ object Core {
                 return
             }
             is Event.App -> {
+                if (event.channel == Adb.CHANNEL) {
+                    if (event.id == null) Adb.onAsk(app, event.data)
+                    return
+                }
                 Channels.onEvent(n, event)
                 return
             }
