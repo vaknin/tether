@@ -903,11 +903,12 @@ private fun ThreadList(b: JSONObject, compose: String?, modifier: Modifier) {
     val pending by Channels.pending.collectAsState()
     val block = b.optString("id")
     val waiting = compose?.let { pending["${ch.name}/$it"] }.orEmpty()
+    // Ids are list keys, so each appears once: a send already in the view isn't also pending.
     val lines = remember(b, gone, waiting) {
-        objects(b.optJSONArray("items")).takeLast(THREAD_LINES)
+        val items = objects(b.optJSONArray("items")).takeLast(THREAD_LINES)
             .filter { Dismissed(ch.name, block, it.optString("id")) !in gone }
-            .map { ThreadLine(it.optString("id"), it.optString("who") == "user", it.optString("text"), it.optLong("ts") * 1000, it, false) } +
-            waiting.map { ThreadLine(it.uid, true, it.text, it.tsMs, null, true) }
+            .map { ThreadLine(it.optString("id"), it.optString("who") == "user", it.optString("text"), it.optLong("ts") * 1000, it, false) }
+        (items + waiting.map { ThreadLine(it.uid, true, it.text, it.tsMs, null, true) }).distinctBy { it.id }
     }
     if (lines.isEmpty()) {
         Box(modifier.padding(32.dp), contentAlignment = Alignment.Center) {
