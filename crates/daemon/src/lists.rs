@@ -352,7 +352,7 @@ mod tests {
         let (r, ch) = l.apply_ids(IdsOp::Done, &["u".into(), "1~u".into()], T + 5).unwrap();
         assert_eq!((r["changed"].clone(), ch), (json!(2), true));
         assert_eq!(l.pending(), 1);
-        assert_eq!(l.apply_ids(IdsOp::Done, &["u".into()], T + 6).unwrap().1, false, "already done");
+        assert!(!l.apply_ids(IdsOp::Done, &["u".into()], T + 6).unwrap().1, "already done");
         assert!(l.apply_ids(IdsOp::Rm, &["u".into(), "nope".into()], T).is_err());
         assert_eq!(l.items.len(), 3, "a bad id changes nothing");
         l.apply_ids(IdsOp::Undo, &["1~u".into()], T).unwrap();

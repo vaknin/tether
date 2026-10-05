@@ -10,7 +10,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Typeface
 import android.net.Uri
 import android.text.format.DateUtils
 import android.text.format.Formatter
@@ -458,18 +457,10 @@ object Notifier {
             context, name.hashCode(), MainActivity.open(context, name), PendingIntent.FLAG_IMMUTABLE,
         )
 
-    /** A channel's glyph on a circle of its accent (the shortcut and notification icon). */
+    /** A channel's tile (the shortcut and notification icon), as the list draws it. */
     fun glyph(c: ChannelInfo, size: Int): Bitmap {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c.accent ?: Palette.Accent.toArgb() })
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Palette.OnAccent.toArgb()
-            textSize = size * 0.5f
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        canvas.drawText(c.glyph, size / 2f, size / 2f - (paint.descent() + paint.ascent()) / 2, paint)
+        ChannelLook.draw(Canvas(bmp), c, 0f, 0f, size.toFloat())
         return bmp
     }
 
@@ -482,14 +473,14 @@ object Notifier {
 
     @Volatile private var avatarCache: Bitmap? = null
 
-    /** The laptop glyph on an accent circle. */
+    /** The laptop icon, white on the app's tile, like the chat's avatar. */
     private fun avatar(context: Context): Bitmap = avatarCache ?: run {
         val size = 192
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.Accent.toArgb() })
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.Tile.toArgb() })
         val glyph = ContextCompat.getDrawable(context, R.drawable.lucide_laptop)!!.mutate()
-        glyph.setTint(Palette.OnAccent.toArgb())
+        glyph.setTint(Palette.Text.toArgb())
         val inset = size / 5
         glyph.setBounds(inset, inset, size - inset, size - inset)
         glyph.draw(canvas)

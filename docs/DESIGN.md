@@ -1,0 +1,63 @@
+# Tether's design
+
+Tether follows the owner's shared design language, **`~/Projects/design`** (its `README.md` and
+`tokens.json` are the source of truth; decided 2026-10-04). Don't hand-pick colours, fonts, radii
+or icons here: generate them from that repo, and change the language there, not in Tether.
+
+## The phone app
+
+- **Hue 250** (blue). The accent is `#95C9FF`, text on it `#071727`, the launcher tile `#0E3F6A`.
+  `design colors --hue 250` prints the whole palette.
+- Dark only, fixed palette: ground `#0F1114`, surfaces step up from it. No light theme, no dynamic colour.
+- Rubik for all text, Geist Mono for times, ids, sizes and codes; tabular digits on changing numbers.
+- Radius 8 (fields) / 14 (buttons, cards, bubbles) / 24 (input bar, sheets); chips and tags are pills.
+- 16 dp gutter, space instead of dividers. Headers sit on the ground (no tinted bar); state goes in a
+  small tracked capitals label (`Eyebrow`) above the title, e.g. "CONNECTED" over the laptop's name.
+- Success is blue, red only for urgency (errors, the refused-pairing banner, the ring's Stop), and
+  never the only cue.
+- Icons are Lucide outlines, vendored as `res/drawable/lucide_*.xml`.
+- Launcher: the two rings (`docs/launcher-mark.svg`, the app's own mark) white on the hue-250 tile,
+  with a white-only monochrome layer; the notification icon is the same mark.
+
+Generated, never edited by hand (each file says so): `android/app/src/main/java/com/kivan/tether/ui/theme/`,
+`res/font/`, `res/values/design.xml`, `res/mipmap-anydpi/`, `res/drawable/ic_launcher_*`,
+`res/drawable/ic_notification.xml`, `res/drawable/lucide_*`. To regenerate, from `android/`:
+
+```sh
+design kotlin   --hue 250 --package com.kivan.tether.ui.theme --r com.kivan.tether \
+                --src app/src/main/java/com/kivan/tether/ui/theme --res app/src/main/res
+design launcher --hue 250 --mark ../docs/launcher-mark.svg --res app/src/main/res
+design icons    --res app/src/main/res <lucide names…>   # add a name to get a new icon
+```
+
+In code use `Palette.*`, `AppType.*`, `Space.*`, `MaterialTheme.shapes.*`, `Pill`, `Eyebrow`,
+`Motion.calm()`; buttons pass `shape = MaterialTheme.shapes.medium`. A new in-app icon is
+`Icon(painterResource(R.drawable.lucide_<name>), "…")` after `design icons … <name>`.
+
+## Channel icons
+
+App channels are part of the language too: a channel picks a **`hue`** and an **`icon`** (a Lucide
+name) in its manifest, and its tile is its white mark on `oklch(0.36 0.09 hue)`, like a launcher
+tile. The hue also gives the channel's accent (buttons, focus, chips) and the text on it:
+
+```sh
+tether channel add groceries --kind list --icon shopping-cart --hue 145
+tether channel set dibs icon=handshake hue=300
+```
+
+- The daemon (`crates/daemon/src/mark.rs`) computes the colours with the design repo's OKLCH recipes
+  (`tokens.json` `perApp`) and turns the SVG into path data, sent in `_channels` (`docs/PLAN.md`).
+  The phone (`ChannelLook.kt`, also for shortcut and notification icons) and the panel (`Mark.qml`)
+  only draw what they're given.
+- `tether channel add/set --icon` copies the SVG into `~/.config/tether/apps/icons/`, so the daemon
+  doesn't need the design repo at run time. Your own mark: `--icon ./mark.svg` (a 24 grid, no transforms).
+- Keep hues of channels and apps that sit side by side about 40° apart. Taken: Tether 250, and the
+  channels in the table below.
+- `glyph` (an emoji or letter) and `accent` (`#rrggbb`) still work for old manifests, but new channels
+  use `icon` and `hue`. The laptop panel keeps the Omarchy theme's colours and only borrows the mark.
+
+| Channel | Icon | Hue |
+|---|---|---|
+| dibs | handshake | 300 |
+| rami | shopping-cart | 145 |
+| teen (חפיפה) | clipboard-list | 190 |

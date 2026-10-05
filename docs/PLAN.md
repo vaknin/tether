@@ -214,7 +214,9 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
   `app:<channel>:<tag>`), so one question doesn't take another's buttons, and a later post with
   the same tag replaces just that one. Channel notifications alert once: a replacement is silent.
   A button tap cancels only its own notification. Every post wakes the phone (FCM), as before.
-- Channel `_channels` (daemon → phone, a view): `{"v":1,"channels":[{name,title,glyph,accent,dir,kind,share,notify}]}`.
+- Channel `_channels` (daemon → phone, a view): `{"v":1,"channels":[{name,title,glyph,icon,accent,on_accent,tile,dir,kind,share,notify}]}`.
+  `icon` is `{view:[x,y,w,h],paths:[{d,fill,stroke}]}` (SVG path data, stroke width in view units, round
+  caps and joins; `mark.rs`), `accent`/`on_accent`/`tile` are `#RRGGBB` (the last two only with `hue`).
 
 ### Blocks (`{"type":…, "id":…?}` plus the fields below; unknown types are skipped)
 - `header {title, subtitle?}`
@@ -239,10 +241,13 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 - `web`: reserved (a webxdc-style bundle, later).
 
 ### Manifest `~/.config/tether/apps/<name>.toml` (name: `[a-z0-9_-]+`)
-Make one with `tether channel add <name> [--kind … --glyph … --show …]` (it validates, writes the file and
+Make one with `tether channel add <name> [--kind … --icon … --hue … --show …]` (it validates, writes the file and
 reloads the daemon); `tether channel set <name> key=value…` edits one and keeps its comments;
 `tether channel rm <name> [--purge]` deletes it; `--purge` also deletes its thread on both sides (a queued `DropChannel` item) and works for a thread with no manifest. Hand-written files still work.
-Keys: `title`, `glyph` (one emoji or letter), `accent` (`#rrggbb`), `dir` (`auto`|`ltr`|`rtl`, default
+Keys: `title`, `icon` (a Lucide name, or `--icon ./own.svg` on a 24 grid; `tether channel` copies it to
+`apps/icons/<name>.svg`, which the daemon reads before the Lucide set in `~/Projects/design`), `hue`
+(OKLCH degrees: the channel's accent and icon tile, `docs/DESIGN.md`), `glyph` (one emoji or letter,
+shown when there is no icon), `accent` (`#rrggbb`, the old way; `hue` wins), `dir` (`auto`|`ltr`|`rtl`, default
 `auto`: each text takes its own direction, Hebrew right-to-left and English left-to-right, per item on
 the phone and the panel; `ltr`/`rtl` fix the whole channel), `kind` (`app`|`thread`|`list`, see below),
 `exec` (a shell command; `~` expanded; started on demand), `share` (accept Android share text into the

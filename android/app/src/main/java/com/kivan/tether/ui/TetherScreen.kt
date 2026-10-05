@@ -466,13 +466,13 @@ private fun TopBar(
 @Composable
 internal fun Avatar(icon: Int, size: Dp) {
     Box(
-        Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+        Modifier.size(size).clip(CircleShape).background(Palette.Tile),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painterResource(icon),
             null,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            tint = Palette.Text,
             modifier = Modifier.size(size * 0.5f),
         )
     }

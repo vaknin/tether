@@ -161,8 +161,17 @@ BorderSurface {
       width: Style.space(26); height: width; radius: width / 2
       // Anchored, not placed by x, so an rtl channel mirrors it to the right.
       anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-      color: Util.alpha(ch.accent, 0.25)
+      // A design-language channel (hue + icon) draws its white mark on its tile, like the phone.
+      color: ch.channel && ch.channel.tile ? ch.channel.tile : Util.alpha(ch.accent, 0.25)
+      Mark {
+        visible: !!(ch.channel && ch.channel.icon)
+        mark: ch.channel ? ch.channel.icon || null : null
+        color: ch.channel && ch.channel.tile ? "white" : ch.fg
+        anchors.centerIn: parent
+        width: parent.width * 0.55; height: width
+      }
       Text {
+        visible: !(ch.channel && ch.channel.icon)
         anchors.centerIn: parent
         text: ch.channel ? ch.channel.glyph : ""
         color: ch.fg

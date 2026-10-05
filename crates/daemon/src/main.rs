@@ -7,6 +7,7 @@ mod desktop;
 mod fcm;
 mod ipc;
 mod lists;
+mod mark;
 mod mpris;
 mod pick;
 mod viewcheck;
@@ -179,16 +180,22 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum ChannelCmd {
-    /// Create a channel: `tether channel add groceries --kind list --glyph 🛒`.
+    /// Create a channel: `tether channel add groceries --kind list --icon shopping-cart --hue 145`.
     Add {
         /// `[a-z0-9_-]+`
         name: String,
         #[arg(long)]
         title: Option<String>,
-        /// One emoji or letter.
+        /// A Lucide icon name (https://lucide.dev/icons) or your own 24-grid .svg.
+        #[arg(long)]
+        icon: Option<String>,
+        /// OKLCH hue in degrees (docs/DESIGN.md): the channel's accent and icon tile.
+        #[arg(long)]
+        hue: Option<f64>,
+        /// One emoji or letter, shown when there is no icon.
         #[arg(long)]
         glyph: Option<String>,
-        /// `#rrggbb`
+        /// `#rrggbb`; the old way, `--hue` replaces it.
         #[arg(long)]
         accent: Option<String>,
         /// auto (each text by its own language, the default), ltr or rtl.
@@ -598,8 +605,8 @@ async fn print_channels(sock: &std::path::Path, json: bool, reload: bool) -> Res
 async fn channel(sock: &std::path::Path, cmd: ChannelCmd) -> Result<()> {
     let dir = apps::default_dir()?;
     let name = match cmd {
-        ChannelCmd::Add { name, title, glyph, accent, dir: d, kind, exec, show, share, no_notify, keep_done, force } => {
-            let new = channel_cmd::New { title, glyph, accent, dir: d, kind, exec, show, share, no_notify, keep_done };
+        ChannelCmd::Add { name, title, icon, hue, glyph, accent, dir: d, kind, exec, show, share, no_notify, keep_done, force } => {
+            let new = channel_cmd::New { title, icon, hue, glyph, accent, dir: d, kind, exec, show, share, no_notify, keep_done };
             println!("wrote {}", channel_cmd::add(&dir, &name, &new, force)?.display());
             name
         }

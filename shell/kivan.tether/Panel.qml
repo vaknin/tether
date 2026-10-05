@@ -478,6 +478,7 @@ Item {
         required property var modelData
         name: modelData.name
         glyph: modelData.glyph
+        mark: modelData.icon || null
         title: modelData.title
         badge: modelData.badge || 0
         tint: modelData.accent || Color.accent
@@ -489,6 +490,7 @@ Item {
     id: tab
     property string name: ""
     property string glyph: ""
+    property var mark: null
     property string title: ""
     property int badge: 0
     property color tint: Color.accent
@@ -502,7 +504,8 @@ Item {
       id: tabRow
       anchors.centerIn: parent
       spacing: Style.space(5)
-      Text { text: tab.glyph; color: tab.on ? tab.tint : Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; anchors.verticalCenter: parent.verticalCenter }
+      Mark { visible: !!tab.mark; mark: tab.mark; color: tab.on ? tab.tint : Color.popups.text; width: Style.font.bodySmall + 2; height: width; anchors.verticalCenter: parent.verticalCenter }
+      Text { visible: !tab.mark; text: tab.glyph; color: tab.on ? tab.tint : Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; anchors.verticalCenter: parent.verticalCenter }
       Text { text: tab.title; color: Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.caption; font.bold: tab.on; anchors.verticalCenter: parent.verticalCenter }
       Rectangle {
         visible: tab.badge > 0
@@ -559,9 +562,17 @@ Item {
           height: Style.space(24)
           radius: 4
           color: index === 0 ? Util.alpha(Color.accent, 0.25) : (swHover.hovered ? Util.alpha(Color.popups.text, 0.08) : "transparent")
-          Text {
+          Mark {
+            id: swMark
+            visible: !!modelData.icon
+            mark: modelData.icon || null
+            color: Color.popups.text
+            width: visible ? Style.font.bodySmall : 0; height: Style.font.bodySmall
             anchors { left: parent.left; leftMargin: Style.space(6); verticalCenter: parent.verticalCenter }
-            text: modelData.glyph + "  " + modelData.title
+          }
+          Text {
+            anchors { left: swMark.right; leftMargin: modelData.icon ? Style.space(6) : 0; verticalCenter: parent.verticalCenter }
+            text: modelData.icon ? modelData.title : modelData.glyph + "  " + modelData.title
             color: Color.popups.text
             font.family: Style.font.family
             font.pixelSize: Style.font.bodySmall

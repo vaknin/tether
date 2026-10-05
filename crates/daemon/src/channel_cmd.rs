@@ -8,12 +8,15 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail, ensure};
 use toml_edit::{DocumentMut, value};
 
-use crate::apps;
+use crate::{apps, mark};
 
 /// What `channel add` was given; everything is optional.
 #[derive(Debug, Default)]
 pub struct New {
     pub title: Option<String>,
+    /// A Lucide name, or a path to your own 24-grid `.svg` (copied in as `icons/<stem>.svg`).
+    pub icon: Option<String>,
+    pub hue: Option<f64>,
     pub glyph: Option<String>,
     pub accent: Option<String>,
     pub dir: Option<String>,
@@ -29,6 +32,40 @@ pub struct New {
 const STRINGS: [&str; 7] = ["title", "glyph", "accent", "dir", "kind", "exec", "show"];
 const BOOLS: [&str; 3] = ["share", "notify", "laptop"];
 const NUMBERS: [&str; 1] = ["keep_done"];
+/// `icon` (copied into `icons/`, see [icon]) and `hue` (degrees) are handled on their own.
+const LOOK: [&str; 2] = ["icon", "hue"];
+
+/// Copies the icon's SVG into `<dir>/icons/<name>.svg`, so the daemon needs nothing outside the
+/// apps folder, and returns the name the manifest stores. `icon` is a Lucide name or an `.svg` path.
+fn icon(dir: &Path, icon: &str) -> Result<String> {
+    let (name, src) = if icon.ends_with(".svg") {
+        let src = PathBuf::from(icon);
+        let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+        ensure!(mark::valid_icon(&stem), "name the file [a-z0-9-]+.svg: {icon}");
+        (stem, src)
+    } else {
+        ensure!(mark::valid_icon(icon), "bad icon name {icon:?} (Lucide names are [a-z0-9-]+, see https://lucide.dev/icons)");
+        let src = mark::find(dir, icon).with_context(|| {
+            let lucide = mark::lucide_dir().map(|d| d.display().to_string()).unwrap_or_default();
+            format!("no icon {icon:?} in {}/icons or {lucide}", dir.display())
+        })?;
+        (icon.to_string(), src)
+    };
+    let text = std::fs::read_to_string(&src).with_context(|| format!("read {}", src.display()))?;
+    mark::parse(&text).with_context(|| format!("{} can't be a channel icon", src.display()))?;
+    let dest = dir.join("icons").join(format!("{name}.svg"));
+    if dest != src {
+        std::fs::create_dir_all(dest.parent().context("no folder")?).context("create the icons folder")?;
+        std::fs::write(&dest, text).with_context(|| format!("write {}", dest.display()))?;
+    }
+    Ok(name)
+}
+
+fn hue(v: &str) -> Result<f64> {
+    let h: f64 = v.parse().with_context(|| format!("hue is degrees, 0 to 360: {v:?}"))?;
+    ensure!((0.0..=360.0).contains(&h), "hue is degrees, 0 to 360: {v:?}");
+    Ok(h)
+}
 
 fn path(dir: &Path, name: &str) -> Result<PathBuf> {
     ensure!(apps::valid_name(name), "bad channel name {name:?} (use [a-z0-9_-]+, not starting with _)");
@@ -63,6 +100,12 @@ pub fn add(dir: &Path, name: &str, new: &New, force: bool) -> Result<PathBuf> {
             doc[k] = value(v.as_str());
         }
     }
+    if let Some(i) = &new.icon {
+        doc["icon"] = value(icon(dir, i)?);
+    }
+    if let Some(h) = new.hue {
+        doc["hue"] = value(hue(&h.to_string())?);
+    }
     if new.share {
         doc["share"] = value(true);
     }
@@ -86,6 +129,10 @@ pub fn set(dir: &Path, name: &str, pairs: &[String]) -> Result<PathBuf> {
         let k = k.trim();
         if v.is_empty() {
             doc.remove(k);
+        } else if k == "icon" {
+            doc[k] = value(icon(dir, v)?);
+        } else if k == "hue" {
+            doc[k] = value(hue(v)?);
         } else if STRINGS.contains(&k) {
             doc[k] = value(v);
         } else if BOOLS.contains(&k) {
@@ -93,7 +140,7 @@ pub fn set(dir: &Path, name: &str, pairs: &[String]) -> Result<PathBuf> {
         } else if NUMBERS.contains(&k) {
             doc[k] = value(v.parse::<i64>().with_context(|| format!("{k} is a whole number"))?);
         } else {
-            bail!("unknown key {k:?} (keys: {})", [STRINGS.as_slice(), &BOOLS, &NUMBERS].concat().join(", "));
+            bail!("unknown key {k:?} (keys: {})", [LOOK.as_slice(), &STRINGS, &BOOLS, &NUMBERS].concat().join(", "));
         }
     }
     write(&path, &doc)?;

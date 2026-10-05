@@ -22,7 +22,7 @@ use tether_core::node::{Event, Node};
 use tokio::{sync::broadcast::error::RecvError, time::Instant};
 use tracing::{info, warn};
 
-use crate::{daemon::Clients, lists::Lists};
+use crate::{daemon::Clients, lists::Lists, mark};
 
 /// A starter that hasn't produced a client yet isn't run again before this.
 const RELAUNCH_GAP: Duration = Duration::from_secs(30);
@@ -78,6 +78,10 @@ impl Show {
 #[serde(deny_unknown_fields)]
 struct Raw {
     title: Option<String>,
+    /// A Lucide icon name (`mark.rs`); `glyph` is the fallback when it can't be found.
+    icon: Option<String>,
+    /// OKLCH hue in degrees: gives `accent`, `on_accent` and `tile` (`docs/DESIGN.md`).
+    hue: Option<f64>,
     glyph: Option<String>,
     accent: Option<String>,
     dir: Option<Dir>,
@@ -98,10 +102,16 @@ struct Raw {
 pub struct Channel {
     pub name: String,
     pub title: String,
-    /// One emoji or letter.
+    /// One emoji or letter; drawn when there is no `icon`.
     pub glyph: String,
-    /// `#rrggbb`; `None` leaves it to the UI.
+    /// The white mark drawn on `tile`.
+    pub icon: Option<mark::Mark>,
+    /// `#RRGGBB`, from `hue` (or the old `accent` key); `None` leaves it to the UI.
     pub accent: Option<String>,
+    /// Text and icons on `accent`; only with `hue`.
+    pub on_accent: Option<String>,
+    /// The icon's background, like an app's launcher tile; only with `hue`.
+    pub tile: Option<String>,
     pub dir: Dir,
     pub kind: Kind,
     /// Accepts Android share text into its compose.
@@ -131,10 +141,11 @@ impl Channel {
 
     /// A channel with items but no manifest.
     pub fn thread(name: &str) -> Self {
-        Self::from_raw(name, Raw::default())
+        Self::from_raw(name, Raw::default(), None)
     }
 
-    fn from_raw(name: &str, r: Raw) -> Self {
+    /// `dir` is the manifests' folder, where `icons/` is looked up first.
+    fn from_raw(name: &str, r: Raw, dir: Option<&Path>) -> Self {
         let title = r.title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| name.to_string());
         let glyph = r
             .glyph
@@ -146,6 +157,21 @@ impl Channel {
                 warn!("channel {name}: accent {a:?} isn't #rrggbb; ignored");
             }
             ok
+        });
+        let hue = r.hue.map(|h| mark::colors(h.rem_euclid(360.0)));
+        if hue.is_some() && accent.is_some() {
+            warn!("channel {name}: both hue and accent are set; accent ignored");
+        }
+        let (accent, on_accent, tile) = match hue {
+            Some(c) => (Some(c.accent), Some(c.on_accent), Some(c.tile)),
+            None => (accent, None, None),
+        };
+        let icon = r.icon.filter(|i| !i.is_empty()).and_then(|i| match dir.and_then(|d| mark::find(d, &i)) {
+            Some(path) => mark::load(&path).inspect_err(|e| warn!("channel {name}: icon {i:?}: {e:#}; the glyph is shown")).ok(),
+            None => {
+                warn!("channel {name}: icon {i:?} isn't in apps/icons or the Lucide set; the glyph is shown");
+                None
+            }
         });
         let exec = r.exec.filter(|e| !e.trim().is_empty());
         let show = match (r.show, r.laptop) {
@@ -162,7 +188,10 @@ impl Channel {
             name: name.into(),
             title,
             glyph,
+            icon,
             accent,
+            on_accent,
+            tile,
             dir: r.dir.unwrap_or(Dir::Auto),
             kind: r.kind.unwrap_or(if exec.is_some() { Kind::App } else { Kind::Thread }),
             share: r.share,
@@ -206,7 +235,7 @@ pub fn load(dir: &Path) -> Vec<Channel> {
             .context("read")
             .and_then(|s| toml::from_str::<Raw>(&s).context("parse"));
         match raw {
-            Ok(r) => list.push(Channel::from_raw(name, r)),
+            Ok(r) => list.push(Channel::from_raw(name, r, Some(dir))),
             Err(e) => warn!("{}: {e:#}; skipped", path.display()),
         }
     }
@@ -387,6 +416,27 @@ share = true
         assert_eq!((notes.title.as_str(), notes.glyph.as_str()), ("notes", "N"));
         assert_eq!((notes.accent.clone(), notes.kind, notes.dir), (None, Kind::Thread, Dir::Auto));
         assert_eq!((notes.show, notes.keep_done), (Show::Both, KEEP_DONE_HOURS));
+    }
+
+    #[test]
+    fn hue_gives_the_colours_and_icon_the_mark() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir(d.path().join("icons")).unwrap();
+        std::fs::write(
+            d.path().join("icons/cart.svg"),
+            r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="21" r="1"/></svg>"#,
+        )
+        .unwrap();
+        std::fs::write(d.path().join("shop.toml"), "icon = \"cart\"\nhue = 250\naccent = \"#d79921\"\n").unwrap();
+        std::fs::write(d.path().join("lost.toml"), "icon = \"no-such-icon\"\nglyph = \"L\"\n").unwrap();
+        let list = load(d.path());
+        let (lost, shop) = (&list[0], &list[1]);
+        assert_eq!(shop.accent.as_deref(), Some("#95C9FF"), "hue wins over accent");
+        assert_eq!((shop.on_accent.as_deref(), shop.tile.as_deref()), (Some("#071727"), Some("#0E3F6A")));
+        let j = serde_json::to_value(shop).unwrap();
+        assert_eq!(j["icon"]["view"], serde_json::json!([0.0, 0.0, 24.0, 24.0]));
+        assert_eq!(j["icon"]["paths"][0]["stroke"], 2.0);
+        assert!((lost.icon.is_none() && lost.tile.is_none()) && lost.glyph == "L", "a missing icon falls back to the glyph");
     }
 
     #[test]

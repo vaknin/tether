@@ -34,13 +34,10 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   Wi-Fi drops client-to-client multicast anyway, and relay plus hole-punching finds the direct path.
 - Phone root screen: the channel list (`ui/ChannelScreen.kt`, state in `Channels.kt`); the chat is one entry.
 - Phone UI: `ui/TetherScreen.kt` (grouped bubbles, day headers, inline time and ✓✓, links, image
-  thumbnails, file chips, setup sheet and unpair in the ⋮ menu). The look is the shared design
-  language from `~/Projects/design` at **hue 250** (dark only, Rubik + Geist Mono, Lucide icons);
-  `ui/theme/`, `res/font`, `res/values/design.xml`, the launcher/notification icons and
-  `res/drawable/lucide_*` are generated, never edited by hand: regenerate with
-  `design kotlin --hue 250 --package com.kivan.tether.ui.theme --r com.kivan.tether --src app/src/main/java/com/kivan/tether/ui/theme --res app/src/main/res`,
-  `design launcher --hue 250 --mark ../docs/launcher-mark.svg --res app/src/main/res` and
-  `design icons --res app/src/main/res <names>` (from `android/`). `Thumbs` keeps
+  thumbnails, file chips, setup sheet and unpair in the ⋮ menu). **Design: read `docs/DESIGN.md`
+  before any UI work.** Tether uses the shared design language from `~/Projects/design` at hue 250
+  (dark only, Rubik + Geist Mono, Lucide icons); the theme, fonts, launcher and icons are generated,
+  never edited by hand, and channels pick an `icon` + `hue` the same way. `Thumbs` keeps
   `filesDir/thumbs/<id>.webp`, written on send and on save, because neither original stays put.
 - Phone notifications (`Notifier.kt`): chat, pings and received files are **one** conversation
   notification (MessagingStyle, Person "Laptop", shortcut `laptop` so it sits under Conversations).

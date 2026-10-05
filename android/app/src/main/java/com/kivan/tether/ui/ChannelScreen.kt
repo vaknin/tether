@@ -6,6 +6,7 @@ import android.content.Context
 import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,6 +68,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -79,6 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.ChannelInfo
+import com.kivan.tether.ChannelLook
 import com.kivan.tether.Channels
 import com.kivan.tether.Core
 import com.kivan.tether.Dir
@@ -206,20 +210,27 @@ private fun EntryRow(
     }
 }
 
-/** A channel's glyph on its accent, as in the panel's strip. */
+/** A channel's tile: its white Lucide mark on its hue's tile (docs/DESIGN.md), or the old glyph. */
 @Composable
 internal fun Glyph(c: ChannelInfo, size: Int) {
-    val accent = c.accent?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    val mark = c.icon
     Box(
-        Modifier.size(size.dp).clip(CircleShape).background(accent),
+        Modifier.size(size.dp).clip(CircleShape).background(Color(ChannelLook.background(c))),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            c.glyph,
-            color = Palette.OnAccent,
-            fontWeight = FontWeight.Bold,
-            style = if (size >= 40) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleSmall,
-        )
+        if (mark != null) {
+            val fg = ChannelLook.foreground(c)
+            Canvas(Modifier.size((size / 2).dp)) {
+                drawIntoCanvas { ChannelLook.drawMark(it.nativeCanvas, mark, 0f, 0f, this.size.minDimension, fg) }
+            }
+        } else {
+            Text(
+                c.glyph,
+                color = Color(ChannelLook.foreground(c)),
+                fontWeight = FontWeight.Bold,
+                style = if (size >= 40) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleSmall,
+            )
+        }
     }
 }
 
@@ -234,6 +245,8 @@ internal fun BackButton(onBack: () -> Unit) {
 private class Ctx(
     val name: String,
     val accent: Color,
+    /** Text and icons on [accent]. */
+    val onAccent: Color,
     val armed: String?,
     /** `dir = "auto"`: each text and list row takes its own direction. */
     val auto: Boolean,
@@ -266,7 +279,8 @@ internal fun ChannelScreen(name: String) {
         }
     }
     val accent = c.accent?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-    val ctx = Ctx(name, accent, armed, c.dir == Dir.AUTO) { key, confirm, obj ->
+    val onAccent = c.onAccent?.let { Color(it) } ?: Palette.OnAccent
+    val ctx = Ctx(name, accent, onAccent, armed, c.dir == Dir.AUTO) { key, confirm, obj ->
         if (confirm && armed != key) {
             armed = key
         } else {
@@ -587,7 +601,7 @@ private fun Checklist(b: JSONObject) {
                     Checkbox(
                         checked = checked,
                         onCheckedChange = { toggle() },
-                        colors = CheckboxDefaults.colors(checkedColor = ch.accent, checkmarkColor = Palette.OnAccent),
+                        colors = CheckboxDefaults.colors(checkedColor = ch.accent, checkmarkColor = ch.onAccent),
                     )
                     Text(
                         it.optString("label"),
@@ -737,6 +751,7 @@ private fun Buttons(b: JSONObject) {
 @Composable
 private fun ActionButton(label: String, style: String, small: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     val accent = LocalCh.current.accent
+    val onAccent = LocalCh.current.onAccent
     val pad = if (small) PaddingValues(horizontal = 12.dp, vertical = 4.dp) else ButtonDefaults.ContentPadding
     val mod = if (small) Modifier.height(34.dp) else Modifier
     when (style) {
@@ -748,7 +763,7 @@ private fun ActionButton(label: String, style: String, small: Boolean = false, e
             shape = MaterialTheme.shapes.medium,
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (style == "danger") Palette.Danger else accent,
-                contentColor = if (style == "danger") Palette.OnDanger else Palette.OnAccent,
+                contentColor = if (style == "danger") Palette.OnDanger else onAccent,
             ),
         ) { Text(label, fontWeight = FontWeight.SemiBold) }
         else -> OutlinedButton(onClick = onClick, enabled = enabled, contentPadding = pad, modifier = mod, shape = MaterialTheme.shapes.medium) {

@@ -21,6 +21,7 @@ private const val TAG = "Tether"
 data class ChannelInfo(
     val name: String,
     val title: String,
+    /** One emoji or letter, drawn when there is no [icon]. */
     val glyph: String,
     /** ARGB, or null for the theme's accent. */
     val accent: Int?,
@@ -29,6 +30,12 @@ data class ChannelInfo(
     val thread: Boolean,
     val share: Boolean,
     val notify: Boolean,
+    /** The white mark on [tile] (a Lucide icon), from the manifest's `icon`. */
+    val icon: ChannelMark? = null,
+    /** ARGB of text and icons on [accent]; from `hue`. */
+    val onAccent: Int? = null,
+    /** ARGB of the icon's background; from `hue` (docs/DESIGN.md). */
+    val tile: Int? = null,
 )
 
 /** A channel's `dir`: `auto` keeps the chrome LTR and gives each text its own direction. */
@@ -310,8 +317,7 @@ object Channels {
                 name = name,
                 title = o.optString("title", name),
                 glyph = o.optString("glyph").ifEmpty { name.take(1) },
-                accent = o.optString("accent").takeIf { it.matches(Regex("#[0-9a-fA-F]{6}")) }
-                    ?.let { (0xFF000000 or it.substring(1).toLong(16)).toInt() },
+                accent = argb(o.optString("accent")),
                 dir = when (o.optString("dir")) {
                     "ltr" -> Dir.LTR
                     "rtl" -> Dir.RTL
@@ -320,7 +326,13 @@ object Channels {
                 thread = o.optString("kind") == "thread",
                 share = o.optBoolean("share"),
                 notify = o.optBoolean("notify", true),
+                icon = ChannelMark.parse(o.optJSONObject("icon")),
+                onAccent = argb(o.optString("on_accent")),
+                tile = argb(o.optString("tile")),
             )
         }
     }
+
+    private fun argb(hex: String): Int? =
+        hex.takeIf { it.matches(Regex("#[0-9a-fA-F]{6}")) }?.let { (0xFF000000 or it.substring(1).toLong(16)).toInt() }
 }
