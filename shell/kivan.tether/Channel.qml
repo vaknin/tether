@@ -541,9 +541,11 @@ BorderSurface {
       property var b: ({})
       property var boxes: ({})
       function box(key) { return key !== "" && boxes[key] ? boxes[key] : null }
+      // The newest 50; `items` may arrive as a list type that isn't a JS Array, so copy by index.
       readonly property var lines: {
-        var its = Array.isArray(b.items) ? b.items : []
-        return its.slice(Math.max(0, its.length - 50))
+        var its = b.items || [], out = []
+        for (var i = Math.max(0, its.length - 50); i < its.length; i++) out.push(its[i])
+        return out
       }
       spacing: Style.space(2)
       Label {
