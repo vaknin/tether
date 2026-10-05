@@ -41,6 +41,11 @@ pub enum Body {
     App { channel: String, data: String, replace: bool },
     /// Delete a channel's thread: both sides drop every item and view of it. Silent (no wake).
     DropChannel(String),
+    /// A file for an app channel (a photo sent to dibs), not the chat: it travels like [`Body::File`]
+    /// (resume, sha256, Ack, cancel), but the receiver keeps it under `<state>/channels/<channel>/`,
+    /// out of the chat and Downloads. Appended last: an older peer skips the frame and the sender
+    /// keeps the item queued until it updates.
+    ChannelFile { channel: String, name: String, size: u64, sha256: [u8; 32] },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

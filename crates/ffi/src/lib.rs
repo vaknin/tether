@@ -103,6 +103,8 @@ pub struct ChatMessage {
     pub path: Option<String>,
     pub state: MsgState,
     pub read: bool,
+    /// A channel's file (a photo sent to dibs): not part of the chat.
+    pub channel: Option<String>,
 }
 
 impl From<store::Message> for ChatMessage {
@@ -123,6 +125,7 @@ impl From<store::Message> for ChatMessage {
             path: m.path.map(|p| p.to_string_lossy().into_owned()),
             state: m.state.into(),
             read: m.read,
+            channel: m.channel,
         }
     }
 }
@@ -410,6 +413,15 @@ impl TetherNode {
     pub async fn send_file(&self, path: String) -> Res<ChatMessage> {
         let node = self.node.clone();
         let m = on_rt(async move { node.send_file(std::path::Path::new(&path)).await }).await?;
+        self.dial_soon();
+        Ok(m.into())
+    }
+
+    /// Queues the file at `path` for an app channel (a photo sent to dibs): it travels like a chat
+    /// file, but the laptop keeps it for the channel's app. `path` must stay until it's delivered.
+    pub async fn send_channel_file(&self, channel: String, path: String) -> Res<ChatMessage> {
+        let node = self.node.clone();
+        let m = on_rt(async move { node.send_channel_file(&channel, std::path::Path::new(&path)).await }).await?;
         self.dial_soon();
         Ok(m.into())
     }

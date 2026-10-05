@@ -294,6 +294,10 @@ async fn client(ctx: Ctx, stream: UnixStream) -> Result<()> {
                     send_line(&mut w, &json!({ "type": "app", "channel": channel, "view": view })).await?;
                 }
                 Ok(Event::App { id: None, .. }) => {}
+                // A channel's file is its channel's business too: a notice, as for its items.
+                Ok(Event::Message(m)) if m.channel.is_some() => {
+                    send_line(&mut w, &json!({ "type": "app", "channel": m.channel, "view": false })).await?;
+                }
                 Ok(e) => {
                     let mut line = serde_json::to_vec(&e)?;
                     line.push(b'\n');
@@ -442,17 +446,30 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
             node.drop_channel(&channel)?;
             json!({ "dropped": n })
         }
-        Request::Thread { channel, limit } => Value::Array(
-            node.app_history(&channel, limit)?
-                .into_iter()
-                .map(|m| {
-                    let data = m.text.as_deref().map_or(Value::Null, parse);
-                    json!({ "id": m.id, "data": data, "from_me": m.from_me, "ts_ms": m.ts_ms })
-                })
-                .collect(),
-        ),
+        Request::Thread { channel, limit } => {
+            let items = node.app_history(&channel, limit)?.into_iter().map(|m| {
+                let data = m.text.as_deref().map_or(Value::Null, parse);
+                (m.ts_ms, json!({ "id": m.id, "data": data, "from_me": m.from_me, "ts_ms": m.ts_ms }))
+            });
+            // The channel's files (a photo sent to dibs): `path` once it has arrived.
+            let files = node.app_files(&channel, limit)?.into_iter().map(|m| (m.ts_ms, file_json(&m)));
+            let mut all: Vec<(i64, Value)> = items.chain(files).collect();
+            all.sort_by_key(|(ts, _)| *ts);
+            let skip = all.len().saturating_sub(limit);
+            Value::Array(all.into_iter().skip(skip).map(|(_, v)| v).collect())
+        }
         Request::Watch | Request::AppSubscribe { .. } => unreachable!("handled by the caller"),
     })
+}
+
+/// A channel file in `thread`: `{"id","from_me","ts_ms","file":{"name","size","state","path"?}}`;
+/// `path` only once it has arrived (or, for mine, while it's there to send).
+fn file_json(m: &tether_core::store::Message) -> Value {
+    let mut f = json!({ "name": m.file_name, "size": m.file_size, "state": m.state });
+    if let Some(p) = &m.path {
+        f["path"] = p.to_string_lossy().into();
+    }
+    json!({ "id": m.id, "from_me": m.from_me, "ts_ms": m.ts_ms, "file": f })
 }
 
 /// App data as JSON for the UIs; data that isn't JSON comes as a string.

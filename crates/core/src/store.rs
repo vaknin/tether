@@ -94,10 +94,18 @@ impl Message {
                 data: self.text.clone().unwrap_or_default(),
                 replace: self.kind == "view",
             },
-            _ => Body::File {
-                name: self.file_name.clone().unwrap_or_default(),
-                size: self.file_size.unwrap_or(0),
-                sha256: self.sha256.unwrap_or([0; 32]),
+            _ => match &self.channel {
+                Some(channel) => Body::ChannelFile {
+                    channel: channel.clone(),
+                    name: self.file_name.clone().unwrap_or_default(),
+                    size: self.file_size.unwrap_or(0),
+                    sha256: self.sha256.unwrap_or([0; 32]),
+                },
+                None => Body::File {
+                    name: self.file_name.clone().unwrap_or_default(),
+                    size: self.file_size.unwrap_or(0),
+                    sha256: self.sha256.unwrap_or([0; 32]),
+                },
             },
         }
     }
@@ -127,7 +135,8 @@ pub struct Store {
 const COLS: &str =
     "id, seq, from_me, ts_ms, expires_ms, kind, text, file_name, file_size, sha256, path, state, read, channel";
 /// App items and views aren't chat: the chat views and the unread count leave them out.
-const CHAT: &str = "kind NOT IN ('app', 'view', 'drop')";
+// Channel files (kind `file` with a channel) belong to their channel, not the chat.
+const CHAT: &str = "kind NOT IN ('app', 'view', 'drop') AND channel IS NULL";
 /// Taken or delivered app items are dropped after this long.
 const APP_KEEP_MS: i64 = 30 * 24 * 3600 * 1000;
 
@@ -240,7 +249,7 @@ impl Store {
             self.db.execute("DELETE FROM messages WHERE id = ?1", [m.id.to_string()])?;
         }
         let state = match item.body {
-            Body::File { .. } => State::Incoming,
+            Body::File { .. } | Body::ChannelFile { .. } => State::Incoming,
             _ => State::Received,
         };
         let msg = to_message(item, false, None, state, false);
@@ -454,6 +463,16 @@ impl Store {
         Ok(stmt.query_map(params![channel, limit as i64], row)?.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// The channel's last `limit` files (both ways, any state), oldest first.
+    pub fn app_files(&self, channel: &str, limit: usize) -> Result<Vec<Message>> {
+        let mut stmt = self.db.prepare(&format!(
+            "SELECT * FROM (SELECT {COLS}, rowid AS r FROM messages WHERE kind = 'file' AND channel = ?1
+                            ORDER BY ts_ms DESC, r DESC LIMIT ?2)
+             ORDER BY ts_ms, r"
+        ))?;
+        Ok(stmt.query_map(params![channel, limit as i64], row)?.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     /// Every channel that has an item or a view, by name.
     pub fn app_channels(&self) -> Result<Vec<String>> {
         let mut stmt = self.db.prepare(
@@ -471,7 +490,7 @@ fn ghost_of(m: &Message, item: &Item) -> bool {
         && m.kind == "file"
         && m.file_name.as_deref().unwrap_or("").is_empty()
         && m.file_size.unwrap_or(0) == 0
-        && !matches!(item.body, Body::File { .. })
+        && !matches!(item.body, Body::File { .. } | Body::ChannelFile { .. })
 }
 
 fn to_message(item: &Item, from_me: bool, path: Option<PathBuf>, state: State, read: bool) -> Message {
@@ -481,6 +500,10 @@ fn to_message(item: &Item, from_me: bool, path: Option<PathBuf>, state: State, r
         Body::Ping(t) => ("ping", Some(t.clone()), None, None, None),
         Body::Ring => ("ring", None, None, None, None),
         Body::File { name, size, sha256 } => ("file", None, Some(name.clone()), Some(*size), Some(*sha256)),
+        Body::ChannelFile { channel: c, name, size, sha256 } => {
+            channel = Some(c.clone());
+            ("file", None, Some(name.clone()), Some(*size), Some(*sha256))
+        }
         Body::DropChannel(c) => {
             channel = Some(c.clone());
             ("drop", None, None, None, None)

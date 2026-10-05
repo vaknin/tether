@@ -19,7 +19,8 @@ pub async fn run(node: Node) {
     let mut rx = node.events();
     loop {
         match rx.recv().await {
-            Ok(Event::Message(m)) if !m.from_me => {
+            // A channel's file (a photo sent to dibs) is its app's, not a download: no toast, no clipboard.
+            Ok(Event::Message(m)) if !m.from_me && m.channel.is_none() => {
                 if let Err(e) = handle(&node, &m).await {
                     warn!("desktop side effect for {} failed: {e:#}", m.id);
                 }

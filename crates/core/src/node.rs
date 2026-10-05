@@ -396,6 +396,23 @@ impl Node {
         self.inner.send(Body::File { name, size, sha256 }, Some(path), None)
     }
 
+    /// Queues a file for an app channel (a photo sent to dibs): sent like [`Node::send_file`], kept
+    /// by the receiver under `<state>/channels/<channel>/`, out of the chat.
+    pub async fn send_channel_file(&self, channel: &str, path: &Path) -> Result<Message> {
+        let path = std::path::absolute(path)?;
+        let (sha256, size) = files::sha256_file(&path).await?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".into());
+        self.inner.send(Body::ChannelFile { channel: channel.into(), name, size, sha256 }, Some(path), None)
+    }
+
+    /// The channel's last `limit` files, both ways, oldest first.
+    pub fn app_files(&self, channel: &str, limit: usize) -> Result<Vec<Message>> {
+        self.inner.db(|s| s.app_files(channel, limit))
+    }
+
     /// Queues an item on an app channel. With `replace` it is the channel's view, and my older
     /// views of it are dropped, delivered or not (only the newest matters).
     pub fn send_app(&self, channel: &str, data: String, replace: bool) -> Result<Uuid> {
@@ -1060,8 +1077,21 @@ impl Inner {
             warn!("file {} failed its checksum; discarded", hdr.id);
             return Ok(());
         }
-        let dest = files::unique_path(&self.cfg.download_dir, msg.file_name.as_deref().unwrap_or("file"));
-        tokio::fs::rename(&part, &dest).await?;
+        let name = msg.file_name.as_deref().unwrap_or("file");
+        let dest = match &msg.channel {
+            // A channel's file stays with Tether's state, out of Downloads.
+            Some(ch) => {
+                let dir = self.cfg.state_dir.join("channels").join(files::safe_name(ch));
+                tokio::fs::create_dir_all(&dir).await?;
+                files::unique_path(&dir, name)
+            }
+            None => files::unique_path(&self.cfg.download_dir, name),
+        };
+        if tokio::fs::rename(&part, &dest).await.is_err() {
+            // Another filesystem (Downloads elsewhere than the state).
+            tokio::fs::copy(&part, &dest).await?;
+            tokio::fs::remove_file(&part).await.ok();
+        }
         let m = self.db(|s| {
             s.set_path(hdr.id, &dest)?;
             s.set_state(hdr.id, State::Received)

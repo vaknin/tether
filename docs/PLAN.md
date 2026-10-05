@@ -192,6 +192,12 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 - `Node::app_local(channel, data)`: an item from a local UI (the panel), stored as if received
   (from_me false, kind `app`) and emitted, so the subscribed app (or a start on demand) takes it.
 - Taken/delivered `app` items older than 30 days are pruned when the store opens.
+- `Body::ChannelFile { channel, name, size, sha256 }` (2026-10-05, for files sent to dibs): a file for a
+  channel, stored as kind `file` with its `channel`, so it travels like a chat file (resume, sha256, Ack,
+  cancel, progress). The receiver keeps it in `<state>/channels/<channel>/`, out of the chat, its unread
+  count, Downloads and the laptop's toast and clipboard. `Node::app_files(channel)` lists them; the
+  daemon's `thread` merges them in as `{"id","from_me","ts_ms","file":{"name","size","state","path"?}}`,
+  and `watch` sends the channel's notice for them. ffi: `send_channel_file`, `ChatMessage.channel`.
 
 ### Data (JSON in `data`; Tether reads only what it draws)
 - View (app → phone/panel, `replace`): `{"v":1, "blocks":[…], "badge":N?, "notify":{"title","text"}?, "open_tags":[…]?}`.

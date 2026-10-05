@@ -517,3 +517,49 @@ async fn the_peer_tells_its_app_version_on_each_link_and_it_is_not_an_app_item()
     a.unpair().unwrap();
     assert_eq!(a.peer_app().unwrap(), None, "forgotten with the peer");
 }
+
+#[tokio::test]
+async fn a_channel_file_goes_to_its_channel_not_the_chat() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    let (mut ea, mut eb) = (a.events(), b.events());
+    let file = d.path().join("shot.png");
+    std::fs::write(&file, b"a photo for dibs").unwrap();
+
+    let f = b.send_channel_file("dibs", &file).await.unwrap();
+    assert_eq!(f.channel.as_deref(), Some("dibs"));
+    let got = wait_for(&mut ea, |e| msg_in(e, f.id, State::Received)).await;
+    let Event::Message(got) = got else { unreachable!() };
+    let saved = got.path.clone().unwrap();
+    assert_eq!(saved, d.path().join("a/state/channels/dibs/shot.png"));
+    assert_eq!(std::fs::read(&saved).unwrap(), b"a photo for dibs");
+    assert_eq!(got.channel.as_deref(), Some("dibs"));
+    wait_for(&mut eb, |e| msg_in(e, f.id, State::Delivered)).await;
+
+    // Not in the chat or its unread count, on either side; listed with the channel.
+    assert!(a.recent(10).unwrap().is_empty() && b.recent(10).unwrap().is_empty());
+    assert_eq!(a.unread().unwrap(), 0);
+    let files = a.app_files("dibs", 10).unwrap();
+    assert_eq!(files.iter().map(|m| (m.id, m.file_name.as_deref())).collect::<Vec<_>>(), vec![(f.id, Some("shot.png"))]);
+    assert!(a.app_files("teen", 10).unwrap().is_empty());
+    assert!(!d.path().join("a/dl/shot.png").exists());
+}
+
+#[tokio::test]
+async fn a_queued_channel_file_is_resent_as_one() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    a.shutdown().await;
+    let file = d.path().join("log.txt");
+    std::fs::write(&file, b"the log").unwrap();
+    // Queued while the laptop is away: the resend reads it back from the store.
+    let f = b.send_channel_file("dibs", &file).await.unwrap();
+    let a = start(d.path(), "a").await;
+    let mut ea = a.events();
+    introduce(&a, &b);
+    b.connect().await.unwrap();
+    let got = wait_for(&mut ea, |e| msg_in(e, f.id, State::Received)).await;
+    let Event::Message(got) = got else { unreachable!() };
+    assert_eq!(got.channel.as_deref(), Some("dibs"));
+    assert_eq!(got.path.unwrap(), d.path().join("a/state/channels/dibs/log.txt"));
+}
