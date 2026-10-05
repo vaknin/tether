@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dibs_name">dibs</string>
+    <!-- Like the generated Theme.Design (~/Projects/design), with dibs's accent: the window under
+         the first frame. Its own name, because the app's Theme.Design wins the resource merge. -->
+    <color name="dibs_bg">#0F1114</color>
+    <color name="dibs_accent">#7CDD93</color>
+    <style name="Theme.Dibs" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/dibs_bg</item>
+        <item name="android:colorBackground">@color/dibs_bg</item>
+        <item name="android:colorAccent">@color/dibs_accent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- dibs's own app inside the Tether APK: its own launcher icon and label, and its own task,
+             so it has its own card in Recents (docs/DIBS-APP.md). -->
+        <activity
+            android:name=".DibsActivity"
+            android:exported="true"
+            android:label="@string/dibs_name"
+            android:icon="@mipmap/ic_dibs"
+            android:roundIcon="@mipmap/ic_dibs_round"
+            android:taskAffinity="com.kivan.tether.dibs"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Dibs">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

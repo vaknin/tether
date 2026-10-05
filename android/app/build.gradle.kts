@@ -66,8 +66,8 @@ android {
         applicationId = "com.kivan.tether"
         minSdk = 34
         targetSdk = 37
-        versionCode = 13
-        versionName = "0.3.9"
+        versionCode = 14
+        versionName = "0.4.0"
         ndk {
             // The Pixel 8 is arm64-v8a; nothing else is built or shipped.
             abiFilters += "arm64-v8a"
@@ -121,6 +121,7 @@ androidComponents {
 }
 
 dependencies {
+    implementation(project(":dibs"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
