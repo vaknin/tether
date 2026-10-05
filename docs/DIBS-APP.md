@@ -21,8 +21,8 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
   4. **Recap**: "while you were away" and the day's feed. **One entry per finished piece of work** (the user,
      2026-10-05, task #31: a finished task showed three or four near-identical lines, some technical, cut with
      "…" and nothing behind a tap): a short plain line of what changed for them, "You asked: …" (why), whose
-     it was; a tap opens it whole (all of what they asked, its other lines, the task's report), a long press
-     copies it. dibs folds the lines (`src/recap.rs`): a task's `dibs did`s, shipped "For you" lines, its
+     it was; a tap opens it whole (the task's report, its other lines, then all of what they asked, folded
+     again since it was written for the agent), a long press copies it. dibs folds the lines (`src/recap.rs`): a task's `dibs did`s, shipped "For you" lines, its
      report and dibs's closing line are one entry, as are a handoff chain's sessions.
 - Above the tabs, when it applies: **"dibs has your phone · Take it back"** (lending, task #19).
 

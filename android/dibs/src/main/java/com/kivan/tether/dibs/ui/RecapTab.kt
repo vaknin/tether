@@ -100,7 +100,7 @@ private fun AwayCard(a: Away) {
 
 /**
  * One piece of work: its time, a mark by kind, what changed for you, why (what you asked), and
- * whose it was. A tap opens it whole: all of what you asked, its other lines, the task's report.
+ * whose it was. A tap opens it whole: the task's report, its other lines, all of what you asked.
  * A long press copies all of it.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -143,16 +143,21 @@ private fun FeedRow(f: FeedItem) {
                 overflow = TextOverflow.Ellipsis,
                 onTextLayout = { if (it.hasVisualOverflow) cut = true },
             )
-            val why = if (open) f.asked ?: f.why else f.why
-            if (why != null) {
+            if (f.why != null) {
                 Text(
-                    "You asked: $why",
+                    "You asked: ${f.why}",
                     style = AppType.small,
                     color = Palette.Muted,
                     maxLines = if (open) Int.MAX_VALUE else 1,
                     overflow = TextOverflow.Ellipsis,
                     onTextLayout = { if (it.hasVisualOverflow) cut = true },
                 )
+            }
+            // Open: what was done first (the report, the other lines), then all of what you asked,
+            // folded again: it was written for the agent, so it's long.
+            if (open && f.report != null) {
+                Eyebrow("Report", Modifier.padding(top = Space.S))
+                Text(f.report, style = AppType.small, color = Palette.Text)
             }
             if (open && f.more.isNotEmpty()) {
                 Eyebrow("Along the way", Modifier.padding(top = Space.S))
@@ -163,9 +168,9 @@ private fun FeedRow(f: FeedItem) {
                     }
                 }
             }
-            if (open && f.report != null) {
-                Eyebrow("Report", Modifier.padding(top = Space.S))
-                Text(f.report, style = AppType.small, color = Palette.Text)
+            if (open && f.asked != null) {
+                Eyebrow("What you asked", Modifier.padding(top = Space.S))
+                TapFold(f.asked, "$key:asked", 3, style = AppType.small, color = Palette.Muted)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val who = listOfNotNull(f.who.ifBlank { null }, f.repo?.takeIf { it != f.who }).joinToString(" · ")

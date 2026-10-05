@@ -98,8 +98,8 @@ class PayloadTest {
         assertEquals(listOf("dibs talks calm and short."), task.more)
         assertTrue(task.opens)
         assertEquals(
-            "dibs's brain has its personality.\n\nYou asked: add the brain's personality (artifact x). Keep it short." +
-                "\n\nAlong the way:\n• dibs talks calm and short.\n\nReport:\nAdded it.\nShipped.",
+            "dibs's brain has its personality.\n\nReport:\nAdded it.\nShipped.\n\nAlong the way:\n• dibs talks calm and short." +
+                "\n\nYou asked: add the brain's personality (artifact x). Keep it short.",
             task.full(),
         )
         assertTrue("an update's technical line is behind the tap", update.opens)

@@ -105,9 +105,9 @@ data class FeedItem(
     /** Everything, as plain text (Copy). */
     fun full(): String = buildString {
         append(text)
-        (asked ?: why)?.let { append("\n\nYou asked: ").append(it) }
-        if (more.isNotEmpty()) append("\n\nAlong the way:\n").append(more.joinToString("\n") { "• $it" })
         report?.let { append("\n\nReport:\n").append(it) }
+        if (more.isNotEmpty()) append("\n\nAlong the way:\n").append(more.joinToString("\n") { "• $it" })
+        (asked ?: why)?.let { append("\n\nYou asked: ").append(it) }
     }
 }
 
