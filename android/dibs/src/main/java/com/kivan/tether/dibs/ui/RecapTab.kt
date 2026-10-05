@@ -53,6 +53,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
+import org.json.JSONObject
 
 // The Recap tab: "while you were away" first, then the day's feed, newest first, grouped by day:
 // one row per piece of work (dibs folds a task's lines into one), a tap for the whole story.
@@ -171,6 +172,13 @@ private fun FeedRow(f: FeedItem) {
             if (open && f.asked != null) {
                 Eyebrow("What you asked", Modifier.padding(top = Space.S))
                 TapFold(f.asked, "$key:asked", 3, style = AppType.small, color = Palette.Muted)
+            }
+            if (open && f.reopen != null) {
+                val sent = "reopen:${f.reopen}" in Dibs.answered
+                ActButton(if (sent) "Opening on the laptop…" else "Open on laptop", "outline", Modifier.padding(top = Space.S), enabled = !sent) {
+                    Dibs.host.act("reopen", JSONObject().put("reopen", f.reopen))
+                    Dibs.answered["reopen:${f.reopen}"] = "sent"
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val who = listOfNotNull(f.who.ifBlank { null }, f.repo?.takeIf { it != f.who }).joinToString(" · ")

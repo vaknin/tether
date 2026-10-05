@@ -86,7 +86,7 @@ class PayloadTest {
                 """{"recap": {"feed": [
                   {"id": "t25", "ts": 5, "kind": "done", "who": "add-the-brain-s", "repo": "dibs", "text": "dibs's brain has its personality.",
                    "why": "Add the brain's personality.", "asked": "add the brain's personality (artifact x). Keep it short.",
-                   "more": ["dibs talks calm and short."], "report": "Added it.\nShipped."},
+                   "more": ["dibs talks calm and short."], "report": "Added it.\nShipped.", "reopen": "sid-1"},
                   {"ts": 4, "kind": "update", "who": "dibs", "text": "Installed an update to dibs", "report": "#16 x installed"},
                   {"ts": 3, "kind": "did", "who": "a", "text": "Shipped the fix"}]}}""",
             ),
@@ -94,6 +94,8 @@ class PayloadTest {
         val (task, update, bare) = d.feed
         assertEquals("dibs", task.repo)
         assertEquals("feed:t25", task.key)
+        assertEquals("sid-1", task.reopen)
+        assertNull("no saved chat, no button", update.reopen)
         assertEquals("an older dibs sends no id", "feed:3:a", bare.key)
         assertEquals(listOf("dibs talks calm and short."), task.more)
         assertTrue(task.opens)

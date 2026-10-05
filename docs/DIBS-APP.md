@@ -102,7 +102,8 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
   "recap": {"away": {"id": 4, "title": "…", "lines": ["…"], "seen": false}?,
             "feed": [{"id": "t25", "ts": …, "kind": "done|stopped|did|closed|update", "who": "…", "text": "what changed, whole",
                       "repo": "…"?, "why": "first sentence of the ask"?, "asked": "the whole ask"?,
-                      "more": ["its other lines, whole"]?, "report": "the task's report, whole"?}]},
+                      "more": ["its other lines, whole"]?, "report": "the task's report, whole"?,
+                      "reopen": "<claude session id>"?}]},
   "badges": {"waiting": 3, "work": 1, "recap": 1}
 }
 ```
@@ -110,7 +111,8 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
 ### Actions (phone → dibs, queued as today, `{"action", "value"?, "uid", "ts"}`)
 Today's ids stay: `a|d|y|n|x|k<id>`, `r<id>` (typed answer), `w<id>` (away "Got it"), `h<talk id>`
 (hide), `say` (`value.text`). New: `say` with `value.files` (ids of files sent to the channel, below),
-`peek` (`value.who`), `tell` (`value.task`, `value.text`), `stop` (`value.task`), `undo` (`value.item`:
+`peek` (`value.who`), `tell` (`value.task`, `value.text`), `stop` (`value.task`), `reopen` (`value.reopen`: an open
+Recap row's "Open on laptop" resumes that saved chat in a tab on the laptop, task #32), `undo` (`value.item`:
 handed to the brain as the user's request), `phone-back` (task #19).
 `ack-decided` (`value.items`: the decision ids the Waiting tab showed; "Got it to all", questions
 among them stay open). `badges.waiting` counts questions only.
