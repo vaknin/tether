@@ -54,12 +54,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
@@ -86,6 +90,7 @@ import com.kivan.tether.ChannelLook
 import com.kivan.tether.Channels
 import com.kivan.tether.Core
 import com.kivan.tether.Dir
+import com.kivan.tether.Dismissed
 import com.kivan.tether.R
 import com.kivan.tether.Shortcuts
 import com.kivan.tether.core.AppHistoryItem
@@ -444,14 +449,17 @@ private fun copy(context: Context, text: String) {
 @Composable
 private fun ListBlock(b: JSONObject) {
     val ch = LocalCh.current
-    val items = objects(b.optJSONArray("items"))
+    val gone by Channels.dismissed.collectAsState()
+    val items = objects(b.optJSONArray("items")).filter { Dismissed(ch.name, b.optString("id"), it.optString("id")) !in gone }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (items.isEmpty() && b.optString("empty").isNotEmpty()) {
             Text(b.optString("empty"), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         }
-        for (it in items) {
+        for (it in items) key(it.optString("id")) {
             val id = it.optString("id")
-            RowDir("${it.optString("title")}\n${it.optString("text")}") {
+            // `dismiss`: swiped away either way, the item goes at once and its id goes to the app.
+            val dismiss = it.optJSONObject("dismiss")?.optString("id").orEmpty()
+            SwipeAway(dismiss.isNotEmpty(), { Channels.dismiss(ch.name, b.optString("id"), id, dismiss) }) { RowDir("${it.optString("title")}\n${it.optString("text")}") {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(Space.M), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         val chips = strings(it.optJSONArray("chips"))
@@ -476,9 +484,35 @@ private fun ListBlock(b: JSONObject) {
                         it.optJSONObject("reply")?.let { r -> ItemReply(b.optString("id"), id, r) }
                     }
                 }
-            }
+            } }
         }
     }
+}
+
+/**
+ * A list item that can be swiped away (either way) when [enabled]: a bin shows on the uncovered
+ * side, and [onDismiss] runs once the swipe passes the threshold. Disabled, just [content].
+ */
+@Composable
+private fun SwipeAway(enabled: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    if (!enabled) return content()
+    val state = rememberSwipeToDismissBoxState()
+    SwipeToDismissBox(
+        state = state,
+        onDismiss = { onDismiss() },
+        backgroundContent = {
+            val dir = state.dismissDirection
+            Box(
+                Modifier.fillMaxSize().padding(horizontal = Space.L),
+                contentAlignment = if (dir == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd,
+            ) {
+                if (dir != SwipeToDismissBoxValue.Settled) {
+                    Icon(painterResource(R.drawable.lucide_trash_2), "Remove", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        content = { content() },
+    )
 }
 
 /** A list item's `details`: a small toggle under its text; open or shut survives view reloads. */

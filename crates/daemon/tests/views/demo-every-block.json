@@ -10,7 +10,8 @@
     {"type": "list", "id": "open", "empty": "Nothing waiting", "items": [
       {"id": "7", "title": "Install the update?", "text": "Two fixes.", "meta": "dibs", "chips": ["new"],
        "actions": [{"id": "a7", "label": "Install"}, {"id": "d7", "label": "Skip", "confirm": true}],
-       "details": "- fix one\n- fix two", "reply": {"id": "r7", "placeholder": "Answer…", "submit": "Send"}}
+       "details": "- fix one\n- fix two", "reply": {"id": "r7", "placeholder": "Answer…", "submit": "Send"}},
+      {"id": "s3", "text": "A line the user can swipe away.", "meta": "dibs", "dismiss": {"id": "h3"}}
     ]},
     {"type": "checklist", "id": "items", "items": [{"id": "milk", "label": "Milk", "checked": false, "actions": [{"id": "rm", "label": "✕", "confirm": true}]}]},
     {"type": "compose", "id": "say", "placeholder": "Message…", "submit": "Send", "multi": true, "chips": [{"id": "urgent", "label": "Urgent"}]},

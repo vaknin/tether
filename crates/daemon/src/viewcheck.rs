@@ -96,6 +96,12 @@ pub fn check(v: &Value) -> Vec<String> {
                             None => p.add(&format!("{at}.reply"), "must be an object {id, placeholder?, submit?}"),
                         }
                     }
+                    if let Some(d) = it.get("dismiss") {
+                        match d.as_object() {
+                            Some(d) => p.string(d.get("id"), &format!("{at}.dismiss.id"), true),
+                            None => p.add(&format!("{at}.dismiss"), "must be an object {id}"),
+                        }
+                    }
                 });
             }
             "checklist" => {
@@ -256,7 +262,7 @@ mod tests {
     fn problems_are_named_with_their_path() {
         let v = json!({"v": 2, "badge": -1, "open_tags": [1], "blocks": [
             {"type": "notice", "text": "x", "tone": "loud"},
-            {"type": "list", "items": [{"id": "a", "text": "t", "actions": [{"id": "y"}], "reply": {}}, {"id": "a", "text": 3}]},
+            {"type": "list", "items": [{"id": "a", "text": "t", "actions": [{"id": "y"}], "reply": {}, "dismiss": {}}, {"id": "a", "text": 3, "dismiss": "x"}]},
             {"type": "carousel"},
             {"type": "checklist", "id": "c", "items": [{"id": "i", "label": "l", "checked": "yes"}]},
             {"id": "c", "type": "buttons", "items": [{"id": "b", "label": "B", "style": "big"}]},
@@ -269,8 +275,10 @@ mod tests {
             "blocks[0] (notice).tone: \"loud\" isn't info, ok, warn or error",
             "blocks[1] (list).items[0].actions[0].label: missing",
             "blocks[1] (list).items[0].reply.id: missing",
+            "blocks[1] (list).items[0].dismiss.id: missing",
             "blocks[1] (list).items[1].id: \"a\" appears twice",
             "blocks[1] (list).items[1].text: must be a string",
+            "blocks[1] (list).items[1].dismiss: must be an object {id}",
             "blocks[2] (carousel): is an unknown type: the phone and the panel skip it",
             "blocks[3] (checklist).items[0].checked: must be true or false",
             "blocks[4].id: \"c\" is used by another block (live patches and actions go by id)",

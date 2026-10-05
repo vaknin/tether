@@ -10,6 +10,7 @@ import com.kivan.tether.core.TetherNode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -64,6 +65,19 @@ fun textRtl(s: String): Boolean {
  */
 data class Pending(val uid: String, val text: String, val item: String? = null)
 
+/** A list item swiped away (its `dismiss`): hidden at once, until a view no longer lists it. */
+data class Dismissed(val channel: String, val block: String, val item: String)
+
+/**
+ * The swiped-away items still to hide: those whose channel's view still lists them. [ids] gives a
+ * channel's item ids by list id, or null while it has no view.
+ */
+internal fun keepDismissed(gone: Set<Dismissed>, ids: (String) -> Map<String, Set<String>>?): Set<Dismissed> =
+    gone.filterTo(mutableSetOf()) { d ->
+        val lists = ids(d.channel) ?: return@filterTo true
+        lists[d.block]?.contains(d.item) == true
+    }
+
 /**
  * App channels on the phone: the channel list (`_channels`), each channel's view (with live
  * patches applied) or thread, and which screen is open. Views come from the laptop; what the
@@ -95,6 +109,9 @@ object Channels {
     val chips = mutableStateMapOf<String, List<String>>()
     /** List items whose `details` are open, by "<channel>/<item id>"; kept across view reloads. */
     val expanded = mutableStateMapOf<String, Boolean>()
+    /** List items swiped away that a view still lists (the app hasn't taken the swipe yet). */
+    private val _dismissed = MutableStateFlow<Set<Dismissed>>(emptySet())
+    val dismissed: StateFlow<Set<Dismissed>> = _dismissed.asStateFlow()
 
     /** The open screen: null is the list, [CHAT] the chat, else a channel name. */
     private val _open = MutableStateFlow<String?>(null)
@@ -155,6 +172,7 @@ object Channels {
             _views.value = views
             _threads.value = threads
             prunePending()
+            pruneDismissed()
         }.onFailure { Log.w(TAG, "loading channels failed", it) }
     }
 
@@ -167,6 +185,7 @@ object Channels {
                     val v = n.appView(e.channel)?.let(::parse) ?: return
                     _views.value = _views.value + (e.channel to v)
                     prunePending()
+                    pruneDismissed()
                     val c = info(e.channel) ?: return
                     // `open_tags` lists the tagged posts still current; the others were answered (maybe
                     // on the laptop). It wins over the badge: a channel with nothing waiting can still
@@ -279,6 +298,32 @@ object Channels {
         val k = "$name/$block/$item"
         val uid = act(name, JSONObject().put("action", action).put("value", JSONObject().put("item", item).put("text", text)))
         _pending.value = _pending.value + (k to (_pending.value[k].orEmpty() + Pending(uid, text, item)))
+    }
+
+    /**
+     * A list item's `dismiss` (swiped away): hidden at once, and `{"action":<dismiss id>,"value":{"item"}}`
+     * goes to the app, as an item action's tap does.
+     */
+    fun dismiss(name: String, block: String, item: String, action: String) {
+        _dismissed.update { it + Dismissed(name, block, item) }
+        act(name, JSONObject().put("action", action).put("value", JSONObject().put("item", item)))
+    }
+
+    /** Forgets the swiped-away items their channel's view no longer lists (the app took the swipe). */
+    private fun pruneDismissed() {
+        _dismissed.update { gone -> if (gone.isEmpty()) gone else keepDismissed(gone) { listIds(_views.value[it]) } }
+    }
+
+    /** A view's item ids by list id; null without a view. */
+    private fun listIds(view: JSONObject?): Map<String, Set<String>>? {
+        val blocks = view?.optJSONArray("blocks") ?: return null
+        val out = mutableMapOf<String, Set<String>>()
+        for (i in 0 until blocks.length()) {
+            val b = blocks.optJSONObject(i) ?: continue
+            val items = b.optJSONArray("items") ?: continue
+            out[b.optString("id")] = (0 until items.length()).mapNotNull { items.optJSONObject(it)?.optString("id") }.toSet()
+        }
+        return out
     }
 
     /** Drops each echo whose uid a view now lists, and each reply whose item the view dropped. */

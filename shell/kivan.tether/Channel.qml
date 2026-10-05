@@ -49,6 +49,7 @@ BorderSurface {
   property string focusKey: ""     // the box that had focus, to give it back after a rebuild
   property string armed: ""        // an action waiting for its confirming second press
   property var expanded: ({})      // "<channel>/<item id>" → true: that list item's details are open
+  property var dismissed: ({})     // "<list id>/<item id>" → true: removed with its ✕, until a view drops it
 
   LayoutMirroring.enabled: rtl
   LayoutMirroring.childrenInherit: true
@@ -57,7 +58,22 @@ BorderSurface {
   borderSpec: Border.localOrSurfaceSpec("popups", "border", Color.popups.border, Color.popups.border, Math.max(1, Style.space(2)))
   radius: Style.cornerRadius
 
-  onNameChanged: { drafts = ({}); focusKey = ""; armed = "" }
+  onNameChanged: { drafts = ({}); focusKey = ""; armed = ""; dismissed = ({}) }
+  // A list item's `dismiss`: hidden at once; its id goes to the app like an item action's tap.
+  function dismiss(block, item, action) {
+    var d = Object.assign({}, dismissed); d[block + "/" + item] = true; dismissed = d
+    send({ action: action, value: { item: item } })
+  }
+  // Forget the dismissed items a new view no longer lists (the app took them).
+  onBlocksChanged: {
+    var listed = ({}), d = ({}), any = false
+    for (var i = 0; i < blocks.length; i++) {
+      var its = blocks[i] && blocks[i].items
+      if (Array.isArray(its)) for (var j = 0; j < its.length; j++) if (its[j]) listed[blocks[i].id + "/" + its[j].id] = true
+    }
+    for (var k in dismissed) { if (listed[k]) d[k] = true; else any = true }
+    if (any) dismissed = d
+  }
 
   function draft(key, fallback) { return drafts[key] !== undefined ? drafts[key] : (fallback || "") }
   // A new object each time: reassigning the same one doesn't notify the bindings on it.
@@ -382,13 +398,23 @@ BorderSurface {
           }
           LayoutMirroring.enabled: ch.autoDir ? flip : ch.rtl
           LayoutMirroring.childrenInherit: true
+          visible: !ch.dismissed[b.id + "/" + it.id]
           width: parent ? parent.width : 0
           height: rowCol.implicitHeight + Style.space(12)
           radius: ch.radius2
           color: Util.alpha(ch.fg, 0.06)
+          // `dismiss`: a small ✕ at the end of the row removes the item.
+          IconBtn {
+            visible: !!(row.it.dismiss && row.it.dismiss.id)
+            anchors { top: parent.top; right: parent.right; margins: Style.space(3) }
+            glyph: "󰅖"
+            small: true
+            onClicked: ch.dismiss(b.id, row.it.id, row.it.dismiss.id)
+          }
           Column {
             id: rowCol
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: Style.space(8) }
+            anchors.rightMargin: row.it.dismiss ? Style.space(28) : Style.space(8)
             spacing: Style.space(4)
             Row {
               width: parent.width

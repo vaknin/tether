@@ -222,13 +222,16 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
 - `header {title, subtitle?}`
 - `notice {text, tone: info|ok|warn|error}`
 - `text {text, mono?}`: multi-line, selectable (a report, say).
-- `list {items:[{id, title?, text, meta?, chips?:[str], actions?:[{id,label,confirm?}], details?, reply?}], empty?}`:
+- `list {items:[{id, title?, text, meta?, chips?:[str], actions?:[{id,label,confirm?}], details?, reply?, dismiss?}], empty?}`:
   an item action sends `{"action":<action id>,"value":{"item":<item id>}}`. `details` (2026-10-04) is
   long text behind a small "Details ▾" toggle under the item's text (selectable, line breaks kept;
   open or shut survives view reloads). `reply` (2026-10-04) `{id, placeholder?: "Answer…", submit?: "Send"}`
   is a one-line box under the item for a free-text answer: it sends
   `{"action":<reply id>,"uid","value":{"item":<item id>,"text"}}`, and the text shows as pending (⏳)
   under the item until a view lists an item with that uid or no longer lists the item.
+  `dismiss` (2026-10-05) `{id}` lets the user remove the item: swiped away either way on the phone, a
+  small ✕ in the panel. It sends `{"action":<dismiss id>,"value":{"item":<item id>}}` like an item
+  action, and the item hides at once, until a view no longer lists it (the app drops it).
 - `checklist {items:[{id,label,checked,actions?:[{id,label,confirm?}]}]}`: a tap sends
   `{"action":<block id>,"value":{"item","checked"}}`; an item action (like a list item's) sends
   `{"action":<action id>,"value":{"item":<item id>}}`.
