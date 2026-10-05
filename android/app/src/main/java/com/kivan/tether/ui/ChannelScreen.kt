@@ -9,7 +9,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
 import java.util.Date
@@ -866,7 +867,7 @@ private fun Waiting(blocks: List<JSONObject>) {
     if (n == 0) return
     val key = "${ch.name}/_folded"
     val folded = Channels.expanded[key] == true
-    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.45f).dp
+    val maxHeight = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.height * 0.45f).toDp() }
     Column(Modifier.fillMaxWidth().background(Palette.SurfaceLow)) {
         Row(
             Modifier.fillMaxWidth().clickable { Channels.expanded[key] = !folded }.padding(horizontal = Space.L, vertical = 10.dp),

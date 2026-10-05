@@ -48,7 +48,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -226,7 +227,7 @@ internal fun BubbleBox(
 }
 
 @Composable
-internal fun bubbleMaxWidth() = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
+internal fun bubbleMaxWidth() = with(LocalDensity.current) { (LocalWindowInfo.current.containerSize.width * 0.8f).toDp() }
 
 /**
  * Message text with the meta tucked into the end of its last line when it fits there, and on a
