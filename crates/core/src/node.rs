@@ -1092,13 +1092,12 @@ impl Inner {
             tokio::fs::copy(&part, &dest).await?;
             tokio::fs::remove_file(&part).await.ok();
         }
-        let m = self.db(|s| {
-            s.set_path(hdr.id, &dest)?;
-            s.set_state(hdr.id, State::Received)
-        })?;
-        if let Some(m) = m {
-            self.emit(Event::Message(m));
-        }
+        // A cancel that came in after the last chunk has been confirmed to the sender already.
+        let Some(m) = self.db(|s| s.received(hdr.id, &dest))? else {
+            tokio::fs::remove_file(&dest).await.ok();
+            return Ok(());
+        };
+        self.emit(Event::Message(m));
         let _ = link.tx.send(Frame::Ack { id: hdr.id });
         Ok(())
     }

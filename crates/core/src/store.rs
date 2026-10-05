@@ -389,6 +389,16 @@ impl Store {
         Ok(())
     }
 
+    /// A file of the peer's arrived whole at `path`: marked received, unless it was cancelled
+    /// meanwhile (`None`; the cancel was already confirmed, so the file must go).
+    pub fn received(&self, id: Uuid, path: &Path) -> Result<Option<Message>> {
+        let n = self.db.execute(
+            "UPDATE messages SET state = 'received', path = ?2 WHERE id = ?1 AND from_me = 0 AND state = 'incoming'",
+            params![id.to_string(), path.to_string_lossy()],
+        )?;
+        if n == 0 { Ok(None) } else { self.get(id) }
+    }
+
     pub fn set_path(&self, id: Uuid, path: &Path) -> Result<Option<Message>> {
         self.db.execute(
             "UPDATE messages SET path = ?2 WHERE id = ?1",
@@ -589,6 +599,24 @@ mod tests {
         assert!(a.ack(m1.id).unwrap().is_none());
         let (out, _) = a.outbox().unwrap();
         assert_eq!(out.iter().map(|m| m.id).collect::<Vec<_>>(), vec![m2.id]);
+    }
+
+    #[test]
+    fn a_file_cancelled_while_finishing_is_not_received() {
+        let a = Store::open_in_memory().unwrap();
+        let b = Store::open_in_memory().unwrap();
+        let body = || Body::File { name: "a.bin".into(), size: 3, sha256: [9; 32] };
+        let (m1, m2) = (a.enqueue(body(), None, None).unwrap(), a.enqueue(body(), None, None).unwrap());
+        let (out, _) = a.outbox().unwrap();
+        for m in &out {
+            assert_eq!(b.receive(&m.item()).unwrap().0.state, State::Incoming);
+        }
+        let got = b.received(m1.id, Path::new("/dl/a.bin")).unwrap().unwrap();
+        assert_eq!((got.state, got.path.as_deref()), (State::Received, Some(Path::new("/dl/a.bin"))));
+        // The cancel came first: the finish doesn't undo it.
+        b.set_state(m2.id, State::Cancelled).unwrap();
+        assert!(b.received(m2.id, Path::new("/dl/a (1).bin")).unwrap().is_none());
+        assert_eq!(b.get(m2.id).unwrap().unwrap().state, State::Cancelled);
     }
 
     fn app(d: &str, replace: bool) -> Body {
