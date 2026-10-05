@@ -39,6 +39,11 @@ BorderSurface {
     var v = channel.view
     return v && Array.isArray(v.blocks) ? v.blocks : []
   }
+  // A view with a thread (dibs's conversation) opens at its end and follows new lines.
+  readonly property bool hasThread: {
+    for (var i = 0; i < blocks.length; i++) if (blocks[i] && blocks[i].type === "thread") return true
+    return false
+  }
   // The header block goes in the card's header, not the body.
   readonly property var headerBlock: {
     for (var i = 0; i < blocks.length; i++) if (blocks[i] && blocks[i].type === "header") return blocks[i]
@@ -58,7 +63,7 @@ BorderSurface {
   borderSpec: Border.localOrSurfaceSpec("popups", "border", Color.popups.border, Color.popups.border, Math.max(1, Style.space(2)))
   radius: Style.cornerRadius
 
-  onNameChanged: { drafts = ({}); focusKey = ""; armed = ""; dismissed = ({}) }
+  onNameChanged: { drafts = ({}); focusKey = ""; armed = ""; dismissed = ({}); flick.follow = true }
   // A list item's `dismiss`: hidden at once; its id goes to the app like an item action's tap.
   function dismiss(block, item, action) {
     var d = Object.assign({}, dismissed); d[block + "/" + item] = true; dismissed = d
@@ -158,6 +163,15 @@ BorderSurface {
     ]
   }
 
+  // A thread line's day ("2026-10-05") and its header ("Today", "Yesterday", "Sat 3 Oct").
+  function dayOf(ts) { return Qt.formatDate(new Date(ts * 1000), "yyyy-MM-dd") }
+  function dayLabel(ts) {
+    var d = new Date(ts * 1000), now = new Date()
+    if (dayOf(ts) === Qt.formatDate(now, "yyyy-MM-dd")) return "Today"
+    if (dayOf(ts) === Qt.formatDate(new Date(now.getTime() - 86400000), "yyyy-MM-dd")) return "Yesterday"
+    return Qt.formatDate(d, d.getFullYear() === now.getFullYear() ? "ddd d MMM" : "ddd d MMM yyyy")
+  }
+
   function tone(t) {
     return t === "error" ? "#e5534b" : t === "warn" ? "#d29922" : t === "ok" ? "#4cc38a" : ch.accent
   }
@@ -252,6 +266,10 @@ BorderSurface {
     contentHeight: body.height + ch.pad * 2
     boundsBehavior: Flickable.StopAtBounds
     QQC.ScrollBar.vertical: QQC.ScrollBar { policy: QQC.ScrollBar.AsNeeded; width: Style.space(5) }
+    // With a thread: kept at the end (the newest line and the box) unless scrolled up.
+    property bool follow: true
+    onMovementEnded: follow = atYEnd
+    onContentHeightChanged: if (ch.hasThread && follow) Qt.callLater(function() { flick.contentY = Math.max(0, flick.contentHeight - flick.height) })
 
     Column {
       id: body
@@ -286,6 +304,7 @@ BorderSurface {
               case "notice": return noticeC
               case "text": return textC
               case "list": return listC
+              case "thread": return threadC
               case "checklist": return checklistC
               case "compose": return composeC
               case "form": return formC
@@ -508,6 +527,179 @@ BorderSurface {
             }
           }
         }
+      }
+    }
+  }
+
+  // `thread`: a chat. The user's lines on the end side in the accent, the app's on the start side;
+  // day headers, runs within 3 minutes, the newest 50. A line's `actions`, `reply` and `dismiss`
+  // work as a list item's; `status` is a small line under the newest.
+  Component {
+    id: threadC
+    Column {
+      id: thr
+      property var b: ({})
+      property var boxes: ({})
+      function box(key) { return key !== "" && boxes[key] ? boxes[key] : null }
+      readonly property var lines: {
+        var its = Array.isArray(b.items) ? b.items : []
+        return its.slice(Math.max(0, its.length - 50))
+      }
+      spacing: Style.space(2)
+      Label {
+        visible: thr.lines.length === 0
+        text: thr.b.empty || ""
+        color: ch.muted
+        horizontalAlignment: Text.AlignHCenter
+      }
+      Repeater {
+        model: thr.lines
+        Column {
+          id: line
+          required property var modelData
+          required property int index
+          readonly property var it: modelData
+          readonly property var prev: index > 0 ? thr.lines[index - 1] : null
+          readonly property bool mine: it.who === "user"
+          readonly property bool newDay: !prev || ch.dayOf(prev.ts) !== ch.dayOf(it.ts)
+          readonly property bool joined: !!prev && !newDay && (prev.who === "user") === mine && it.ts - prev.ts < 180
+          readonly property color ink: mine ? Color.popups.background : ch.fg
+          function sendReply() {
+            var t = replyBox.input.text.trim()
+            if (!t || !it.reply) return
+            var u = ch.uid()
+            ch.send({ action: it.reply.id, uid: u, value: { item: it.id, text: t } })
+            if (ch.ui) ch.ui.addPending(ch.name, thr.b.id + "/" + it.id, u, t, it.id)
+            ch.clearDrafts(thr.b.id + "/" + it.id)
+            replyBox.input.text = ""
+            ch.focusKey = replyBox.key
+          }
+          visible: !ch.dismissed[thr.b.id + "/" + it.id]
+          width: thr.width
+          topPadding: joined ? 0 : Style.space(5)
+          spacing: Style.space(3)
+
+          Label {
+            visible: line.newDay
+            text: ch.dayLabel(line.it.ts)
+            color: ch.muted
+            small: true
+            horizontalAlignment: Text.AlignHCenter
+            topPadding: Style.space(6)
+          }
+          Item {
+            width: parent.width
+            height: bubble.height
+            HoverHandler { id: lineHover }
+            Rectangle {
+              id: bubble
+              readonly property real maxW: parent.width * 0.82
+              readonly property real inner: Style.space(10)
+              anchors.right: line.mine ? parent.right : undefined
+              anchors.left: line.mine ? undefined : parent.left
+              width: Math.min(maxW, Math.max(natural.implicitWidth, timeText.implicitWidth,
+                                             actionsRow.visible ? actionsRow.implicitWidth : 0,
+                                             line.it.reply ? maxW : 0) + inner * 2)
+              height: bubbleCol.implicitHeight + Style.space(12)
+              radius: Math.max(ch.radius2, Style.space(9))
+              color: line.mine ? ch.accent : Util.alpha(ch.fg, 0.08)
+              // The text's own width (its longest line), for a bubble no wider than it needs.
+              Text {
+                id: natural
+                visible: false
+                text: lineText.text
+                font: lineText.font
+              }
+              Column {
+                id: bubbleCol
+                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: bubble.inner }
+                spacing: Style.space(4)
+                TextEdit {
+                  id: lineText
+                  width: parent.width
+                  text: line.it.text || ""
+                  readOnly: true
+                  selectByMouse: true
+                  wrapMode: TextEdit.Wrap
+                  color: line.ink
+                  selectionColor: Style.selectionFillFor(ch.fg, ch.accent)
+                  selectedTextColor: ch.fg
+                  horizontalAlignment: ch.alignOf(text)
+                  font.family: ch.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+                Text {
+                  id: timeText
+                  width: parent.width
+                  text: Qt.formatTime(new Date(line.it.ts * 1000), "HH:mm")
+                  color: Util.alpha(line.ink, 0.6)
+                  horizontalAlignment: Text.AlignRight
+                  font.family: "monospace"
+                  font.pixelSize: Style.font.caption
+                }
+                Row {
+                  id: actionsRow
+                  width: parent.width
+                  spacing: Style.space(5)
+                  visible: !!(line.it.actions && line.it.actions.length)
+                  Repeater {
+                    model: line.it.actions || []
+                    Btn {
+                      required property var modelData
+                      readonly property string key: thr.b.id + "/" + line.it.id + "/" + modelData.id
+                      label: ch.pressLabel(key, modelData)
+                      style: ch.armed === key ? "danger" : (modelData.style || "plain")
+                      small: true
+                      onClicked: ch.press(key, modelData.confirm, { action: modelData.id, value: { item: line.it.id } })
+                    }
+                  }
+                }
+                Repeater {
+                  model: line.it.reply && ch.ui ? ch.ui.pendingFor(ch.name, thr.b.id + "/" + line.it.id) : []
+                  Label { required property var modelData; text: "⏳ " + modelData.text; color: ch.muted }
+                }
+                Row {
+                  width: parent.width
+                  spacing: Style.space(6)
+                  visible: !!line.it.reply
+                  Box {
+                    id: replyBox
+                    width: parent.width - replyBtn.width - parent.spacing
+                    key: thr.b.id + "/" + line.it.id + "/reply"
+                    placeholder: line.it.reply && line.it.reply.placeholder ? line.it.reply.placeholder : "Answer…"
+                    onEnter: line.sendReply()
+                    Component.onCompleted: { var m = thr.boxes; m[key] = input; thr.boxes = m }
+                  }
+                  Btn {
+                    id: replyBtn
+                    anchors.bottom: parent.bottom
+                    label: line.it.reply && line.it.reply.submit ? line.it.reply.submit : "Send"
+                    style: "primary"
+                    small: true
+                    onClicked: line.sendReply()
+                  }
+                }
+              }
+            }
+            // `dismiss`: a small ✕ beside the bubble while the pointer is on the line.
+            IconBtn {
+              visible: lineHover.hovered && !!(line.it.dismiss && line.it.dismiss.id)
+              anchors.verticalCenter: bubble.verticalCenter
+              anchors.right: line.mine ? bubble.left : undefined
+              anchors.left: line.mine ? undefined : bubble.right
+              glyph: "󰅖"
+              small: true
+              onClicked: ch.dismiss(thr.b.id, line.it.id, line.it.dismiss.id)
+            }
+          }
+        }
+      }
+      Label {
+        visible: !!thr.b.status
+        text: thr.b.status || ""
+        color: ch.muted
+        small: true
+        topPadding: Style.space(3)
       }
     }
   }

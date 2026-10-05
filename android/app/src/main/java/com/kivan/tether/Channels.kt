@@ -63,7 +63,7 @@ fun textRtl(s: String): Boolean {
  * A compose block's text that was sent but isn't in a view yet (the ⏳ echo). A list item's reply
  * also has [item]: its echo also goes once a view no longer lists that item (it was answered).
  */
-data class Pending(val uid: String, val text: String, val item: String? = null)
+data class Pending(val uid: String, val text: String, val item: String? = null, val tsMs: Long = System.currentTimeMillis())
 
 /** A list item swiped away (its `dismiss`): hidden at once, until a view no longer lists it. */
 data class Dismissed(val channel: String, val block: String, val item: String)

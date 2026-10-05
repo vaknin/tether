@@ -4,6 +4,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.text.format.DateUtils
+import android.text.format.DateFormat
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.launch
+import java.util.Date
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -315,6 +324,11 @@ internal fun ChannelScreen(name: String) {
                 subtitle = header?.optString("subtitle")?.takeIf { it.isNotBlank() }
                     ?: if (connected) "" else "Laptop offline · actions wait in the queue",
             )
+            val thread = blocks.indexOfFirst { it.optString("type") == "thread" }
+            if (thread >= 0) {
+                ChatFirst(blocks, thread)
+                return@Column
+            }
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(Space.L),
@@ -588,7 +602,7 @@ private fun ItemActions(block: String, item: String, actions: List<JSONObject>) 
         val hot = ch.armed == key
         ActionButton(
             label = if (hot && confirm != null) confirm else a.optString("label"),
-            style = if (hot) "danger" else "plain",
+            style = if (hot) "danger" else a.optString("style").ifEmpty { "plain" },
             small = true,
         ) {
             ch.press(key, confirm != null, JSONObject().put("action", a.optString("id")).put("value", JSONObject().put("item", item)))
@@ -660,10 +674,8 @@ private fun Compose(b: JSONObject) {
     val ch = LocalCh.current
     val id = b.optString("id")
     val key = "${ch.name}/$id/text"
-    val chipKey = "${ch.name}/$id"
     val pending by Channels.pending.collectAsState()
     val text = Channels.drafts[key].orEmpty()
-    val chosen = Channels.chips[chipKey].orEmpty()
     val submit = {
         val t = text.trim()
         if (t.isNotEmpty()) {
@@ -676,28 +688,7 @@ private fun Compose(b: JSONObject) {
         for (p in pending["${ch.name}/$id"].orEmpty()) {
             Text("⏳ ${p.text}", style = MaterialTheme.typography.bodyMedium.auto(p.text), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
         }
-        val chips = objects(b.optJSONArray("chips"))
-        if (chips.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (c in chips) {
-                    val cid = c.optString("id")
-                    val on = cid in chosen
-                    FilterChip(
-                        selected = on,
-                        onClick = {
-                            Channels.chips[chipKey] = when {
-                                on -> chosen - cid
-                                b.has("multi") && !b.optBoolean("multi") -> listOf(cid)
-                                else -> chosen + cid
-                            }
-                        },
-                        label = { Text(c.optString("label")) },
-                        shape = Pill,
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ch.accent.copy(alpha = 0.35f)),
-                    )
-                }
-            }
-        }
+        ComposeChips(b)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = text,
@@ -710,6 +701,36 @@ private fun Compose(b: JSONObject) {
                 modifier = Modifier.weight(1f),
             )
             ActionButton(b.optString("submit").ifEmpty { "Send" }, "primary", enabled = text.isNotBlank(), onClick = submit)
+        }
+    }
+}
+
+/** A compose block's `chips`, picked before sending (one at a time when `multi` is false). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ComposeChips(b: JSONObject, modifier: Modifier = Modifier) {
+    val ch = LocalCh.current
+    val chipKey = "${ch.name}/${b.optString("id")}"
+    val chosen = Channels.chips[chipKey].orEmpty()
+    val chips = objects(b.optJSONArray("chips"))
+    if (chips.isEmpty()) return
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (c in chips) {
+            val cid = c.optString("id")
+            val on = cid in chosen
+            FilterChip(
+                selected = on,
+                onClick = {
+                    Channels.chips[chipKey] = when {
+                        on -> chosen - cid
+                        b.has("multi") && !b.optBoolean("multi") -> listOf(cid)
+                        else -> chosen + cid
+                    }
+                },
+                label = { Text(c.optString("label")) },
+                shape = Pill,
+                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ch.accent.copy(alpha = 0.35f)),
+            )
         }
     }
 }
@@ -803,6 +824,211 @@ private fun ActionButton(label: String, style: String, small: Boolean = false, e
         else -> OutlinedButton(onClick = onClick, enabled = enabled, contentPadding = pad, modifier = mod, shape = MaterialTheme.shapes.medium) {
             Text(label, color = MaterialTheme.colorScheme.onSurface)
         }
+    }
+}
+
+// --- Chat-first: a view with a `thread` -------------------------------------------------------------
+
+/** How many lines of a thread are drawn (dibs sends no more). */
+private const val THREAD_LINES = 50
+
+/**
+ * A view with a thread is a chat: the blocks before it (questions, tasks) in a top area that folds
+ * to "N waiting", the thread filling the rest from its newest line, and the compose block after it
+ * pinned at the bottom as the chat's input bar.
+ */
+@Composable
+private fun ColumnScope.ChatFirst(blocks: List<JSONObject>, at: Int) {
+    val thread = blocks[at]
+    val after = blocks.drop(at + 1).filter { it.optString("type") != "header" }
+    val compose = after.firstOrNull { it.optString("type") == "compose" }
+    Waiting(blocks.take(at).filter { it.optString("type") != "header" })
+    ThreadList(thread, compose?.optString("id"), Modifier.weight(1f).fillMaxWidth())
+    for (b in after) if (b !== compose) {
+        Box(Modifier.padding(horizontal = Space.L, vertical = Space.XS)) { Block(b) }
+    }
+    if (compose != null) ComposeBar(compose) else Spacer(Modifier.navigationBarsPadding())
+}
+
+/** The items a block holds for "N waiting": a list's or checklist's shown items, else 1. */
+private fun waitingIn(channel: String, b: JSONObject, gone: Set<Dismissed>): Int = when (b.optString("type")) {
+    "list", "checklist" -> objects(b.optJSONArray("items")).count { Dismissed(channel, b.optString("id"), it.optString("id")) !in gone }
+    else -> 1
+}
+
+/** The blocks before the thread, at most 45% of the screen high; a tap on "N waiting" folds them. */
+@Composable
+private fun Waiting(blocks: List<JSONObject>) {
+    val ch = LocalCh.current
+    val gone by Channels.dismissed.collectAsState()
+    val shown = blocks.filter { waitingIn(ch.name, it, gone) > 0 }
+    val n = shown.sumOf { waitingIn(ch.name, it, gone) }
+    if (n == 0) return
+    val key = "${ch.name}/_folded"
+    val folded = Channels.expanded[key] == true
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.45f).dp
+    Column(Modifier.fillMaxWidth().background(Palette.SurfaceLow)) {
+        Row(
+            Modifier.fillMaxWidth().clickable { Channels.expanded[key] = !folded }.padding(horizontal = Space.L, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Eyebrow("$n waiting", Modifier.weight(1f), dot = true, color = ch.accent)
+            Icon(
+                painterResource(if (folded) R.drawable.lucide_chevron_down else R.drawable.lucide_chevron_up),
+                if (folded) "Show" else "Fold",
+                Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (!folded) {
+            LazyColumn(
+                Modifier.fillMaxWidth().heightIn(max = maxHeight),
+                contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.M),
+                verticalArrangement = Arrangement.spacedBy(Space.M),
+            ) {
+                itemsIndexed(shown, key = { i, b -> b.optString("id").ifEmpty { "#$i" } }) { _, b -> Block(b) }
+            }
+        }
+    }
+}
+
+/** A thread line, or a compose send not in the view yet ([pending]). */
+private class ThreadLine(val id: String, val mine: Boolean, val text: String, val tsMs: Long, val item: JSONObject?, val pending: Boolean)
+
+@Composable
+private fun ThreadList(b: JSONObject, compose: String?, modifier: Modifier) {
+    val ch = LocalCh.current
+    val ctx = LocalContext.current
+    val gone by Channels.dismissed.collectAsState()
+    val pending by Channels.pending.collectAsState()
+    val block = b.optString("id")
+    val waiting = compose?.let { pending["${ch.name}/$it"] }.orEmpty()
+    val lines = remember(b, gone, waiting) {
+        objects(b.optJSONArray("items")).takeLast(THREAD_LINES)
+            .filter { Dismissed(ch.name, block, it.optString("id")) !in gone }
+            .map { ThreadLine(it.optString("id"), it.optString("who") == "user", it.optString("text"), it.optLong("ts") * 1000, it, false) } +
+            waiting.map { ThreadLine(it.uid, true, it.text, it.tsMs, null, true) }
+    }
+    if (lines.isEmpty()) {
+        Box(modifier.padding(32.dp), contentAlignment = Alignment.Center) {
+            Text(
+                b.optString("empty").ifEmpty { "Nothing here yet." },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+    val rows = remember(lines) { chatRows(ctx, lines, { it.id }, { it.tsMs }, { it.mine }) }
+    val status = b.optString("status")
+    MessageList(
+        rows,
+        newestMine = lines.last().mine,
+        modifier = modifier,
+        footer = if (status.isEmpty()) null else {
+            {
+                Text(
+                    status,
+                    style = AppType.small,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(start = 6.dp, top = 6.dp, bottom = 2.dp),
+                )
+            }
+        },
+    ) { row -> ThreadBubble(block, row) }
+}
+
+/**
+ * One line: the user's on the end side in the channel's accent, the app's on the start side.
+ * Its `actions` and `reply` sit inside the bubble, `dismiss` swipes it away, a long press copies.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ThreadBubble(block: String, row: LineRow<ThreadLine>) {
+    val ch = LocalCh.current
+    val ctx = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    var copied by remember { mutableStateOf(false) }
+    val l = row.line
+    val bg = if (l.mine) ch.accent else MaterialTheme.colorScheme.surfaceContainerHighest
+    val fg = if (l.mine) ch.onAccent else MaterialTheme.colorScheme.onSurface
+    val actions = objects(l.item?.optJSONArray("actions"))
+    val reply = l.item?.optJSONObject("reply")
+    val dismiss = l.item?.optJSONObject("dismiss")?.optString("id").orEmpty()
+    val copy = {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        copy(ctx, l.text)
+        scope.launch {
+            copied = true
+            delay(1200)
+            copied = false
+        }
+        Unit
+    }
+    SwipeAway(dismiss.isNotEmpty(), { Channels.dismiss(ch.name, block, l.id, dismiss) }) {
+        BubbleBox(l.mine, row.first, row.last, bg, onLongClick = copy) {
+            Column(Modifier.padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val link = if (l.mine) fg else ch.accent
+                TextWithMeta(
+                    remember(l.text, link) { linkified(l.text, link) },
+                    fg,
+                    MaterialTheme.typography.bodyLarge.merge(TextStyle(textDirection = TextDirection.Content)),
+                ) { ThreadMeta(l, fg.copy(alpha = 0.72f), copied) }
+                if (actions.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ItemActions(block, l.id, actions)
+                    }
+                }
+                reply?.let { ItemReply(block, l.id, it) }
+            }
+        }
+    }
+}
+
+/** A line's time (or "Copied"), and a clock while a send of mine isn't in the view yet. */
+@Composable
+private fun ThreadMeta(l: ThreadLine, color: Color, copied: Boolean) {
+    val ctx = LocalContext.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (copied) "Copied" else DateFormat.getTimeFormat(ctx).format(Date(l.tsMs)),
+            style = if (copied) AppType.small else AppType.mono,
+            color = color,
+            fontWeight = if (copied) FontWeight.Bold else null,
+        )
+        if (l.pending) {
+            Spacer(Modifier.width(3.dp))
+            Icon(painterResource(R.drawable.lucide_clock), "Waiting", Modifier.size(15.dp), tint = color)
+        }
+    }
+}
+
+/** The compose block as the chat's input bar, with its chips above it. */
+@Composable
+private fun ComposeBar(b: JSONObject) {
+    val ch = LocalCh.current
+    val id = b.optString("id")
+    val key = "${ch.name}/$id/text"
+    val text = Channels.drafts[key].orEmpty()
+    Column(Modifier.navigationBarsPadding()) {
+        ComposeChips(b, Modifier.padding(start = Space.M, end = Space.M, top = Space.S))
+        InputBar(
+            draft = text,
+            onDraft = { Channels.drafts[key] = it },
+            onSend = {
+                val t = text.trim()
+                if (t.isNotEmpty()) {
+                    Channels.compose(ch.name, id, t)
+                    Channels.drafts.remove(key)
+                }
+            },
+            placeholder = b.optString("placeholder").ifEmpty { "Message" },
+            accent = ch.accent,
+            onAccent = ch.onAccent,
+            textStyle = MaterialTheme.typography.bodyLarge.merge(TextStyle(textDirection = TextDirection.Content)),
+        )
     }
 }
 

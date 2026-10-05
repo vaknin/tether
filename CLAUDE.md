@@ -44,6 +44,11 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   holds a multicast lock for 20 s per ask so adb's own mDNS sees the phone meanwhile. `tether connect` now wakes
   the phone first (it used to only dial, which timed out against an idle phone).
 - Phone root screen: the channel list (`ui/ChannelScreen.kt`, state in `Channels.kt`); the chat is one entry.
+  A channel view with a `thread` block (dibs's conversation) is laid out chat-first (`ChatFirst` in
+  `ChannelScreen.kt`): the blocks before it fold to "N waiting", the thread fills the screen, its
+  compose is the input bar. Its bubbles, day headers, runs and input bar are the Laptop chat's,
+  shared in `ui/ChatParts.kt`. The phone tells its app version on every link; `tether status --json`
+  shows it as `phone_app` (dibs sends a thread only to 0.3.8+).
 - Phone UI: `ui/TetherScreen.kt` (grouped bubbles, day headers, inline time and ✓✓, links, image
   thumbnails, file chips, setup sheet and unpair in the ⋮ menu). **Design: read `docs/DESIGN.md`
   before any UI work.** Tether uses the shared design language from `~/Projects/design` at hue 250

@@ -10,25 +10,16 @@ import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import android.text.format.DateFormat
-import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -48,13 +39,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -64,7 +49,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,14 +58,11 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -95,27 +76,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -141,11 +109,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
 import java.util.Date
-import kotlin.math.max
 
 @Composable
 fun TetherScreen() {
@@ -369,11 +333,12 @@ private fun ChatScreen(peerName: String, queued: ULong) {
     Column(Modifier.fillMaxSize()) {
         PeerBar(peerName, queued, onBack = { Channels.show(null) })
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (messages.isEmpty()) EmptyChat(peerName) else MessageList(messages, progress)
+            if (messages.isEmpty()) EmptyChat(peerName) else ChatList(messages, progress)
         }
         InputBar(
             draft = draft,
             onDraft = { draft = it },
+            modifier = Modifier.windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
             onAttach = { pick.launch("*/*") },
             onSend = {
                 val text = draft.trim()
@@ -496,98 +461,14 @@ private fun EmptyChat(peerName: String) {
     }
 }
 
-/** A row of the chat: a day header, or a message with its place in a run from the same sender. */
-private sealed interface ChatRow {
-    val key: String
-}
-
-private class DayRow(val label: String, override val key: String) : ChatRow
-private class MsgRow(val m: ChatMessage, val first: Boolean, val last: Boolean) : ChatRow {
-    override val key get() = m.id
-}
-
-private const val GROUP_GAP_MS = 3 * 60_000L
-
-private fun dateOf(ts: Long): LocalDate = Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).toLocalDate()
-
 private fun isEvent(m: ChatMessage) = m.kind == MsgKind.PING || m.kind == MsgKind.RING
 
-private fun joins(a: ChatMessage?, b: ChatMessage?) =
-    a != null && b != null && a.fromMe == b.fromMe && !isEvent(a) && !isEvent(b) &&
-        b.tsMs - a.tsMs < GROUP_GAP_MS && dateOf(a.tsMs) == dateOf(b.tsMs)
-
-private fun dayLabel(ctx: Context, day: LocalDate, ts: Long): String {
-    val today = LocalDate.now()
-    return when (day) {
-        today -> "Today"
-        today.minusDays(1) -> "Yesterday"
-        else -> {
-            var flags = DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_ALL
-            flags = flags or if (day.year == today.year) DateUtils.FORMAT_NO_YEAR else DateUtils.FORMAT_SHOW_YEAR
-            DateUtils.formatDateTime(ctx, ts, flags)
-        }
-    }
-}
-
-private fun rowsOf(ctx: Context, messages: List<ChatMessage>): List<ChatRow> {
-    val out = ArrayList<ChatRow>(messages.size + 8)
-    for ((i, m) in messages.withIndex()) {
-        val prev = messages.getOrNull(i - 1)
-        val day = dateOf(m.tsMs)
-        if (prev == null || dateOf(prev.tsMs) != day) out += DayRow(dayLabel(ctx, day, m.tsMs), "day-$day")
-        out += MsgRow(m, first = !joins(prev, m), last = !joins(m, messages.getOrNull(i + 1)))
-    }
-    return out
-}
-
 @Composable
-private fun MessageList(messages: List<ChatMessage>, progress: Map<String, Pair<Long, Long>>) {
+private fun ChatList(messages: List<ChatMessage>, progress: Map<String, Pair<Long, Long>>) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val state = rememberLazyListState()
-    // Newest first, because the list is laid out bottom-up.
-    val rows = remember(messages) { rowsOf(ctx, messages).asReversed() }
-
-    // Follow new messages while at the bottom, and always after sending one.
-    val last = messages.lastOrNull()
-    LaunchedEffect(last?.id) {
-        if (last != null && (state.firstVisibleItemIndex <= 2 || last.fromMe)) state.animateScrollToItem(0)
-    }
-    val scrolledUp by remember { derivedStateOf { state.firstVisibleItemIndex > 3 } }
-
-    Box(Modifier.fillMaxSize()) {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            state = state,
-            reverseLayout = true,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            items(rows, key = { it.key }, contentType = { it::class }) { row ->
-                Box(Modifier.animateItem()) {
-                    when (row) {
-                        is DayRow -> DayHeader(row.label)
-                        is MsgRow -> if (isEvent(row.m)) EventChip(row.m) else Bubble(row, progress[row.m.id])
-                    }
-                }
-            }
-        }
-        AnimatedVisibility(
-            scrolledUp,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-            enter = fadeIn() + scaleIn(),
-            exit = fadeOut() + scaleOut(),
-        ) {
-            SmallFloatingActionButton(onClick = { scope.launch { state.animateScrollToItem(0) } }) {
-                Icon(painterResource(R.drawable.lucide_arrow_down), "Latest")
-            }
-        }
-    }
-}
-
-@Composable
-private fun DayHeader(label: String) {
-    Box(Modifier.fillMaxWidth().padding(top = Space.XL, bottom = Space.S), contentAlignment = Alignment.Center) {
-        Eyebrow(label)
+    val rows = remember(messages) { chatRows(ctx, messages, { it.id }, { it.tsMs }, { it.fromMe }, ::isEvent) }
+    MessageList(rows, newestMine = messages.lastOrNull()?.fromMe == true) { row ->
+        if (isEvent(row.line)) EventChip(row.line) else Bubble(row, progress[row.line.id])
     }
 }
 
@@ -626,26 +507,17 @@ private fun EventChip(m: ChatMessage) {
 
 private fun timeOf(ctx: Context, m: ChatMessage): String = DateFormat.getTimeFormat(ctx).format(Date(m.tsMs))
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
+private fun Bubble(row: LineRow<ChatMessage>, progress: Pair<Long, Long>?) {
     val ctx = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val m = row.m
+    val m = row.line
     val mine = m.fromMe
     val scope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     val bg = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
     val fg = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-    // Round everywhere except where this bubble meets the next one from the same sender.
-    val big = 14.dp
-    val small = 4.dp
-    val shape = if (mine) {
-        RoundedCornerShape(big, if (row.first) big else small, if (row.last) big else small, big)
-    } else {
-        RoundedCornerShape(if (row.first) big else small, big, big, if (row.last) big else small)
-    }
-    val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
+    val maxWidth = bubbleMaxWidth()
     val image = m.kind == MsgKind.FILE && Thumbs.isImage(m.fileName)
     val thumb = if (image) thumbOf(m) else null
 
@@ -673,36 +545,28 @@ private fun Bubble(row: MsgRow, progress: Pair<Long, Long>?) {
         }
     }
 
-    Row(
-        Modifier.fillMaxWidth().padding(top = if (row.first) 8.dp else 2.dp),
-        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
-    ) {
-        Box(
-            Modifier.widthIn(max = maxWidth).clip(shape).background(bg)
-                .combinedClickable(enabled = open != null || copy != null, onClick = { (open ?: copy)?.invoke() }, onLongClick = copy),
-        ) {
-            when {
-                thumb != null -> {
-                    // The whole image, at its own aspect, inside a 260×320 box: no cropping.
-                    val ratio = thumb.width.toFloat() / thumb.height
-                    val w = minOf(maxWidth.coerceAtMost(260.dp), 320.dp * ratio)
-                    Image(
-                        thumb,
-                        m.fileName,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.width(w).aspectRatio(ratio),
-                    )
-                    Box(
-                        Modifier.align(Alignment.BottomEnd).padding(Space.S).clip(Pill)
-                            .background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 8.dp, vertical = 2.dp),
-                    ) { Meta(m, Color.White) }
-                }
-                m.kind == MsgKind.FILE -> FileChip(m, progress, fg)
-                else -> Box(Modifier.padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)) {
-                    val linkColor = if (mine) fg else MaterialTheme.colorScheme.primary
-                    TextWithMeta(remember(m.text, linkColor) { linkified(m.text.orEmpty(), linkColor) }, fg) {
-                        Meta(m, fg.copy(alpha = 0.72f), copied)
-                    }
+    BubbleBox(mine, row.first, row.last, bg, onClick = open ?: copy, onLongClick = copy) {
+        when {
+            thumb != null -> {
+                // The whole image, at its own aspect, inside a 260×320 box: no cropping.
+                val ratio = thumb.width.toFloat() / thumb.height
+                val w = minOf(maxWidth.coerceAtMost(260.dp), 320.dp * ratio)
+                Image(
+                    thumb,
+                    m.fileName,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.width(w).aspectRatio(ratio),
+                )
+                Box(
+                    Modifier.align(Alignment.BottomEnd).padding(Space.S).clip(Pill)
+                        .background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 8.dp, vertical = 2.dp),
+                ) { Meta(m, Color.White) }
+            }
+            m.kind == MsgKind.FILE -> FileChip(m, progress, fg)
+            else -> Box(Modifier.padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)) {
+                val linkColor = if (mine) fg else MaterialTheme.colorScheme.primary
+                TextWithMeta(remember(m.text, linkColor) { linkified(m.text.orEmpty(), linkColor) }, fg) {
+                    Meta(m, fg.copy(alpha = 0.72f), copied)
                 }
             }
         }
@@ -809,102 +673,6 @@ private fun Meta(m: ChatMessage, color: Color, copied: Boolean = false) {
             tint = if (m.state == MsgState.EXPIRED) MaterialTheme.colorScheme.error else color,
             modifier = Modifier.size(15.dp),
         )
-    }
-}
-
-/**
- * Message text with the meta tucked into the end of its last line when it fits there, and on a
- * line of its own when it doesn't (or when that line is right-to-left, where the free space is on
- * the other side).
- */
-@Composable
-private fun TextWithMeta(text: AnnotatedString, color: Color, meta: @Composable () -> Unit) {
-    // Not state: the layout is read in the same measure pass that produces it.
-    val layout = remember { arrayOfNulls<TextLayoutResult>(1) }
-    Layout(content = {
-        Text(text, color = color, style = MaterialTheme.typography.bodyLarge, onTextLayout = { layout[0] = it })
-        meta()
-    }) { measurables, constraints ->
-        val gap = 10.dp.roundToPx()
-        val t = measurables[0].measure(constraints.copy(minWidth = 0))
-        val mt = measurables[1].measure(Constraints())
-        val l = layout[0]
-        val lastLine = l?.let { it.lineCount - 1 }
-        val lastRight = if (l != null && lastLine != null) l.getLineRight(lastLine).toInt() else t.width
-        val rtl = l != null && lastLine != null &&
-            l.getParagraphDirection(l.getLineStart(lastLine)) == ResolvedTextDirection.Rtl
-        val inline = !rtl && lastRight + gap + mt.width <= constraints.maxWidth
-        val w = if (inline) max(t.width, lastRight + gap + mt.width) else max(t.width, mt.width)
-        val h = if (inline) max(t.height, mt.height) else t.height + mt.height
-        layout(w, h) {
-            t.place(0, 0)
-            mt.place(w - mt.width, h - mt.height)
-        }
-    }
-}
-
-private val urlPattern = Regex("""\b(?:https?://|www\.)[^\s<>"]+[^\s<>".,;:!?)\]']""")
-
-private fun linkified(text: String, color: Color): AnnotatedString = buildAnnotatedString {
-    append(text)
-    val style = TextLinkStyles(SpanStyle(color = color, textDecoration = TextDecoration.Underline))
-    for (match in urlPattern.findAll(text)) {
-        val url = match.value.let { if (it.startsWith("www.")) "https://$it" else it }
-        addLink(LinkAnnotation.Url(url, style), match.range.first, match.range.last + 1)
-    }
-}
-
-@Composable
-private fun InputBar(draft: String, onDraft: (String) -> Unit, onAttach: () -> Unit, onSend: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.weight(1f),
-        ) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                IconButton(onClick = onAttach, modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)) {
-                    Icon(
-                        painterResource(R.drawable.lucide_paperclip),
-                        "Send a file",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                BasicTextField(
-                    value = draft,
-                    onValueChange = onDraft,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                    maxLines = 6,
-                    modifier = Modifier.weight(1f).padding(top = 15.dp, bottom = 15.dp, end = 18.dp),
-                    decorationBox = { inner ->
-                        Box {
-                            if (draft.isEmpty()) {
-                                Text(
-                                    "Message",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            inner()
-                        }
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        FilledIconButton(
-            enabled = draft.isNotBlank(),
-            onClick = onSend,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.size(52.dp),
-        ) { Icon(painterResource(R.drawable.lucide_send_horizontal), "Send", Modifier.size(22.dp)) }
     }
 }
 
