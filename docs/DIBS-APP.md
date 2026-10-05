@@ -148,3 +148,148 @@ among them stay open). `badges.waiting` counts questions only.
 ## Later (not in this task)
 - dibs's replies as a MessagingStyle conversation notification (Person "dibs").
 - The Quick Settings lend tile, a home-screen widget, the voice button, files from dibs to the phone.
+
+## Your tasks (task #37, Capture note #68; planned 2026-10-05, **not built: waiting for the user's "build it"**)
+
+**The user's words (note #68):** with eight sessions at once they lose track of what is happening. When a task
+*they* asked for finishes, they want to read what it found in a place that waits for them and doesn't vanish after
+some minutes, and they want to be the one who ticks it off. They also want to read the whole transcript if they
+choose, and to talk to the agent that did the work: "ask him questions about it in order to understand what
+happened, why did he do what he chose to do, and perhaps iterate with him … or change a direction, or pivot." Tasks
+dibs starts by itself are dibs's business. **Scope agreed with dibs (question #301):** the user's tasks wait in the
+dibs app until ticked, grouped by project. Each one shows its plain summary and its full transcript, and the user
+can talk to that task's own agent from the phone. No per-project dibs chats and no urgency meter. The dibs side of
+the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
+
+### What the user gets
+- **A Tasks tab in place of Work.** It holds every task the user asked for, grouped by project (tether, dibs,
+  the research folders under "Other"), from its start until they tick it off. Running ones are listed too, so a
+  task's whole life is in one place.
+  - **A row:** a plain title, its state ("Needs you", "Working · 40 min", "Done 21:36", "Stopped") and one line
+    (what changed, or what it's doing now). A done task the user hasn't opened yet is bold.
+  - **Order:** a group with something that needs the user comes first, then the others by newest activity. Inside
+    a group: needs you, done and unread, working, done and read, stopped or failed.
+  - **The big number:** "N open" with the eyebrow "Yours".
+- **dibs's own work** (its background tasks, the live sessions, ships) folds into one line at the bottom,
+  "dibs's own work · 3", which opens on a tap. It holds today's Work tab content, and nothing in it pings.
+- **One ping per task** when it finishes, when it asks the user something, or when its agent replies to the user. A
+  tap opens the task. The ping goes away when the task is opened or ticked off. Tasks dibs started by itself never
+  ping.
+- **Ticking off** is the user's call alone; nothing is ticked automatically. A ticked task leaves the list and
+  goes under "Ticked · 12" at the bottom for a week, where Untick brings it back.
+- **Recap** stays the feed of everything. A Recap row that belongs to one of the user's tasks opens that task.
+
+### Screens
+1. **The Tasks tab**, as above. A long press on a row gives Tick off and Open on laptop.
+2. **The task page**, from top to bottom:
+   - The title and state, when it started, how long it ran and when it finished.
+   - Its open questions as the same cards as in Waiting. Answering in either place closes the question in both.
+   - **What it did:** the task's report, in full.
+   - **Result:** a "Report" chip when the task wrote a REPORT.md (it opens in a reader on the phone), and "Shipped to
+     tether · 3 changes" with their "For you" lines.
+   - **You asked:** folded (it was written for the agent).
+   - **Transcript.**
+   - The chat with its agent (below).
+   - The top bar has **Tick off ✓** once the task is finished, Stop while it runs, and Open on laptop in the ⋮ menu.
+3. **The transcript** reads like a document from the top, with "↓ End" to jump.
+   - The task's prompt comes first, folded.
+   - The agent's text is shown in full.
+   - The user's own lines (typed at the laptop or sent from the phone) show as their bubbles.
+   - dibs's notes and "keep going" pushes show as muted system lines.
+   - Tool calls fold into one line per run, e.g. "12 steps: read 5 files, edited recap.rs, ran cargo test ✓". A tap
+     lists the steps, and a tap on a step shows its input and output, each cut at 2 KB, saying so when cut.
+   - Seams between the task's sessions read "Continued in a fresh context" (after a handoff or /clear) or "Reopened
+     22:10".
+   - A running task's transcript is a snapshot: "As of 21:40 · Refresh".
+4. **The task chat goes straight to that task's own agent, not to dibs's brain** (the user, relayed by the brain,
+   2026-10-05).
+   - The user's message goes into that agent's Claude session, and its replies come back into this chat.
+   - The bubbles, day headers and input bar are the dibs chat's ("Message <title>…", 📎 for photos and files).
+   - The agent's bubbles carry its name. "<title> is on it" shows as dots while its session is busy.
+   - Muted lines say what dibs did: "Reopened its chat on the laptop", "Its chat can't be reopened: <why>".
+
+### Data (dibs → phone)
+These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Older apps keep `tasks` and the Work tab.
+```json
+"yours": [{"id": 31, "title": "Recap: one entry per finished job", "name": "the-dibs-app-s-recap-tab",
+           "project": "tether", "state": "needs|working|paused|done|stopped|failed", "ts": 1791230000,
+           "started": …, "finished": …?, "minutes": 95, "line": "what changed, or doing now",
+           "asked": "the user's words, whole", "report": "whole"?,
+           "result": {"report_md": true?, "shipped": [{"repo": "tether", "for_you": ["…"]}]?}?,
+           "questions": [249], "busy": false, "live": true, "unread": true, "ticked": …?,
+           "talk": [{"id": "t31-4", "who": "user|agent|note", "text": "whole", "short": "…"?, "ts": …,
+                     "files": [{"id", "name", "size", "image"}]?}]}],
+"badges": {"tasks": 2, …}
+```
+- `badges.tasks` counts the done-and-unread tasks plus the ones that need the user.
+- Ticked tasks stay in the list for 7 days with `ticked` set. `talk` holds the last 30 lines; older ones are in the
+  transcript.
+- A Recap entry of one of the user's tasks carries `task: <id>` and leaves out `report` and `more`, because the task
+  page has them.
+- **Size.** Today's view is 93 KB, it is republished on every change, and the frame cap is 4 MB. A task adds about
+  5 KB, but dropping the Recap duplicates takes most of that back. dibs keeps the view under 256 KB by trimming the
+  oldest talk lines first.
+- **Transcripts and REPORT.md never ride in the view.** The phone asks for one, and dibs sends it as a channel file.
+  - Measured on tasks #23, #29, #31, #32 and #33: the raw transcripts are 0.7–6 MB, of which 4–30 KB is text,
+    plus 30–180 tool calls. Rendered with each tool's input and output cut at 2 KB, that makes about 50–400 KB, and
+    gzip shrinks it about 4×.
+  - Format (`transcript-<task>-<rev>.json.gz`):
+    `{"v":1, "task":31, "rev":"…", "as_of":…, "parts":[{"session","how":"start|handoff|clear|reopen","ts"}],
+    "turns":[{"who":"ask|user|agent|note|steps","ts", "text"?, "src":"laptop|phone"?,
+    "steps":[{"tool":"Edit","line":"Edit src/recap.rs","in"?,"out"?,"error":true?}]?}]}`.
+  - The phone shows "Getting it…" (the link is up while the app is on screen). It keeps the newest file per task and
+    deletes it 7 days after the task is ticked, or after 14 days.
+
+### Actions (phone → dibs)
+- New:
+  - `task-say` (`value.task`, `value.text`, `value.files`?): a message to that task's agent.
+  - `tick` / `untick` (`value.task`).
+  - `seen` (`value.task`): sent when its page opens. It clears `unread` and the task's ping.
+  - `fetch` (`value.task`, `value.what`: `transcript|report`).
+- Unchanged: `stop`, `reopen` and the question answers. `tell` stays for older apps.
+
+### What changes in Tether
+- **Daemon:** a new `tether send --channel <ch> <file>…` (socket op `send_channel_file`), so dibs can hand the
+  phone a file on its channel.
+  - The core already sends `ChannelFile` both ways, and the phone already keeps channel files in
+    `channels/<ch>/`, out of Downloads and the chat (`Core.kt`). The core doesn't change.
+  - A loopback test in the laptop → phone direction.
+- **`:app`:**
+  - `DibsHost` gets `channelFile(name)`, a flow of the file once it has arrived, read through `appFiles`.
+  - A dibs notification whose tag is `task:<id>` opens `DibsActivity` on that task (intent extra `task`).
+  - Old dibs channel files are pruned.
+- **`:dibs`:**
+  - `Payload.kt` reads `yours` and `badges.tasks`.
+  - `TasksTab.kt` replaces `WorkTab.kt`, whose content moves into the fold at the bottom.
+  - New `TaskPage.kt`, plus `TranscriptScreen.kt` with its parser `Transcript.kt` (unit-tested on a real rendered
+    file).
+  - The task chat reuses the dibs chat's parts, so these move out of `ChatTab.kt` (813 lines) into shared parts
+    first.
+  - A small back stack inside `DibsActivity`: tab → task → transcript or report.
+- **Version 0.5.0.** The ship installs the daemon first, then dibs, then the app.
+
+### Build order (each step shippable and reviewed)
+1. Tether daemon: `send --channel` and its test. Nothing uses it yet, so it ships alone.
+2. dibs: the data and actions, delivery to the task's agent and its replies coming back, the transcript renderer
+   (`dibs task transcript`, also useful at the laptop) and `fetch`. The plan is in dibs's PLAN.md.
+3. App: the Tasks tab and the task page (summary, questions, result, tick off, stop, Open on laptop). This is
+   useful before the chat and the transcript exist.
+4. App: the task chat.
+5. App: the transcript and report readers.
+6. An independent review of both repos. Check on the Pixel with screenshots (`dibs phone request`), then `dibs ship`
+   in the order above.
+
+### Open questions for the user (the defaults go ahead if they say "build it" without answering)
+1. **Should the Tasks tab replace Work**, with dibs's own work folded at its bottom? Default: yes. Four tabs stay
+   four.
+2. **Where should a finished task's chat reopen** when the user messages it from the phone? Either in their herdr
+   `work` (visible but not focused, so they can watch it when back) or out of sight in dibs's hidden session.
+   Default: where the task ran, which is `work` for their tasks.
+3. **Should every reply from a task's agent ping the phone**, or only finishing and asking? Default: a reply to a
+   line the user sent pings (they're waiting for it). There is one ping per task, updated in place.
+4. **Should tasks also be ticked off at the laptop?** The widget's FINISHED section (task #32) would get ✓ and
+   an unread dot, with the same state as the phone. Default: yes, it's small.
+
+**Not planned:** per-project dibs chats, and an urgency meter. Two things already cover what the note asked for:
+only the user's own tasks ping, and "Needs you" sorts first. If the list is still too long after real use, a "this
+one matters" flag would be the next step.
