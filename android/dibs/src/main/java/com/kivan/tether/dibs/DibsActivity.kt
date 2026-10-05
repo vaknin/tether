@@ -47,10 +47,20 @@ class DibsActivity : ComponentActivity() {
         super.onStop()
     }
 
-    // A tab to show, and text or files shared to dibs (they wait in the box until sent).
+    // A tab or a task's page to show, and text or files shared to dibs (they wait in the box until sent).
     private fun take(intent: Intent) {
-        intent.getStringExtra(EXTRA_TAB)?.let { Dibs.tab = it }
+        intent.getStringExtra(EXTRA_TAB)?.let {
+            Dibs.tab = it
+            Dibs.pages.clear()
+        }
+        val task = intent.getLongExtra(EXTRA_TASK, -1)
+        if (task >= 0) {
+            Dibs.tab = TAB_TASKS
+            Dibs.pages.clear()
+            Dibs.open(Page.Task(task))
+        }
         intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.let { text ->
+            Dibs.pages.clear()
             Dibs.chat.draft = listOf(Dibs.chat.draft, text).filter { it.isNotBlank() }.joinToString("\n")
             Dibs.tab = TAB_CHAT
         }
@@ -58,6 +68,7 @@ class DibsActivity : ComponentActivity() {
             ?: listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
         if (uris.isEmpty()) return
         Dibs.tab = TAB_CHAT
+        Dibs.pages.clear()
         lifecycleScope.launch {
             val box = Dibs.chat
             val picked = withContext(Dispatchers.IO) { uris.filter { u -> box.picked.none { it.source == u } }.mapNotNull { picked(this@DibsActivity, it) } }
@@ -66,16 +77,23 @@ class DibsActivity : ComponentActivity() {
     }
 
     companion object {
-        /** "chat" | "waiting" | "work" | "recap". */
+        /** "chat" | "waiting" | "tasks" (or "work") | "recap". */
         const val EXTRA_TAB = "com.kivan.tether.dibs.TAB"
+        /** One of the user's tasks (a Long): its page opens over the Tasks tab. */
+        const val EXTRA_TASK = "com.kivan.tether.dibs.TASK"
         const val TAB_CHAT = "chat"
         const val TAB_WAITING = "waiting"
+        const val TAB_TASKS = "tasks"
 
         /** Opens dibs, on [tab] if given. */
         fun intent(context: Context, tab: String? = null): Intent =
             Intent(Intent.ACTION_VIEW, null, context, DibsActivity::class.java).apply {
                 if (tab != null) putExtra(EXTRA_TAB, tab)
             }
+
+        /** Opens dibs on one of the user's tasks. */
+        fun task(context: Context, id: Long): Intent =
+            Intent(Intent.ACTION_VIEW, null, context, DibsActivity::class.java).putExtra(EXTRA_TASK, id)
     }
 }
 

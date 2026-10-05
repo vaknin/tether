@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.R
+import com.kivan.tether.dibs.dayWords
 import com.kivan.tether.dibs.ui.theme.AppShapes
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
@@ -64,6 +66,10 @@ import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Date
 import kotlin.math.max
 import kotlin.math.min
 
@@ -290,3 +296,34 @@ internal fun Quiet(text: String) {
 }
 
 internal val Bold = FontWeight.W500
+
+/** A page's top bar (over the tabs): back, an eyebrow over its title, and its own actions. */
+@Composable
+internal fun PageBar(title: String, eyebrow: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = Space.XS, end = Space.XS, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = { Dibs.back() }) {
+            Icon(painterResource(R.drawable.lucide_arrow_left), "Back", Modifier.size(22.dp), tint = Palette.Text)
+        }
+        Column(Modifier.weight(1f).padding(start = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (!eyebrow.isNullOrBlank()) Eyebrow(eyebrow)
+            Text(title, style = AppType.heading, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        actions()
+    }
+}
+
+/** When something happened: its time today, else its day and time ("Sun 4 Oct 20:01"). */
+@Composable
+internal fun whenWords(ts: Long): String {
+    val ctx = LocalContext.current
+    return remember(ts) {
+        val zone = ZoneId.systemDefault()
+        val day = Instant.ofEpochSecond(ts).atZone(zone).toLocalDate()
+        val today = LocalDate.now(zone)
+        val time = android.text.format.DateFormat.getTimeFormat(ctx).format(Date(ts * 1000))
+        if (day == today) time else "${dayWords(day, today)} $time"
+    }
+}

@@ -111,6 +111,13 @@ class Composer(val task: Long?) {
     }
 }
 
+/** A screen over the tabs (docs/DIBS-APP.md, "Your tasks"): a task's page, its transcript, its report. */
+sealed interface Page {
+    data class Task(val id: Long) : Page
+    data class Transcript(val id: Long) : Page
+    data class Report(val id: Long) : Page
+}
+
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
 object Dibs {
     @Volatile lateinit var host: DibsHost
@@ -140,6 +147,56 @@ object Dibs {
     val hidden = mutableStateMapOf<String, Boolean>()
     /** A tab asked for by an intent (a notification, a shortcut), taken by the screen. */
     var tab by mutableStateOf<String?>(null)
+
+    /** The pages over the tabs, the top one last; system back pops it. */
+    val pages = mutableStateListOf<Page>()
+
+    fun open(page: Page) {
+        if (pages.lastOrNull() != page) pages += page
+    }
+
+    /** Pops the top page; false when the tabs were showing already. */
+    fun back(): Boolean = pages.removeLastOrNull() != null
+
+    /** It's ticked off: by the view, or by a tap here the view hasn't caught up with. */
+    fun ticked(t: YourTask): Boolean = if (t.ticked == null) "tick:${t.id}" in answered else "untick:${t.id}" !in answered
+
+    /** Done and not opened yet (an open here counts at once). */
+    fun unread(t: YourTask): Boolean = t.unread && "seen:${t.id}" !in answered
+
+    /** Ticks a finished task off (it moves to "Ticked"); only the user does this. */
+    fun tick(t: YourTask) {
+        answered.remove("untick:${t.id}")
+        answered["tick:${t.id}"] = "ticked"
+        host.act("tick", JSONObject().put("task", t.id))
+    }
+
+    fun untick(t: YourTask) {
+        answered.remove("tick:${t.id}")
+        answered["untick:${t.id}"] = "unticked"
+        host.act("untick", JSONObject().put("task", t.id))
+    }
+
+    /** Its page is open: it's read, and its ping goes. */
+    fun seenTask(t: YourTask) {
+        if (t.unread) answered["seen:${t.id}"] = "seen"
+        host.act("seen", JSONObject().put("task", t.id))
+    }
+
+    fun stop(task: Long) {
+        host.act("stop", JSONObject().put("task", task))
+    }
+
+    /** Resumes its chat in a tab on the laptop: by its Recap entry's saved chat, else by the task's number. */
+    fun openOnLaptop(view: DibsView, task: Long) {
+        val key = view.feed.firstOrNull { it.task == task && it.reopen != null }?.reopen ?: task.toString()
+        host.act("reopen", JSONObject().put("reopen", key))
+    }
+
+    /** Asks dibs for a task's transcript or report ([what]); it comes as a file on the channel. */
+    fun fetch(task: Long, what: String) {
+        host.act("fetch", JSONObject().put("task", task).put("what", what))
+    }
 
     internal fun addPending(p: Pending) {
         _pending.update { it + p }

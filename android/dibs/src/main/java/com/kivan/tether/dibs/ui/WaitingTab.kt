@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Decision
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
+import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.Question
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.age
@@ -53,7 +54,7 @@ internal fun WaitingTab(view: DibsView) {
     ) {
         item(key = "_hero") { Hero("Waiting on you", "${questions.size}") }
         items(questions, key = { "q${it.id}" }) { q ->
-            QuestionCard(q, now, Modifier.animateItem())
+            QuestionCard(q, now, Modifier.animateItem(), task = q.task?.takeIf { view.task(it) != null })
         }
         if (decided.isNotEmpty()) {
             item(key = "_decided") {
@@ -68,10 +69,14 @@ internal fun WaitingTab(view: DibsView) {
     }
 }
 
-/** A question: who asks and how long ago, the question, why, Details behind a tap, its buttons and answer box. */
+/**
+ * A question: who asks and how long ago, the question, why, Details behind a tap, its buttons and
+ * answer box; "Open task" when one of the user's tasks asks it ([task]). The task's page shows the
+ * same card, so answering in either place closes it in both.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun QuestionCard(q: Question, now: Long, modifier: Modifier) {
+internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long? = null) {
     val key = "q${q.id}"
     Column(modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -90,6 +95,16 @@ private fun QuestionCard(q: Question, now: Long, modifier: Modifier) {
         q.reply?.let { reply ->
             AnswerField("q/${q.id}", "Answer…", Modifier.fillMaxWidth().padding(top = 2.dp)) { text ->
                 Dibs.answer(key, text, reply, JSONObject().put("item", q.id.toString()).put("text", text))
+            }
+        }
+        if (task != null) {
+            Row(
+                Modifier.clip(MaterialTheme.shapes.small).clickable { Dibs.open(Page.Task(task)) }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text("Open task", style = AppType.label, color = Palette.Accent)
+                Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(16.dp), tint = Palette.Accent)
             }
         }
     }

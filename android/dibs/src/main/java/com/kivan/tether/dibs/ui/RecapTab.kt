@@ -41,6 +41,7 @@ import com.kivan.tether.dibs.Away
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.FeedItem
+import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.awayMinutes
 import com.kivan.tether.dibs.dayWords
@@ -76,7 +77,7 @@ internal fun RecapTab(view: DibsView) {
         }
         for ((day, items) in days) {
             item(key = "day-$day") { Section(dayWords(day, today)) }
-            itemsIndexed(items, key = { i, f -> f.id?.let { "f-$it" } ?: "f-$day-$i" }) { _, f -> FeedRow(f) }
+            itemsIndexed(items, key = { i, f -> f.id?.let { "f-$it" } ?: "f-$day-$i" }) { _, f -> FeedRow(f, f.task?.takeIf { view.task(it) != null }) }
         }
         if (view.feed.isEmpty()) item(key = "_empty") { Quiet("Nothing yet. What dibs and its sessions get done shows here.") }
     }
@@ -101,12 +102,12 @@ private fun AwayCard(a: Away) {
 
 /**
  * One piece of work: its time, a mark by kind, what changed for you, why (what you asked), and
- * whose it was. A tap opens it whole: the task's report, its other lines, all of what you asked.
- * A long press copies all of it.
+ * whose it was. A tap opens it whole: the task's report, its other lines, all of what you asked;
+ * one of the user's own tasks ([task]) opens its page instead. A long press copies all of it.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FeedRow(f: FeedItem) {
+private fun FeedRow(f: FeedItem, task: Long?) {
     val key = f.key
     val ctx = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -122,7 +123,8 @@ private fun FeedRow(f: FeedItem) {
         Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
             // A row with nothing behind it only copies: no ripple for a tap that does nothing.
             .then(
-                if (opens || open) Modifier.combinedClickable(onClick = { Dibs.toggle(key) }, onLongClick = longPress)
+                if (task != null) Modifier.combinedClickable(onClick = { Dibs.open(Page.Task(task)) }, onLongClick = longPress)
+                else if (opens || open) Modifier.combinedClickable(onClick = { Dibs.toggle(key) }, onLongClick = longPress)
                 else Modifier.pointerInput(f) { detectTapGestures(onLongPress = { longPress() }) },
             )
             .padding(vertical = 8.dp),
@@ -183,7 +185,10 @@ private fun FeedRow(f: FeedItem) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val who = listOfNotNull(f.who.ifBlank { null }, f.repo?.takeIf { it != f.who }).joinToString(" · ")
                 Text(who, Modifier.weight(1f, fill = false), style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (opens || open) {
+                if (task != null) {
+                    Text("Open", style = AppType.small, color = Palette.Accent)
+                    Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(14.dp), tint = Palette.Accent)
+                } else if (opens || open) {
                     Text(if (open) "Less" else "More", style = AppType.small, color = Palette.Accent)
                     Icon(
                         painterResource(if (open) R.drawable.lucide_chevron_up else R.drawable.lucide_chevron_down),

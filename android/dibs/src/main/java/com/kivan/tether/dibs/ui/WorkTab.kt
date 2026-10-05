@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +41,8 @@ import com.kivan.tether.dibs.ui.theme.Space
 import org.json.JSONObject
 
 // The Work tab: tasks (what each does now, for how long), the live sessions, ships under way. A
-// tap opens a task or session with its last lines (dibs reads them on `peek`).
+// tap opens a task or session with its last lines (dibs reads them on `peek`). With a dibs that
+// sends the user's tasks, this is "dibs's own work" folded at the bottom of the Tasks tab.
 
 @Composable
 internal fun WorkTab(view: DibsView) {
@@ -56,16 +58,21 @@ internal fun WorkTab(view: DibsView) {
             val sessions = view.sessions.size
             Hero("At work", "$n", "${if (n == 1) "task" else "tasks"} · $sessions ${if (sessions == 1) "session" else "sessions"}")
         }
-        items(view.tasks, key = { "t${it.id}" }) { t -> TaskCard(t, view.peek, armed, Modifier.animateItem()) }
-        if (view.tasks.isEmpty()) item(key = "_none") { Quiet("No tasks running.") }
-        if (view.sessions.isNotEmpty()) {
-            item(key = "_sessions") { Section("Sessions") }
-            items(view.sessions, key = { "s${it.name}" }) { s -> SessionRow(s, view.peek, Modifier.animateItem()) }
-        }
-        if (view.ships.isNotEmpty()) {
-            item(key = "_ships") { Section("Ships") }
-            items(view.ships, key = { "ship${it.repo}" }) { s -> ShipRow(s, now) }
-        }
+        workItems(view, now, armed)
+    }
+}
+
+/** The Work tab's content, without its hero: tasks, sessions, ships. */
+internal fun LazyListScope.workItems(view: DibsView, now: Long, armed: Armed) {
+    items(view.tasks, key = { "t${it.id}" }) { t -> TaskCard(t, view.peek, armed, Modifier.animateItem()) }
+    if (view.tasks.isEmpty()) item(key = "_none") { Quiet("No tasks running.") }
+    if (view.sessions.isNotEmpty()) {
+        item(key = "_sessions") { Section("Sessions") }
+        items(view.sessions, key = { "s${it.name}" }) { s -> SessionRow(s, view.peek, Modifier.animateItem()) }
+    }
+    if (view.ships.isNotEmpty()) {
+        item(key = "_ships") { Section("Ships") }
+        items(view.ships, key = { "ship${it.repo}" }) { s -> ShipRow(s, now) }
     }
 }
 

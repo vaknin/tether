@@ -1,5 +1,6 @@
 package com.kivan.tether.dibs.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,12 +13,16 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -37,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +56,7 @@ import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Lend
 import com.kivan.tether.dibs.Link
+import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.State
 import com.kivan.tether.dibs.stateWords
@@ -58,11 +65,14 @@ import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
 
-/** The four tabs, by the key an intent names them with. */
+/**
+ * The four tabs, by the key an intent names them with. The third is Tasks (the user's tasks), or
+ * Work for a dibs that doesn't send them yet.
+ */
 internal enum class Tab(val key: String, val label: String, val icon: Int) {
     CHAT("chat", "Chat", R.drawable.lucide_message_circle),
     WAITING("waiting", "Waiting", R.drawable.lucide_inbox),
-    WORK("work", "Work", R.drawable.lucide_hammer),
+    TASKS("tasks", "Tasks", R.drawable.lucide_list_checks),
     RECAP("recap", "Recap", R.drawable.lucide_history),
 }
 
@@ -77,20 +87,37 @@ fun DibsApp() {
     LaunchedEffect(view) { Dibs.seen(view) }
 
     var tab by rememberSaveable { mutableStateOf(Tab.CHAT) }
+    val tabs = rememberSaveableStateHolder()
     val asked = Dibs.tab
     LaunchedEffect(asked) {
         if (asked == null) return@LaunchedEffect
-        Tab.entries.firstOrNull { it.key == asked }?.let { tab = it }
+        (if (asked == "work") Tab.TASKS else Tab.entries.firstOrNull { it.key == asked })?.let { tab = it }
         Dibs.tab = null
     }
     // The keyboard needs the room; the tabs come back when it closes.
     val typing = WindowInsets.isImeVisible
 
+    // A task's page (and its transcript or report) over the tabs; back pops it.
+    val page = Dibs.pages.lastOrNull()
+    BackHandler(enabled = page != null) { Dibs.back() }
+    if (page != null && view != null) {
+        Box(
+            Modifier.fillMaxSize().background(Palette.Bg)
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime)),
+        ) {
+            when (page) {
+                is Page.Task -> TaskPage(page.id, view)
+                else -> LaunchedEffect(page) { Dibs.back() }
+            }
+        }
+        return
+    }
+
     Scaffold(
         containerColor = Palette.Bg,
         contentColor = Palette.Text,
         topBar = { Header(link, view?.state) },
-        bottomBar = { if (view != null && !typing) NavBar(tab, view.badges) { tab = it } },
+        bottomBar = { if (view != null && !typing) NavBar(tab, view.badges, view.yours != null) { tab = it } },
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).consumeWindowInsets(pad).imePadding()) {
             if (view == null) {
@@ -99,11 +126,18 @@ fun DibsApp() {
             }
             view.lend?.let { LendBar(it) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (tab) {
-                    Tab.CHAT -> ChatTab(view)
-                    Tab.WAITING -> WaitingTab(view)
-                    Tab.WORK -> WorkTab(view)
-                    Tab.RECAP -> RecapTab(view)
+                // The other tabs keep their place (scroll, folds) under a page and across tab
+                // changes; the chat opens at its newest line, as always.
+                if (tab == Tab.CHAT) {
+                    ChatTab(view)
+                } else {
+                    tabs.SaveableStateProvider(tab.key) {
+                        when (tab) {
+                            Tab.WAITING -> WaitingTab(view)
+                            Tab.TASKS -> if (view.yours != null) TasksTab(view) else WorkTab(view)
+                            else -> RecapTab(view)
+                        }
+                    }
                 }
             }
         }
@@ -172,14 +206,16 @@ private fun LendBar(lend: Lend) {
 }
 
 @Composable
-private fun NavBar(tab: Tab, badges: Badges, onTab: (Tab) -> Unit) {
+private fun NavBar(tab: Tab, badges: Badges, yours: Boolean, onTab: (Tab) -> Unit) {
     NavigationBar(containerColor = Palette.SurfaceLow, tonalElevation = 0.dp) {
         for (t in Tab.entries) {
             val count = when (t) {
                 Tab.WAITING -> badges.waiting
-                Tab.WORK -> badges.work
+                Tab.TASKS -> if (yours) badges.tasks else badges.work
                 else -> 0
             }
+            // An older dibs: the old Work tab.
+            val (label, icon) = if (t == Tab.TASKS && !yours) "Work" to R.drawable.lucide_hammer else t.label to t.icon
             val dot = t == Tab.RECAP && badges.recap > 0
             NavigationBarItem(
                 selected = t == tab,
@@ -192,9 +228,9 @@ private fun NavBar(tab: Tab, badges: Badges, onTab: (Tab) -> Unit) {
                             }
                             dot -> Badge(containerColor = Palette.Accent)
                         }
-                    }) { Icon(painterResource(t.icon), null, Modifier.size(22.dp)) }
+                    }) { Icon(painterResource(icon), null, Modifier.size(22.dp)) }
                 },
-                label = { Text(t.label, style = AppType.label) },
+                label = { Text(label, style = AppType.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Palette.Accent,
                     selectedTextColor = Palette.Text,
