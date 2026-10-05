@@ -80,6 +80,32 @@ class PayloadTest {
     }
 
     @Test
+    fun aFeedEntryCarriesItsWholeStory() {
+        val d = DibsView.parse(
+            JSONObject(
+                """{"recap": {"feed": [
+                  {"ts": 5, "kind": "done", "who": "add-the-brain-s", "repo": "dibs", "text": "dibs's brain has its personality.",
+                   "why": "Add the brain's personality.", "asked": "add the brain's personality (artifact x). Keep it short.",
+                   "more": ["dibs talks calm and short."], "report": "Added it.\nShipped."},
+                  {"ts": 4, "kind": "update", "who": "dibs", "text": "Installed an update to dibs", "report": "#16 x installed"},
+                  {"ts": 3, "kind": "did", "who": "a", "text": "Shipped the fix"}]}}""",
+            ),
+        )
+        val (task, update, bare) = d.feed
+        assertEquals("dibs", task.repo)
+        assertEquals(listOf("dibs talks calm and short."), task.more)
+        assertTrue(task.opens)
+        assertEquals(
+            "dibs's brain has its personality.\n\nYou asked: add the brain's personality (artifact x). Keep it short." +
+                "\n\nAlong the way:\n• dibs talks calm and short.\n\nReport:\nAdded it.\nShipped.",
+            task.full(),
+        )
+        assertTrue("an update's technical line is behind the tap", update.opens)
+        assertFalse("an older dibs's bare line has nothing behind it", bare.opens)
+        assertNull(bare.why)
+    }
+
+    @Test
     fun aViewWithoutThePayloadIsNull() {
         assertNull(DibsView.ofView(JSONObject("""{"v": 1, "blocks": []}""")))
         assertNull(DibsView.ofView(null))

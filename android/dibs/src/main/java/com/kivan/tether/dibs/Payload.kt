@@ -74,7 +74,37 @@ data class Peek(val who: String, val at: Long, val lines: List<String>)
 
 data class Away(val id: Long, val title: String, val lines: List<String>, val since: Long, val until: Long)
 
-data class FeedItem(val ts: Long, val kind: String, val who: String, val text: String)
+/**
+ * One piece of work in Recap (dibs folds a task's lines into one): what changed for the user in
+ * one line, why (what they asked), and behind a tap the rest in full.
+ */
+data class FeedItem(
+    val ts: Long,
+    /** done | stopped | did | closed | update */
+    val kind: String,
+    val who: String,
+    val text: String,
+    val repo: String? = null,
+    /** The first sentence of what the user asked. */
+    val why: String? = null,
+    /** All of what they asked, when it's longer than [why]. */
+    val asked: String? = null,
+    /** Its other lines, oldest first. */
+    val more: List<String> = emptyList(),
+    /** The task's report, in full. */
+    val report: String? = null,
+) {
+    /** A tap shows more than the folded row does. */
+    val opens: Boolean get() = asked != null || more.isNotEmpty() || report != null
+
+    /** Everything, as plain text (Copy). */
+    fun full(): String = buildString {
+        append(text)
+        (asked ?: why)?.let { append("\n\nYou asked: ").append(it) }
+        if (more.isNotEmpty()) append("\n\nAlong the way:\n").append(more.joinToString("\n") { "• $it" })
+        report?.let { append("\n\nReport:\n").append(it) }
+    }
+}
 
 data class Lend(val until: Long?, val holder: String?, val text: String)
 
@@ -127,7 +157,12 @@ data class DibsView(
                 away = recap.optJSONObject("away")?.let {
                     Away(it.optLong("id"), it.optString("title"), it.optJSONArray("lines").strings(), it.optLong("since"), it.optLong("until"))
                 },
-                feed = recap.optJSONArray("feed").objects().map { FeedItem(it.optLong("ts"), it.optString("kind"), it.optString("who"), it.optString("text")) },
+                feed = recap.optJSONArray("feed").objects().map {
+                    FeedItem(
+                        it.optLong("ts"), it.optString("kind"), it.optString("who"), it.optString("text"),
+                        it.str("repo"), it.str("why"), it.str("asked"), it.optJSONArray("more").strings(), it.str("report"),
+                    )
+                },
                 lend = o.optJSONObject("lend")?.let { Lend(it.optLong("until").takeIf { u -> u > 0 }, it.str("holder"), it.optString("text")) },
                 badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap")),
             )

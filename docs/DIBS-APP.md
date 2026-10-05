@@ -18,7 +18,12 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
      phone requests, and "decided for you" lines (Got it, Undo).
   3. **Work**: tasks (state, repo, what it's doing now, how long), the live sessions (busy or idle, what
      they hold), ships in progress. Tap a task for its recent lines; Tell it something; Stop it.
-  4. **Recap**: "while you were away" and the day's feed (did lines, updates installed, closed sessions).
+  4. **Recap**: "while you were away" and the day's feed. **One entry per finished piece of work** (the user,
+     2026-10-05, task #31: a finished task showed three or four near-identical lines, some technical, cut with
+     "…" and nothing behind a tap): a short plain line of what changed for them, "You asked: …" (why), whose
+     it was; a tap opens it whole (all of what they asked, its other lines, the task's report), a long press
+     copies it. dibs folds the lines (`src/recap.rs`): a task's `dibs did`s, shipped "For you" lines, its
+     report and dibs's closing line are one entry, as are a handoff chain's sessions.
 - Above the tabs, when it applies: **"dibs has your phone · Take it back"** (lending, task #19).
 
 ## Chat: modern, tidy, never overwhelming (the user, 2026-10-05, words 31 and 32)
@@ -69,7 +74,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
   the app's same-named ones would win the resource merge.
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
-- Version **0.4.0** (versionCode 14; task #19 takes 0.3.9). Never uninstall: `adb install -r`.
+- Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.2 (16). Never uninstall: `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
 The view stays a v1 view (`badge`, `open_tags`, `pin`, `notify` keep working), plus a top-level `dibs`
@@ -95,7 +100,9 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
                 "task": 16?, "holds": ["repo:dibs:master"]}],
   "peek": {"who": "…", "at": …, "lines": ["…"]}?,
   "recap": {"away": {"id": 4, "title": "…", "lines": ["…"], "seen": false}?,
-            "feed": [{"ts": …, "kind": "did|update|closed|decided|answered", "text": "…", "who": "…"?}]},
+            "feed": [{"ts": …, "kind": "done|stopped|did|closed|update", "who": "…", "text": "what changed, whole",
+                      "repo": "…"?, "why": "first sentence of the ask"?, "asked": "the whole ask"?,
+                      "more": ["its other lines, whole"]?, "report": "the task's report, whole"?}]},
   "badges": {"waiting": 3, "work": 1, "recap": 1}
 }
 ```

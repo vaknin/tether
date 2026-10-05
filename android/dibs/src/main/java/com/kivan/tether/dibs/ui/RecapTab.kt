@@ -1,7 +1,9 @@
 package com.kivan.tether.dibs.ui
 
 import android.text.format.DateFormat
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,12 +21,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Away
 import com.kivan.tether.dibs.Dibs
@@ -35,6 +44,7 @@ import com.kivan.tether.dibs.awayMinutes
 import com.kivan.tether.dibs.dayWords
 import com.kivan.tether.dibs.duration
 import com.kivan.tether.dibs.ui.theme.AppType
+import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
 import java.time.Instant
@@ -42,8 +52,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
 
-// The Recap tab: "while you were away" first, then the day's feed (what got done, updates
-// installed, sessions closed), newest first, grouped by day.
+// The Recap tab: "while you were away" first, then the day's feed, newest first, grouped by day:
+// one row per piece of work (dibs folds a task's lines into one), a tap for the whole story.
 
 @Composable
 internal fun RecapTab(view: DibsView) {
@@ -54,16 +64,16 @@ internal fun RecapTab(view: DibsView) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         if (away != null) {
             item(key = "_away") { AwayCard(away) }
         } else {
-            item(key = "_hero") { Hero("Done today", "${days[today]?.size ?: 0}") }
+            item(key = "_hero") { Hero("Done today", "${days[today]?.count { it.kind != "update" } ?: 0}") }
         }
         for ((day, items) in days) {
             item(key = "day-$day") { Section(dayWords(day, today)) }
-            itemsIndexed(items, key = { i, _ -> "f-$day-$i" }) { _, f -> FeedRow(f) }
+            itemsIndexed(items, key = { i, f -> "f-$day-$i-${f.ts}" }) { _, f -> FeedRow(f, "feed:${f.ts}:${f.who}") }
         }
         if (view.feed.isEmpty()) item(key = "_empty") { Quiet("Nothing yet. What dibs and its sessions get done shows here.") }
     }
@@ -86,12 +96,32 @@ private fun AwayCard(a: Away) {
     }
 }
 
-/** One thing that happened: its time, a mark by kind, the line, and who did it. */
+/**
+ * One piece of work: its time, a mark by kind, what changed for you, why (what you asked), and
+ * whose it was. A tap opens it whole: all of what you asked, its other lines, the task's report.
+ * A long press copies all of it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FeedRow(f: FeedItem) {
+private fun FeedRow(f: FeedItem, key: String) {
     val ctx = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val open = Dibs.open[key] == true
+    var cut by remember(f) { mutableStateOf(false) }
+    val opens = f.opens || cut
     val (icon, tint) = kindMark(f.kind)
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
+            .combinedClickable(
+                onClick = { if (opens || open) Dibs.toggle(key) },
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    copy(ctx, f.full())
+                },
+            )
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         Text(
             remember(f.ts) { DateFormat.getTimeFormat(ctx).format(Date(f.ts * 1000)) },
             Modifier.width(44.dp).padding(top = 2.dp),
@@ -99,9 +129,51 @@ private fun FeedRow(f: FeedItem) {
             color = Palette.Muted,
         )
         Icon(painterResource(icon), f.kind, Modifier.padding(top = 2.dp).size(16.dp), tint = tint)
-        Column(Modifier.weight(1f)) {
-            Text(f.text, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
-            if (f.who.isNotBlank()) Text(f.who, style = AppType.small, color = Palette.Muted)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                f.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Palette.Text,
+                maxLines = if (open) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { if (it.hasVisualOverflow) cut = true },
+            )
+            val why = if (open) f.asked ?: f.why else f.why
+            if (why != null) {
+                Text(
+                    "You asked: $why",
+                    style = AppType.small,
+                    color = Palette.Muted,
+                    maxLines = if (open) Int.MAX_VALUE else 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (open && f.more.isNotEmpty()) {
+                Eyebrow("Along the way", Modifier.padding(top = Space.S))
+                for (line in f.more) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.padding(top = 8.dp).size(4.dp).background(Palette.Muted, CircleShape))
+                        Text(line, style = AppType.small, color = Palette.Text)
+                    }
+                }
+            }
+            if (open && f.report != null) {
+                Eyebrow("Report", Modifier.padding(top = Space.S))
+                Text(f.report, style = AppType.small, color = Palette.Text)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                val who = listOfNotNull(f.who.ifBlank { null }, f.repo?.takeIf { it != f.who }).joinToString(" · ")
+                Text(who, Modifier.weight(1f, fill = false), style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (opens || open) {
+                    Text(if (open) "Less" else "More", style = AppType.small, color = Palette.Accent)
+                    Icon(
+                        painterResource(if (open) R.drawable.lucide_chevron_up else R.drawable.lucide_chevron_down),
+                        null,
+                        Modifier.size(14.dp),
+                        tint = Palette.Accent,
+                    )
+                }
+            }
         }
     }
 }
