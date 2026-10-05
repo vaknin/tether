@@ -56,11 +56,14 @@ data class Task(
     val name: String,
     val state: String,
     val repo: String?,
+    /** How long it has run, from its start (dibs sends no clock, so its views stay still). */
     val minutes: Long,
     val text: String,
     val doing: String?,
     /** busy | idle | shell, when its session is live. */
     val status: String?,
+    /** Its live session's pid: what a peek asks for. */
+    val pid: Long? = null,
 )
 
 data class Session(val name: String, val repo: String?, val branch: String?, val status: String, val task: String?, val holds: List<String>)
@@ -112,7 +115,9 @@ data class DibsView(
                     Decision(it.optLong("id"), it.optString("text"), it.optString("why"), it.optString("from"), it.optLong("ts"), it.optBoolean("undo"), it.optString("ack"))
                 },
                 tasks = o.optJSONArray("tasks").objects().map {
-                    Task(it.optLong("id"), it.optString("name"), it.optString("state"), it.str("repo"), it.optLong("minutes"), it.optString("text"), it.str("doing"), it.str("status"))
+                    val started = it.optLong("started")
+                    val minutes = if (started > 0) (System.currentTimeMillis() / 1000 - started) / 60 else it.optLong("minutes")
+                    Task(it.optLong("id"), it.optString("name"), it.optString("state"), it.str("repo"), minutes, it.optString("text"), it.str("doing"), it.str("status"), it.optLong("pid").takeIf { p -> p > 0 })
                 },
                 sessions = o.optJSONArray("sessions").objects().map {
                     Session(it.optString("name"), it.str("repo"), it.str("branch"), it.optString("status"), it.str("task"), it.optJSONArray("holds").strings())

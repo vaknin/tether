@@ -59,8 +59,8 @@ class DibsActivity : ComponentActivity() {
         if (uris.isEmpty()) return
         Dibs.tab = TAB_CHAT
         lifecycleScope.launch {
-            val picked = withContext(Dispatchers.IO) { uris.map { picked(this@DibsActivity, it) } }
-            for (p in picked) if (Dibs.picked.none { it.uri == p.uri }) Dibs.picked += p
+            val picked = withContext(Dispatchers.IO) { uris.filter { u -> Dibs.picked.none { it.source == u } }.mapNotNull { picked(this@DibsActivity, it) } }
+            Dibs.picked += picked
         }
     }
 
@@ -78,12 +78,24 @@ class DibsActivity : ComponentActivity() {
     }
 }
 
-/** A file to send: its display name, and whether it's an image (by its type). Blocking. */
-internal fun picked(context: Context, uri: Uri): Picked {
+/**
+ * A file to send, copied into [DibsHost.pickDir] now, while the grant to read it holds: its
+ * display name, and whether it's an image (by its type). Null when it can't be read. Blocking.
+ */
+internal fun picked(context: Context, uri: Uri): Picked? = runCatching {
     val r = context.contentResolver
     val name = runCatching {
         r.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
     }.getOrNull() ?: uri.lastPathSegment ?: "file"
     val image = runCatching { r.getType(uri) }.getOrNull()?.startsWith("image/") == true
-    return Picked(uri, name, image)
+    val dir = java.io.File(Dibs.host.pickDir, java.util.UUID.randomUUID().toString()).apply { mkdirs() }
+    val copy = java.io.File(dir, name.replace('/', '_'))
+    r.openInputStream(uri)!!.use { input -> copy.outputStream().use { input.copyTo(it) } }
+    Picked(Uri.fromFile(copy), name, image, source = uri)
+}.onFailure { android.util.Log.w("dibs", "couldn't read $uri", it) }.getOrNull()
+
+/** Drops a picked file's copy (✕ in the strip). */
+internal fun unpick(p: Picked) {
+    Dibs.picked.remove(p)
+    p.uri.path?.takeIf { p.uri.scheme == "file" }?.let { java.io.File(it).parentFile?.deleteRecursively() }
 }

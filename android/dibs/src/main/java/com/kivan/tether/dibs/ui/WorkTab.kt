@@ -69,6 +69,9 @@ internal fun WorkTab(view: DibsView) {
     }
 }
 
+/** Who a task's peek asks for: its session's pid (a task's chat may have another name), else its name. */
+private val com.kivan.tether.dibs.Task.peekWho: String get() = pid?.toString() ?: name
+
 /** Opens or closes [key]; opening asks dibs for [who]'s last lines. */
 private fun openPeek(key: String, who: String) {
     val opening = Dibs.open[key] != true
@@ -82,7 +85,7 @@ private fun TaskCard(t: Task, peek: Peek?, armed: Armed, modifier: Modifier) {
     val key = "task:${t.id}"
     val open = Dibs.open[key] == true
     Column(
-        modifier.card().clip(MaterialTheme.shapes.medium).clickable { openPeek(key, t.name) }.padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier.card().clip(MaterialTheme.shapes.medium).clickable { openPeek(key, t.peekWho) }.padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
@@ -98,7 +101,7 @@ private fun TaskCard(t: Task, peek: Peek?, armed: Armed, modifier: Modifier) {
             Text(doing, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted, maxLines = if (open) 8 else 2, overflow = TextOverflow.Ellipsis)
         }
         if (open) {
-            PeekBox(peek?.takeIf { it.who == t.name })
+            PeekBox(peek?.takeIf { it.who == t.peekWho })
             TaskButtons(t, armed)
         }
     }

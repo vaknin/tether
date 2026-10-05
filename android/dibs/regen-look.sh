@@ -19,7 +19,10 @@ trap 'rm -rf "$tmp"' EXIT
 design kotlin --hue "$HUE" --package "$pkg.ui.theme" --r "$pkg" --src "$src" --res "$tmp/res" >/dev/null
 mkdir -p "$res/font" "$res/drawable" "$res/mipmap-anydpi"
 cp "$tmp"/res/font/*.ttf "$res/font/"
-# Theme.Design stays the app's (same name); the activity uses Theme.Dibs (res/values/dibs_theme.xml).
+# Theme.Design stays the app's (same name); the activity uses Theme.Dibs (res/values/dibs.xml),
+# whose accent follows the hue.
+accent=$(design colors --hue "$HUE" | awk '$1 == "accent" {print $2}')
+sed -i -E "s|(<color name=\"dibs_accent\">)#[0-9A-Fa-f]{6}|\1$accent|" "$res/values/dibs.xml"
 
 design launcher --hue "$HUE" --mark "$MARK" --res "$tmp/launch" >/dev/null
 for f in ic_launcher_background ic_launcher_foreground ic_launcher_monochrome; do

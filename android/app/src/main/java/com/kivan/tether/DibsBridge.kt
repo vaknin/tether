@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
+import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsHost
 import com.kivan.tether.dibs.Link
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * dibs's screens (the `:dibs` module, docs/DIBS-APP.md) over Tether's link: the dibs channel's
@@ -35,6 +37,8 @@ class DibsBridge(context: Context) : DibsHost {
             else -> Link.OFFLINE
         }
     }.stateIn(Core.scope, SharingStarted.Eagerly, Link.OFFLINE)
+
+    override val pickDir: java.io.File get() = Core.outgoingDir
 
     override val uploads: StateFlow<Map<String, Float>> = Core.progress
         .map { p -> p.mapValues { (_, v) -> if (v.second > 0) v.first.toFloat() / v.second else 0f } }
@@ -57,16 +61,23 @@ class DibsBridge(context: Context) : DibsHost {
             val ids = JSONArray()
             try {
                 val node = Core.acquire(hold)
+                // One file that fails (gone, unreadable) doesn't stop the others.
                 for (uri in files) {
-                    val f = withContext(Dispatchers.IO) { Outgoing.copyIn(app, uri) }
-                    val m = node.sendChannelFile(Channels.DIBS, f.path)
-                    Transfers.sentToChannel(m.id, f.name)
-                    withContext(Dispatchers.IO) { Thumbs.save(app, m.id, f) }
-                    withContext(Dispatchers.Main) { onFile(uri, m.id) }
-                    ids.put(m.id)
+                    try {
+                        // Picked files are copied into outgoing already (`pickDir`); anything else is copied now.
+                        val f = uri.path?.let(::File)?.takeIf { uri.scheme == "file" && it.startsWith(Core.outgoingDir) }
+                            ?: withContext(Dispatchers.IO) { Outgoing.copyIn(app, uri) }
+                        val m = node.sendChannelFile(Channels.DIBS, f.path)
+                        Transfers.sentToChannel(m.id, f.name)
+                        withContext(Dispatchers.IO) { Thumbs.save(app, m.id, f) }
+                        withContext(Dispatchers.Main) { onFile(uri, m.id) }
+                        ids.put(m.id)
+                    } catch (e: Exception) {
+                        Log.w("Tether", "a file for dibs couldn't be sent", e)
+                    }
                 }
                 // Keeps the link up past this screen until the files are through.
-                SyncWorker.start(app, "dibs")
+                if (ids.length() > 0) SyncWorker.start(app, "dibs")
             } catch (e: Exception) {
                 Log.w("Tether", "sending files to dibs failed", e)
             } finally {
@@ -75,6 +86,8 @@ class DibsBridge(context: Context) : DibsHost {
             // The words go even when a file couldn't (it was gone, say); the files that made it go along.
             if (text.isNotEmpty() || ids.length() > 0) {
                 act("say", JSONObject().put("text", text).put("files", ids), uid)
+            } else {
+                withContext(Dispatchers.Main) { Dibs.dropPending(uid) }
             }
         }
     }
@@ -83,16 +96,22 @@ class DibsBridge(context: Context) : DibsHost {
 
     // Like MainActivity on screen: the link stays open, and what dibs posts is read, not notified.
     override fun visible(on: Boolean) {
+        shown = on
         Channels.dibsShowing(on)
         if (on) {
             Core.scope.launch {
                 val node = Core.acquire(Core.DIBS_UI)
+                // The screen left while this waited (its release came first and found nothing):
+                // let go, or the link would be held for good.
+                if (!shown) return@launch Core.release(Core.DIBS_UI)
                 if (runCatching { node.status().peer }.getOrNull() != null) Core.connect()
             }
         } else {
             Core.release(Core.DIBS_UI)
         }
     }
+
+    @Volatile private var shown = false
 
     override fun openTether(classic: Boolean) {
         val intent = if (classic) {

@@ -25,6 +25,12 @@ interface DibsHost {
     /** The dibs channel's newest view (the whole JSON), or null before one arrived. */
     val view: StateFlow<JSONObject?>
     val link: StateFlow<Link>
+    /**
+     * Where a picked file is copied at once (a picker's or a share's read grant ends with the
+     * screen); [send] takes it from there, and Tether deletes it once the laptop has it.
+     */
+    val pickDir: java.io.File
+
     /** Files being sent: Tether's file id → fraction done. */
     val uploads: StateFlow<Map<String, Float>>
 
@@ -53,8 +59,8 @@ interface DibsHost {
 /** A message sent from here that no view lists yet (its echo), with the files picked for it. */
 data class Pending(val uid: String, val text: String, val files: List<Picked>, val tsMs: Long = System.currentTimeMillis())
 
-/** A file picked to send: where it is, its name, whether it's an image. */
-data class Picked(val uri: Uri, val name: String, val image: Boolean)
+/** A file picked to send: its copy in [DibsHost.pickDir], its name, whether it's an image, and where it came from. */
+data class Picked(val uri: Uri, val name: String, val image: Boolean, val source: Uri = uri)
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
 object Dibs {
@@ -98,6 +104,11 @@ object Dibs {
         } else {
             host.send(uid, text, files.map { it.uri }) { uri, id -> sentIds[uri] = id }
         }
+    }
+
+    /** Drops an echo that will never be listed (nothing could be sent). */
+    fun dropPending(uid: String) {
+        _pending.update { list -> list.filter { it.uid != uid } }
     }
 
     /** Forgets the echoes a view now lists, and the answers to what it no longer asks. */

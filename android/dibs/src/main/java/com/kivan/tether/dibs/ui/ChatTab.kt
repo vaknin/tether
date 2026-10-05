@@ -117,6 +117,7 @@ import com.kivan.tether.dibs.dayWords
 import com.kivan.tether.dibs.fileSize
 import com.kivan.tether.dibs.outcomeWords
 import com.kivan.tether.dibs.picked
+import com.kivan.tether.dibs.unpick
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
@@ -696,8 +697,8 @@ private fun Attach() {
     var shot by rememberSaveable { mutableStateOf<Uri?>(null) }
     val add: (List<Uri>) -> Unit = { uris ->
         scope.launch {
-            val got = withContext(Dispatchers.IO) { uris.map { picked(ctx, it) } }
-            for (p in got) if (Dibs.picked.none { it.uri == p.uri }) Dibs.picked += p
+            val got = withContext(Dispatchers.IO) { uris.filter { u -> Dibs.picked.none { it.source == u } }.mapNotNull { picked(ctx, it) } }
+            Dibs.picked += got
         }
     }
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { add(it) }
@@ -782,7 +783,7 @@ private fun Strip() {
                 }
                 Box(
                     Modifier.align(Alignment.TopEnd).offset(6.dp, (-6).dp).size(22.dp).clip(CircleShape)
-                        .background(Palette.SurfaceHighest).clickable { Dibs.picked.remove(p) },
+                        .background(Palette.SurfaceHighest).clickable { unpick(p) },
                     contentAlignment = Alignment.Center,
                 ) { Icon(painterResource(R.drawable.lucide_x), "Remove ${p.name}", Modifier.size(12.dp), tint = Palette.Text) }
             }
