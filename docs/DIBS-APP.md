@@ -74,7 +74,8 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
   the app's same-named ones would win the resource merge.
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
-- Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17). Never uninstall: `adb install -r`.
+- Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
+  0.5.0 (19; 18 is left to the lend toggles' 0.4.4). Never uninstall: `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
 The view stays a v1 view (`badge`, `open_tags`, `pin`, `notify` keep working), plus a top-level `dibs`
@@ -149,7 +150,28 @@ among them stay open). `badges.waiting` counts questions only.
 - dibs's replies as a MessagingStyle conversation notification (Person "dibs").
 - The Quick Settings lend tile, a home-screen widget, the voice button, files from dibs to the phone.
 
-## Your tasks (task #37, Capture note #68; planned 2026-10-05, **not built: waiting for the user's "build it"**)
+## Your tasks (task #37, Capture note #68; planned 2026-10-05, **built 2026-10-05** in the app, 0.5.0)
+
+### As built (app side, build order steps 3 to 5)
+- `:dibs`: `Payload.kt` (`YourTask`, `TaskResult`, `Shipped`; `yours` is null from a dibs that doesn't send it,
+  which keeps the old Work tab), `TasksModel.kt` (grouping, order, state words, the steps summary), `Transcript.kt`
+  (parser and rows), `Markdown.kt` (REPORT.md as blocks), all unit-tested (`TasksModelTest`, `TranscriptTest` on
+  `src/test/resources/transcript-33.json`, `MarkdownTest`, `PayloadTest`).
+- Screens: `ui/TasksTab.kt` (Work's content is `workItems` in the "dibs's own work" fold), `ui/TaskPage.kt`,
+  `ui/TranscriptScreen.kt`, `ui/ReportScreen.kt`. The chat's parts moved to `ui/ChatParts.kt`; each chat has its own
+  `Composer` (draft, picked files, `say` or `task-say`), and echoes carry their task.
+- Back stack: `Dibs.pages` (`Page.Task|Transcript|Report`), popped by system back; `DibsActivity.EXTRA_TASK`
+  (`com.kivan.tether.dibs.TASK`, a Long) opens a task. The other tabs keep their scroll under a page
+  (`SaveableStateHolder`); the Chat tab still opens at its newest line.
+- `:app`: `DibsHost.channelFile(prefix)` reads the core's new `app_files` (ffi) listing, again on each received
+  channel file (`Core.channelFiles`); with no node running it reads `state/channels/dibs/`. `send` takes the action
+  (`task-say` with the task). Fetched files are pruned at start and on each arrival: the newest per task and kind is
+  kept, then dropped after 14 days or 7 days after its task's `ticked` (while the view still lists it). A dibs
+  notification tagged `task:<id>` opens that task (request code per task).
+- Differently from the plan: a task's page opens at the top (its report) unless its agent replied since the page was
+  last open (then at the chat); ticking off from the page goes back to the list; "Getting it…" offers Try again after
+  90 s. Icons added through `regen-look.sh`: list-checks, arrow-left, refresh-cw, chevron-right, scroll-text,
+  circle-check.
 
 **The user's words (note #68):** with eight sessions at once they lose track of what is happening. When a task
 *they* asked for finishes, they want to read what it found in a place that waits for them and doesn't vanish after
