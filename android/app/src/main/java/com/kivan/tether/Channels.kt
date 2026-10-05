@@ -87,6 +87,8 @@ object Channels {
     const val LIST = "_channels"
     /** The chat's entry in [open]; channel names are `[a-z0-9_-]+`, so it can't clash. */
     const val CHAT = "@chat"
+    /** dibs's channel, which has its own screens (the `:dibs` module). */
+    const val DIBS = "dibs"
     private const val HISTORY = 200u
     private const val PREFS = "channels"
     private const val LAST = "last"
@@ -118,6 +120,8 @@ object Channels {
     val open: StateFlow<String?> = _open.asStateFlow()
     /** MainActivity is started. */
     @Volatile private var foreground = false
+    /** dibs's own screen is started: it shows the dibs channel. */
+    @Volatile private var dibsShown = false
 
     fun init(context: Context) {
         app = context.applicationContext
@@ -136,7 +140,13 @@ object Channels {
         changed()
     }
 
-    fun showing(name: String) = foreground && _open.value == name
+    /** dibs's own screen started or stopped: while it's up, dibs's posts aren't notified. */
+    fun dibsShowing(on: Boolean) {
+        dibsShown = on
+        if (on) Notifier.clearApp(app, DIBS)
+    }
+
+    fun showing(name: String) = (foreground && _open.value == name) || (name == DIBS && dibsShown)
 
     // What is on screen is read: the chat's messages, a channel's notification.
     private fun changed() {

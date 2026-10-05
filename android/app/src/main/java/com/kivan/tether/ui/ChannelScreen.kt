@@ -110,6 +110,7 @@ import com.kivan.tether.ui.theme.GeistMono
 import com.kivan.tether.ui.theme.Palette
 import com.kivan.tether.ui.theme.Pill
 import com.kivan.tether.ui.theme.Space
+import com.kivan.tether.dibs.DibsActivity
 import com.kivan.tether.textRtl
 import kotlinx.coroutines.delay
 import org.json.JSONArray
@@ -125,6 +126,7 @@ internal fun ChannelList(peerName: String, queued: ULong) {
     val threads by Channels.threads.collectAsState()
     val messages by Core.messages.collectAsState()
     val status by Core.status.collectAsState()
+    val ctx = LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
         PeerBar(peerName, queued, onBack = null)
@@ -152,7 +154,8 @@ internal fun ChannelList(peerName: String, queued: ULong) {
                     line = line?.takeIf { it.isNotBlank() } ?: if (c.thread) "Thread" else "",
                     badge = v?.optInt("badge") ?: 0,
                     rtl = c.dir == Dir.RTL,
-                    onClick = { Channels.show(c.name) },
+                    // dibs has its own screens (its own app inside this one).
+                    onClick = { if (c.name == Channels.DIBS) ctx.startActivity(DibsActivity.intent(ctx)) else Channels.show(c.name) },
                     menu = c,
                 )
             }

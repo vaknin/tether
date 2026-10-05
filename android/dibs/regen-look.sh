@@ -7,7 +7,7 @@ HUE=150
 MARK=hand
 ICONS=(message-circle inbox hammer history paperclip send-horizontal image camera file file-text
   chevron-down chevron-up check x arrow-down smartphone ellipsis-vertical copy eye-off undo-2
-  sparkles circle-stop triangle-alert message-square-reply external-link laptop)
+  sparkles circle-stop triangle-alert message-square-reply external-link laptop clock)
 
 cd "$(dirname "$0")"
 pkg=com.kivan.tether.dibs

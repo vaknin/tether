@@ -47,7 +47,14 @@ object Shortcuts {
             .setLongLabel(c.title)
             .setIcon(IconCompat.createWithBitmap(Notifier.glyph(c, 192)))
             .setIntent(MainActivity.open(context, c.name))
-            .setCategories(if (c.share) setOf(SHARE_TEXT_CATEGORY) else emptySet())
+            .setCategories(
+                when {
+                    // dibs takes photos and files too (they go with a message from its own screen).
+                    c.name == Channels.DIBS -> setOf(SHARE_CATEGORY)
+                    c.share -> setOf(SHARE_TEXT_CATEGORY)
+                    else -> emptySet()
+                },
+            )
             .setLongLived(true)
             .build()
 

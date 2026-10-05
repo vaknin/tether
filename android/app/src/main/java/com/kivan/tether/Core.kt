@@ -110,7 +110,7 @@ object Core {
     }
 
     // The link stays open past the idle timeout only while it is cheap or needed (CLAUDE.md "Battery").
-    private fun stayLocked() = UI in holds || MEDIA in holds
+    private fun stayLocked() = UI in holds || DIBS_UI in holds || MEDIA in holds
 
     /** Dials the laptop unless connected; false when it couldn't be reached. */
     suspend fun connect(): Boolean {
@@ -241,6 +241,8 @@ object Core {
             return
         }
         if (m.state != MsgState.RECEIVED) return
+        // A file sent to an app channel is that app's (dibs reads it): not Downloads, not the chat.
+        if (m.channel != null) return
         when (m.kind) {
             MsgKind.FILE -> scope.launch {
                 Downloads.publish(app, m)
@@ -266,6 +268,8 @@ object Core {
     private fun prefs() = app.getSharedPreferences("core", Context.MODE_PRIVATE)
 
     const val UI = "ui"
+    /** dibs's own screen ([com.kivan.tether.dibs.DibsActivity]) is on screen; its own hold, as both can be up. */
+    const val DIBS_UI = "dibs-ui"
     const val MEDIA = "media"
     private const val STOP_GRACE_MS = 2_000L
     private const val REFUSED = "refused"

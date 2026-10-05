@@ -1,6 +1,7 @@
 package com.kivan.tether
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -8,6 +9,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.content.IntentCompat
 import androidx.core.content.pm.ShortcutManagerCompat
+import com.kivan.tether.dibs.DibsActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -27,8 +29,22 @@ class ShareActivity : Activity() {
         val uris = sharedUris(intent)
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
         if (uris.isEmpty() && text == null) return finish()
+        val channel = Shortcuts.channelOf(intent.getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID))
+        // dibs's tile: text and files wait in dibs's box, to be sent from there. The read grant
+        // goes along with the URIs (in the ClipData, which carries it).
+        if (channel == Channels.DIBS) {
+            val open = DibsActivity.intent(this, DibsActivity.TAB_CHAT)
+            text?.let { open.putExtra(Intent.EXTRA_TEXT, it) }
+            if (uris.isNotEmpty()) {
+                open.putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                open.clipData = ClipData.newRawUri(null, uris[0]).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
+                open.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(open)
+            return finish()
+        }
         // A channel's tile: the text goes into that channel's compose, to be sent from there.
-        Shortcuts.channelOf(intent.getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID))?.let { name ->
+        channel?.let { name ->
             if (text != null) startActivity(MainActivity.open(this, name).putExtra(Intent.EXTRA_TEXT, text))
             return finish()
         }

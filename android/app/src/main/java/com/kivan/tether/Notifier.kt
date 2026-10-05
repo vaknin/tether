@@ -23,6 +23,7 @@ import androidx.core.graphics.drawable.IconCompat
 import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.MsgKind
 import com.kivan.tether.core.Status
+import com.kivan.tether.dibs.DibsActivity
 import com.kivan.tether.ui.theme.Palette
 
 /**
@@ -393,15 +394,16 @@ object Notifier {
         val noteId = if (tag != null) 0 else c.name.hashCode()
         // Request codes differ per notification and button, so one's buttons never replace another's.
         val code = (if (tag != null) noteTag else "$APP_TAG:${c.name}").hashCode()
+        val dibs = c.name == Channels.DIBS
         val b = NotificationCompat.Builder(context, APP_PREFIX + c.name)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(if (dibs) com.kivan.tether.dibs.R.drawable.ic_dibs_notification else R.drawable.ic_notification)
             .setLargeIcon(glyph(c, 192))
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setColor(c.accent ?: Palette.Accent.toArgb())
             .setShortcutId(Shortcuts.channelId(c.name))
-            .setContentIntent(openChannel(context, c.name))
+            .setContentIntent(if (dibs) openDibs(context, tag) else openChannel(context, c.name))
             .setAutoCancel(true)
             // A tagged post updated in place doesn't alert again; a new untagged post (it replaces
             // the channel's one) does, as before.
@@ -504,6 +506,13 @@ object Notifier {
         PendingIntent.getActivity(
             context, name.hashCode(), MainActivity.open(context, name), PendingIntent.FLAG_IMMUTABLE,
         )
+
+    /** dibs's own screen: a question (a numeric tag, its id) opens Waiting, anything else the chat. */
+    private fun openDibs(context: Context, tag: String?): PendingIntent {
+        val tab = if (tag != null && tag.isNotEmpty() && tag.all { it.isDigit() }) DibsActivity.TAB_WAITING else DibsActivity.TAB_CHAT
+        // One request code per tab: the extras aren't part of a PendingIntent's identity.
+        return PendingIntent.getActivity(context, "dibs:$tab".hashCode(), DibsActivity.intent(context, tab), PendingIntent.FLAG_IMMUTABLE)
+    }
 
     /** A channel's tile (the shortcut and notification icon), as the list draws it. */
     fun glyph(c: ChannelInfo, size: Int): Bitmap {

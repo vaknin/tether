@@ -69,5 +69,13 @@ object Thumbs {
         return bmp.asImageBitmap().also { cache.put(m.id, it) }
     }
 
+    /** The thumbnail written for file [id] when it was sent from here, or null. Blocking. */
+    fun byId(context: Context, id: String): ImageBitmap? {
+        cache.get(id)?.let { return it }
+        val f = file(context, id)
+        if (!f.isFile) return null
+        return BitmapFactory.decodeFile(f.path)?.asImageBitmap()?.also { cache.put(id, it) }
+    }
+
     private fun file(context: Context, id: String) = File(File(context.filesDir, "thumbs"), "$id.webp")
 }

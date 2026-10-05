@@ -43,8 +43,11 @@ interface DibsHost {
     /** A dibs screen is on screen (true) or gone: keep the link up and clear dibs's notifications. */
     fun visible(on: Boolean)
 
-    /** Tether's own screen (the Laptop chat and the other channels). */
-    fun openTether()
+    /**
+     * Tether's own screen (the Laptop chat and the other channels); [classic]: Tether's own dibs
+     * channel screen, for a dibs that sends no payload yet.
+     */
+    fun openTether(classic: Boolean = false)
 }
 
 /** A message sent from here that no view lists yet (its echo), with the files picked for it. */
@@ -65,10 +68,21 @@ object Dibs {
 
     /** The text in the box, kept across screens. */
     var draft by mutableStateOf("")
+    /** Typed answers, Tell it… texts and the like, by field, kept across tabs. */
+    val fields = mutableStateMapOf<String, String>()
     /** Files picked for the next message. */
     val picked = mutableStateListOf<Picked>()
     /** Lines (by id) opened to their full text, earlier days unfolded, cards opened. */
     val open = mutableStateMapOf<String, Boolean>()
+    /**
+     * Questions and lines answered here (`q<id>`, `k<id>`, `w<id>`) that a view may still list: they
+     * show as answered at once, until the next view drops them.
+     */
+    val answered = mutableStateMapOf<String, String>()
+    /** Lines hidden here (long-press, Hide) that a view may still list, by line id. */
+    val hidden = mutableStateMapOf<String, Boolean>()
+    /** A tab asked for by an intent (a notification, a shortcut), taken by the screen. */
+    var tab by mutableStateOf<String?>(null)
 
     /** Sends the box (text and picked files); it shows as pending until the view lists its uid. */
     fun send() {
@@ -86,10 +100,29 @@ object Dibs {
         }
     }
 
-    /** Forgets the echoes a view now lists. */
+    /** Forgets the echoes a view now lists, and the answers to what it no longer asks. */
     fun seen(view: DibsView?) {
         val ids = view?.talk?.mapTo(HashSet()) { it.id } ?: return
         _pending.update { list -> list.filter { it.uid !in ids } }
+        val asked = HashSet<String>()
+        view.questions.forEach { asked += "q${it.id}" }
+        view.talk.forEach { l -> l.ask?.takeIf { it.open }?.let { asked += "q${it.q}" } }
+        view.decided.forEach { asked += it.ack }
+        view.away?.let { asked += "w${it.id}" }
+        answered.keys.retainAll(asked)
+        hidden.keys.retainAll(ids)
+    }
+
+    /** Hides a line at once; dibs drops it from the next view (`h<n>`). */
+    fun hide(line: TalkLine) {
+        hidden[line.id] = true
+        host.act("h${line.n}")
+    }
+
+    /** Answers [key] (`q<id>`, an ack) with [action], shown as [label] until the view drops it. */
+    fun answer(key: String, label: String, action: String, value: JSONObject? = null) {
+        answered[key] = label
+        host.act(action, value)
     }
 
     fun toggle(key: String) {

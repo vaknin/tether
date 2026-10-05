@@ -6,6 +6,7 @@ import android.os.SystemClock
 import com.kivan.tether.core.MsgState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * One progress notification for the file transfers in flight, from [Core.progress], also the
@@ -42,6 +43,15 @@ object Transfers {
         }
     }
 
+    /** Files I sent to an app channel (dibs), by id: they aren't in the chat's messages, so their names are kept here. */
+    private val channelFiles = ConcurrentHashMap<String, String>()
+
+    fun sentToChannel(id: String, name: String) {
+        // A file may wait offline for days before it moves; a bound is all the pruning it needs.
+        if (channelFiles.size > 200) channelFiles.clear()
+        channelFiles[id] = name
+    }
+
     private fun update(context: Context, progress: Map<String, Pair<Long, Long>>) {
         val now = SystemClock.elapsedRealtime()
         if (progress.isEmpty()) {
@@ -60,7 +70,8 @@ object Transfers {
             started.getOrPut(id) { now }
             val f = batch.getOrPut(id) {
                 val m = messages.firstOrNull { it.id == id }
-                Item(id, m?.fileName ?: "file", m?.fromMe, 0, 0)
+                val channel = channelFiles[id]
+                Item(id, m?.fileName ?: channel ?: "file", m?.fromMe ?: if (channel != null) true else null, 0, 0)
             }
             f.done = p.first
             f.total = p.second

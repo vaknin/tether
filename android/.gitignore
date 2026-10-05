@@ -1,6 +1,7 @@
 /.gradle
 /build
 /app/build
+/dibs/build
 /.kotlin
 local.properties
 # Release signing: the keystore and its passwords live in ~/.config/tether/, never in the repo.
