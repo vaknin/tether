@@ -62,10 +62,14 @@ internal fun WorkTab(view: DibsView) {
     }
 }
 
-/** The Work tab's content, without its hero: tasks, sessions, ships. */
-internal fun LazyListScope.workItems(view: DibsView, now: Long, armed: Armed) {
-    items(view.tasks, key = { "t${it.id}" }) { t -> TaskCard(t, view.peek, armed, Modifier.animateItem()) }
-    if (view.tasks.isEmpty()) item(key = "_none") { Quiet("No tasks running.") }
+/**
+ * The Work tab's content, without its hero: tasks, sessions, ships. Folded under the Tasks tab
+ * ([ownOnly]) it holds only dibs's background tasks: the user's own are rows above it.
+ */
+internal fun LazyListScope.workItems(view: DibsView, now: Long, armed: Armed, ownOnly: Boolean = false) {
+    val tasks = if (ownOnly) view.tasks.filter { it.background } else view.tasks
+    items(tasks, key = { "t${it.id}" }) { t -> TaskCard(t, view.peek, armed, Modifier.animateItem()) }
+    if (tasks.isEmpty()) item(key = "_work_none") { Quiet("No tasks running.") }
     if (view.sessions.isNotEmpty()) {
         item(key = "_sessions") { Section("Sessions") }
         items(view.sessions, key = { "s${it.name}" }) { s -> SessionRow(s, view.peek, Modifier.animateItem()) }

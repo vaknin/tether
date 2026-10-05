@@ -52,7 +52,16 @@ object Transfers {
         channelFiles[id] = name
     }
 
-    private fun update(context: Context, progress: Map<String, Pair<Long, Long>>) {
+    /** Files the laptop sends to an app channel (a transcript dibs fetched): the app's own, never shown here. */
+    private val fromChannel = ConcurrentHashMap.newKeySet<String>()
+
+    fun receivingForChannel(id: String) {
+        if (fromChannel.size > 200) fromChannel.clear()
+        fromChannel.add(id)
+    }
+
+    private fun update(context: Context, all: Map<String, Pair<Long, Long>>) {
+        val progress = if (fromChannel.isEmpty()) all else all.filterKeys { it !in fromChannel }
         val now = SystemClock.elapsedRealtime()
         if (progress.isEmpty()) {
             if (shown) {

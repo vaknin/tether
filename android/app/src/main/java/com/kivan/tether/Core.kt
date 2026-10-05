@@ -248,6 +248,7 @@ object Core {
             }
             return
         }
+        if (m.channel != null && m.state == MsgState.INCOMING) Transfers.receivingForChannel(m.id)
         if (m.state != MsgState.RECEIVED) return
         // A file sent to an app channel is that app's (dibs reads it): not Downloads, not the chat.
         if (m.channel != null) {

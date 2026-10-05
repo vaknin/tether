@@ -63,7 +63,7 @@ internal fun TasksTab(view: DibsView) {
     val armed = rememberArmed()
     val answered = Dibs.answered.toMap()
     val list = remember(yours, answered) { tasksList(yours) { Dibs.ticked(it) } }
-    val own = view.tasks.count { it.background } + view.ships.size
+    val own = view.tasks.count { it.background } + view.sessions.size + view.ships.size
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
@@ -77,7 +77,7 @@ internal fun TasksTab(view: DibsView) {
         if (list.open == 0) item(key = "_none") { Quiet("Nothing open. Tasks you ask for wait here until you tick them off.") }
 
         item(key = "_own") { FoldRow("dibs's own work · $own", OWN_WORK) }
-        if (Dibs.open[OWN_WORK] == true) workItems(view, now, armed)
+        if (Dibs.open[OWN_WORK] == true) workItems(view, now, armed, ownOnly = true)
 
         if (list.ticked.isNotEmpty()) {
             item(key = "_ticked") { FoldRow("Ticked · ${list.ticked.size}", TICKED) }

@@ -3,15 +3,15 @@ package com.kivan.tether.dibs.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +55,7 @@ import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Pill
 import com.kivan.tether.dibs.ui.theme.Space
+import kotlinx.coroutines.flow.first
 
 // A task's page (docs/DIBS-APP.md, "Your tasks"): its state and times, its open questions, what it
 // did, its result, what was asked, the transcript, and the chat with its own agent. The chat goes
@@ -80,8 +82,8 @@ internal fun TaskPage(id: Long, view: DibsView) {
     val lastMine = last is EchoRow || (last is LineRow && last.line.mine)
     var placed by remember(id) { mutableStateOf(false) }
     LaunchedEffect(last?.key, t.busy) {
-        val total = state.layoutInfo.totalItemsCount
-        if (total == 0) return@LaunchedEffect
+        // The first run comes before the list's first measure: wait for its items.
+        val total = snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 }
         val nearEnd = (state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= total - 3
         // First: at the top (the report), unless the agent has replied since the page was last open.
         val follow = if (!placed) {
