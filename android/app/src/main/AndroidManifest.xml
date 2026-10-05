@@ -51,6 +51,7 @@
             android:name=".ShareActivity"
             android:exported="true"
             android:label="@string/share_label"
+            android:taskAffinity=""
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
