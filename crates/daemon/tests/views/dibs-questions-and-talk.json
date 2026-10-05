@@ -4,12 +4,6 @@
     "blocks": [
         {
             "type": "list",
-            "id": "open",
-            "items": [],
-            "empty": "Nothing waiting"
-        },
-        {
-            "type": "list",
             "id": "tasks",
             "items": [
                 {
@@ -29,27 +23,34 @@
                 {
                     "id": "u1",
                     "text": "what is running right now?",
-                    "meta": "you"
-                },
-                {
-                    "id": "s2",
-                    "text": "Nothing is running. Send task: <what> to start one.",
-                    "meta": "dibs"
+                    "meta": "you",
+                    "dismiss": {
+                        "id": "h1"
+                    }
                 },
                 {
                     "id": "u2",
                     "text": "thanks, and the tether update?",
-                    "meta": "you"
+                    "meta": "you",
+                    "dismiss": {
+                        "id": "h3"
+                    }
                 },
                 {
                     "id": "u3",
                     "text": "task: research e-ink readers",
-                    "meta": "you"
+                    "meta": "you",
+                    "dismiss": {
+                        "id": "h4"
+                    }
                 },
                 {
                     "id": "u4",
                     "text": "still there?",
-                    "meta": "you"
+                    "meta": "you",
+                    "dismiss": {
+                        "id": "h5"
+                    }
                 }
             ],
             "empty": "Write to dibs below: a question, or task: <what> to start a task."
@@ -62,7 +63,6 @@
         }
     ],
     "open_tags": [
-        "1",
-        "s2"
+        "1"
     ]
 }
