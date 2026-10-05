@@ -203,6 +203,10 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
   An app keeps a post's tag in `open_tags` while it is open. Without `open_tags` nothing changes.
   A queued view wakes the phone (FCM) only when it has `notify`; otherwise it waits for the next
   connection, since apps republish their view on every small change.
+  `pin` (2026-10-05, app 0.3.9): `{"title", "text"?, "tag"?, "actions":[{id,label}]?}`, a status
+  the phone keeps as an ongoing, silent notification while the view carries it, and removes when a
+  view comes without it (dibs: "dibs has your phone · Take it back" while the user lends it the
+  phone). Its buttons send actions like a card's. Older apps ignore it.
 - Action (phone/panel → app, queued): `{"action":"<id>", "from":"phone"|"laptop", "uid":"<uuid>",
   "ts":<sender's clock, ms since epoch>, "value":…?, "fields":{…}?}`. `uid` is made by the sender; an app that turns it into a list item
   uses it as the item id, so the sender can drop its pending echo.

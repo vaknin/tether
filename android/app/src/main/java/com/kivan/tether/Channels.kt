@@ -203,6 +203,17 @@ object Channels {
                     if (c.notify && note != null && !showing(c.name)) {
                         Notifier.app(app, c, note.optString("title", c.title), note.optString("text"))
                     }
+                    // A state to keep in sight while the view has it (dibs has your phone), even with
+                    // the channel open.
+                    val pin = v.optJSONObject("pin")
+                    if (c.notify && pin != null) {
+                        val actions = pin.optJSONArray("actions")?.let { a ->
+                            (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { it.optString("id") to it.optString("label") }
+                        }.orEmpty()
+                        Notifier.pin(app, c, pin.optString("title", c.title), pin.optString("text"), actions)
+                    } else {
+                        Notifier.unpin(app, e.channel)
+                    }
                 }
                 e.id == null -> patch(e.channel, e.data)
                 else -> {

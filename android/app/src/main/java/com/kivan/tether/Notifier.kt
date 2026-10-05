@@ -43,6 +43,9 @@ object Notifier {
     private const val FAILED_TAG = "failed"
     private const val CHAT_TAG = "chat"
     private const val APP_TAG = "app"
+    /** A view's `pin`: `pin:<channel>`, outside `app:<channel>:` so clearing a channel's news keeps it. */
+    private const val PIN_TAG = "pin"
+    private const val STATUS = "status"
     /** Each Tether channel's notification channel is `app.<name>`, in this group. */
     private const val APP_PREFIX = "app."
     private const val APP_GROUP = "apps"
@@ -66,6 +69,11 @@ object Notifier {
                 // Ringer plays the sound itself, at alarm volume; the channel stays silent.
                 NotificationChannel(RING, "Ring", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "The laptop is looking for the phone"
+                    setSound(null, null)
+                },
+                // A view's `pin` (dibs has your phone): kept showing, never alerting.
+                NotificationChannel(STATUS, "Status", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Ongoing states from the laptop, like dibs having your phone"
                     setSound(null, null)
                 },
                 NotificationChannel(PROBLEMS, "Problems", NotificationManager.IMPORTANCE_DEFAULT).apply {
@@ -411,6 +419,45 @@ object Notifier {
             b.addAction(NotificationCompat.Action.Builder(0, a.second, pi).setShowsUserInterface(false).build())
         }
         nm.notify(noteTag, noteId, b.build())
+    }
+
+    /**
+     * A view's `pin`: an ongoing, silent notification kept while the channel's view carries it
+     * ([unpin] when one comes without it). Its buttons send actions like a card's; a tap clears it.
+     */
+    fun pin(context: Context, c: ChannelInfo, title: String, text: String, actions: List<Pair<String, String>>) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (!nm.areNotificationsEnabled()) return
+        val noteTag = "$PIN_TAG:${c.name}"
+        val code = noteTag.hashCode()
+        val b = NotificationCompat.Builder(context, STATUS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(glyph(c, 192))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setColor(c.accent ?: Palette.Accent.toArgb())
+            .setContentIntent(openChannel(context, c.name))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+        for ((i, a) in actions.take(3).withIndex()) {
+            val pi = PendingIntent.getBroadcast(
+                context, code * 31 + i,
+                ChatActionReceiver.intent(context, ChatActionReceiver.APP_ACTION)
+                    .putExtra(ChatActionReceiver.CHANNEL, c.name).putExtra(ChatActionReceiver.ACTION_ID, a.first)
+                    .putExtra(ChatActionReceiver.NOTE_TAG, noteTag).putExtra(ChatActionReceiver.NOTE_ID, 0),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            b.addAction(NotificationCompat.Action.Builder(0, a.second, pi).setShowsUserInterface(false).build())
+        }
+        nm.notify(noteTag, 0, b.build())
+    }
+
+    /** The channel's pin is gone from its view. */
+    fun unpin(context: Context, name: String) {
+        context.getSystemService(NotificationManager::class.java).cancel("$PIN_TAG:$name", 0)
     }
 
     /** All of a channel's notifications: the untagged one and each tagged post's. */

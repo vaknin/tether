@@ -1,0 +1,26 @@
+{
+    "v": 1,
+    "badge": 0,
+    "blocks": [
+        {
+            "type": "list",
+            "id": "lend",
+            "items": [
+                {
+                    "id": "lend",
+                    "title": "dibs has your phone",
+                    "text": "Until 15:40 · rami-0f is on it · 1 waiting",
+                    "actions": [{"id": "phone-back", "label": "Take it back", "style": "primary"}]
+                }
+            ],
+            "empty": ""
+        }
+    ],
+    "open_tags": [],
+    "pin": {
+        "tag": "lend",
+        "title": "dibs has your phone",
+        "text": "Until 15:40 · rami-0f is on it · 1 waiting",
+        "actions": [{"id": "phone-back", "label": "Take it back"}]
+    }
+}

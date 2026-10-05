@@ -37,6 +37,18 @@ pub fn check(v: &Value) -> Vec<String> {
     if let Some(t) = o.get("open_tags") {
         p.strings(Some(t), "open_tags");
     }
+    // A status the phone keeps showing as an ongoing notification while the view has it (0.3.9).
+    if let Some(n) = o.get("pin") {
+        match n.as_object() {
+            Some(n) => {
+                p.string(n.get("title"), "pin.title", true);
+                p.string(n.get("text"), "pin.text", false);
+                p.string(n.get("tag"), "pin.tag", false);
+                p.actions(n.get("actions"), "pin.actions");
+            }
+            None => p.add("pin", "must be an object {title, text?, tag?, actions?}"),
+        }
+    }
     let Some(blocks) = o.get("blocks").and_then(Value::as_array) else {
         p.add("blocks", "missing (a list of blocks)");
         return p.0;
@@ -283,6 +295,16 @@ mod tests {
         let first = l.items[0].id.clone();
         l.apply_op(crate::lists::ListOp::Done { ids: vec![first] }, 2).unwrap();
         assert_eq!(check(&l.view()), Vec::<String>::new(), "with a done item");
+    }
+
+    #[test]
+    fn a_pin_is_checked() {
+        let ok = json!({"v": 1, "blocks": [], "pin": {"tag": "lend", "title": "dibs has your phone", "text": "Until 15:40",
+            "actions": [{"id": "phone-back", "label": "Take it back"}]}});
+        assert_eq!(check(&ok), Vec::<String>::new());
+        let bad = json!({"v": 1, "blocks": [], "pin": {"text": 3, "actions": [{"id": "x"}]}});
+        assert_eq!(check(&bad), ["pin.title: missing", "pin.text: must be a string", "pin.actions[0].label: missing"]);
+        assert_eq!(check(&json!({"v": 1, "blocks": [], "pin": "x"})), ["pin: must be an object {title, text?, tag?, actions?}"]);
     }
 
     #[test]
