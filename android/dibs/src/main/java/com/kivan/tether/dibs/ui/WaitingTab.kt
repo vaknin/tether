@@ -3,7 +3,6 @@ package com.kivan.tether.dibs.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -58,8 +57,8 @@ internal fun WaitingTab(view: DibsView) {
         }
         if (decided.isNotEmpty()) {
             item(key = "_decided") {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                    Box(Modifier.weight(1f)) { Section("Decided for you") }
+                Row(Modifier.fillMaxWidth().padding(top = Space.L - 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Eyebrow("Decided for you", Modifier.weight(1f))
                     if (decided.size > 1) ActButton("Got it to all", "plain") { Dibs.ackAll(decided) }
                 }
             }
@@ -134,7 +133,7 @@ private fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifier
         Column(Modifier.weight(1f)) {
             TapFold(d.text, "dec:${d.id}", 2)
             val meta = listOfNotNull(d.why.ifBlank { null }, d.from.ifBlank { null }, age(now - d.ts)).joinToString(" · ")
-            TapFold(meta, "decwhy:${d.id}", 1, style = AppType.small, color = Palette.Muted)
+            TapFold(meta, "dec:${d.id}", 1, style = AppType.small, color = Palette.Muted)
         }
         if (d.undo) {
             val k = "undo${d.id}"
