@@ -426,6 +426,12 @@ impl TetherNode {
         Ok(m.into())
     }
 
+    /// The channel's last `limit` files, both ways and in any state, oldest first (a received
+    /// one's `path` is where it was kept, under `<state>/channels/<channel>/`).
+    pub fn app_files(&self, channel: String, limit: u32) -> Res<Vec<ChatMessage>> {
+        Ok(self.node.app_files(&channel, limit as usize)?.into_iter().map(Into::into).collect())
+    }
+
     /// Queues an item for the laptop on an app channel (with `replace`, a view) and dials if not
     /// connected; returns its id.
     pub fn send_app(&self, channel: String, data: String, replace: bool) -> Res<String> {

@@ -51,7 +51,7 @@ class DibsActivity : ComponentActivity() {
     private fun take(intent: Intent) {
         intent.getStringExtra(EXTRA_TAB)?.let { Dibs.tab = it }
         intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.let { text ->
-            Dibs.draft = listOf(Dibs.draft, text).filter { it.isNotBlank() }.joinToString("\n")
+            Dibs.chat.draft = listOf(Dibs.chat.draft, text).filter { it.isNotBlank() }.joinToString("\n")
             Dibs.tab = TAB_CHAT
         }
         val uris = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
@@ -59,8 +59,9 @@ class DibsActivity : ComponentActivity() {
         if (uris.isEmpty()) return
         Dibs.tab = TAB_CHAT
         lifecycleScope.launch {
-            val picked = withContext(Dispatchers.IO) { uris.filter { u -> Dibs.picked.none { it.source == u } }.mapNotNull { picked(this@DibsActivity, it) } }
-            Dibs.picked += picked
+            val box = Dibs.chat
+            val picked = withContext(Dispatchers.IO) { uris.filter { u -> box.picked.none { it.source == u } }.mapNotNull { picked(this@DibsActivity, it) } }
+            box.picked += picked
         }
     }
 
@@ -93,9 +94,3 @@ internal fun picked(context: Context, uri: Uri): Picked? = runCatching {
     r.openInputStream(uri)!!.use { input -> copy.outputStream().use { input.copyTo(it) } }
     Picked(Uri.fromFile(copy), name, image, source = uri)
 }.onFailure { android.util.Log.w("dibs", "couldn't read $uri", it) }.getOrNull()
-
-/** Drops a picked file's copy (✕ in the strip). */
-internal fun unpick(p: Picked) {
-    Dibs.picked.remove(p)
-    p.uri.path?.takeIf { p.uri.scheme == "file" }?.let { java.io.File(it).parentFile?.deleteRecursively() }
-}

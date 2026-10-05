@@ -8,8 +8,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsHost
 import com.kivan.tether.dibs.Link
+import com.kivan.tether.dibs.fetchedOf
+import com.kivan.tether.core.MsgState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -55,7 +60,7 @@ class DibsBridge(context: Context) : DibsHost {
      * Each file goes to the dibs channel as a file of its own (resume, checksum and progress as any
      * transfer), then one `say` names them with the text; dibs waits until they've all arrived.
      */
-    override fun send(uid: String, text: String, files: List<Uri>, onFile: (Uri, String) -> Unit) {
+    override fun send(uid: String, text: String, files: List<Uri>, action: String, extra: JSONObject?, onFile: (Uri, String) -> Unit) {
         Core.scope.launch {
             val hold = "dibs-send:$uid"
             val ids = JSONArray()
@@ -85,7 +90,8 @@ class DibsBridge(context: Context) : DibsHost {
             }
             // The words go even when a file couldn't (it was gone, say); the files that made it go along.
             if (text.isNotEmpty() || ids.length() > 0) {
-                act("say", JSONObject().put("text", text).put("files", ids), uid)
+                val value = if (extra != null) JSONObject(extra.toString()) else JSONObject()
+                act(action, value.put("text", text).put("files", ids), uid)
             } else {
                 withContext(Dispatchers.Main) { Dibs.dropPending(uid) }
             }
@@ -93,6 +99,56 @@ class DibsBridge(context: Context) : DibsHost {
     }
 
     override fun thumb(fileId: String): ImageBitmap? = Thumbs.byId(app, fileId)
+
+    /**
+     * The newest received dibs file named [prefix]…, looked up again whenever a channel file
+     * arrives. The core's listing knows each file's name as dibs sent it (the kept file may carry a
+     * suffix); with no node running, the folder it keeps them in is read instead.
+     */
+    override fun channelFile(prefix: String): Flow<File?> =
+        Core.channelFiles.map { newest(prefix) }.distinctUntilChanged().flowOn(Dispatchers.IO)
+
+    private suspend fun newest(prefix: String): File? {
+        val listed = Core.withNode { n -> runCatching { n.appFiles(Channels.DIBS, 500u) }.getOrNull() }
+            ?: return dibsDir().listFiles { f -> f.isFile && f.name.startsWith(prefix) }?.maxByOrNull { it.lastModified() }
+        return listed.asSequence()
+            .filter { !it.fromMe && it.state == MsgState.RECEIVED && it.fileName?.startsWith(prefix) == true }
+            .mapNotNull { m -> m.path?.let(::File)?.takeIf { it.isFile }?.let { m.tsMs to it } }
+            .maxByOrNull { it.first }?.second
+    }
+
+    private fun dibsDir() = Core.channelDir(Channels.DIBS)
+
+    /**
+     * Keeps the newest transcript and report per task and drops the rest; the newest goes too
+     * after 14 days, or 7 days after its task was ticked off (while the view still lists it).
+     */
+    private fun prune() {
+        val files = dibsDir().listFiles()?.filter { it.isFile } ?: return
+        val now = System.currentTimeMillis()
+        val ticked = HashMap<Long, Long>()
+        Channels.views.value[Channels.DIBS]?.optJSONObject("dibs")?.optJSONArray("yours")?.let { a ->
+            for (i in 0 until a.length()) {
+                val t = a.optJSONObject(i) ?: continue
+                if (t.has("ticked") && !t.isNull("ticked")) ticked[t.optLong("id")] = t.optLong("ticked")
+            }
+        }
+        for ((key, list) in files.groupBy { fetchedOf(it.name) }) {
+            if (key == null) continue
+            val sorted = list.sortedByDescending { it.lastModified() }
+            val newest = sorted.first()
+            val tick = ticked[key.second]
+            val stale = now - newest.lastModified() > KEEP_MS || (tick != null && now / 1000 - tick > TICKED_KEEP_S)
+            for (f in if (stale) sorted else sorted.drop(1)) {
+                if (!f.delete()) Log.w("Tether", "couldn't prune ${f.name}")
+            }
+        }
+    }
+
+    init {
+        // At start, and each time dibs sends a file.
+        Core.scope.launch(Dispatchers.IO) { Core.channelFiles.collect { runCatching { prune() } } }
+    }
 
     // Like MainActivity on screen: the link stays open, and what dibs posts is read, not notified.
     override fun visible(on: Boolean) {
@@ -124,3 +180,8 @@ class DibsBridge(context: Context) : DibsHost {
         app.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
+
+/** A fetched transcript or report is kept at most this long. */
+private const val KEEP_MS = 14 * 24 * 3600_000L
+/** And this long after its task was ticked off. */
+private const val TICKED_KEEP_S = 7 * 24 * 3600L

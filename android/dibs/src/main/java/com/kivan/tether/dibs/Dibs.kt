@@ -1,12 +1,14 @@
 package com.kivan.tether.dibs
 
 import android.net.Uri
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,10 +41,17 @@ interface DibsHost {
     fun act(action: String, value: JSONObject? = null, uid: String? = null): String
 
     /**
-     * Sends a message with files: copies each, sends it to the dibs channel, then a `say` with
-     * [uid] naming the files. [onFile] tells each file's id as it is queued (for its thumbnail).
+     * Sends a message with files: copies each, sends it to the dibs channel, then [action] (`say`,
+     * or `task-say` with [extra] naming the task) with [uid], the text and the files' ids.
+     * [onFile] tells each file's id as it is queued (for its thumbnail).
      */
-    fun send(uid: String, text: String, files: List<Uri>, onFile: (Uri, String) -> Unit)
+    fun send(uid: String, text: String, files: List<Uri>, action: String = "say", extra: JSONObject? = null, onFile: (Uri, String) -> Unit)
+
+    /**
+     * The newest file dibs sent on its channel whose name starts with [prefix] (a fetched
+     * transcript or report), or null; it emits again when a newer one arrives.
+     */
+    fun channelFile(prefix: String): Flow<java.io.File?>
 
     /** The thumbnail of an image sent from here, by Tether's file id; null if there is none. Blocking. */
     fun thumb(fileId: String): ImageBitmap?
@@ -57,11 +66,50 @@ interface DibsHost {
     fun openTether(classic: Boolean = false)
 }
 
-/** A message sent from here that no view lists yet (its echo), with the files picked for it. */
-data class Pending(val uid: String, val text: String, val files: List<Picked>, val tsMs: Long = System.currentTimeMillis())
+/**
+ * A message sent from here that no view lists yet (its echo), with the files picked for it; [task]
+ * when it went to one of the user's tasks instead of dibs.
+ */
+data class Pending(val uid: String, val text: String, val files: List<Picked>, val tsMs: Long = System.currentTimeMillis(), val task: Long? = null)
 
 /** A file picked to send: its copy in [DibsHost.pickDir], its name, whether it's an image, and where it came from. */
 data class Picked(val uri: Uri, val name: String, val image: Boolean, val source: Uri = uri)
+
+/**
+ * A message box: its draft and picked files, kept across screens. The dibs chat has one, and each
+ * of the user's tasks has its own ([task]: its messages go to that task's agent, `task-say`).
+ */
+@Stable
+class Composer(val task: Long?) {
+    /** The text in the box. */
+    var draft by mutableStateOf("")
+    /** Files picked for the next message. */
+    val picked = mutableStateListOf<Picked>()
+
+    /** Sends the box (text and picked files); it shows as pending until the view lists its uid. */
+    fun send() {
+        val text = draft.trim()
+        val files = picked.toList()
+        if (text.isEmpty() && files.isEmpty()) return
+        val uid = UUID.randomUUID().toString()
+        Dibs.addPending(Pending(uid, text, files, task = task))
+        draft = ""
+        picked.clear()
+        val action = if (task == null) "say" else "task-say"
+        val extra = { if (task == null) JSONObject() else JSONObject().put("task", task) }
+        if (files.isEmpty()) {
+            Dibs.host.act(action, extra().put("text", text), uid)
+        } else {
+            Dibs.host.send(uid, text, files.map { it.uri }, action, extra()) { uri, id -> Dibs.sentIds[uri] = id }
+        }
+    }
+
+    /** Drops a picked file and its copy (✕ in the strip). */
+    fun unpick(p: Picked) {
+        picked.remove(p)
+        p.uri.path?.takeIf { p.uri.scheme == "file" }?.let { java.io.File(it).parentFile?.deleteRecursively() }
+    }
+}
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
 object Dibs {
@@ -73,12 +121,14 @@ object Dibs {
     /** Sent files' ids by their picked uri, for the thumbnail of an echo once it's in the view. */
     val sentIds = mutableStateMapOf<Uri, String>()
 
-    /** The text in the box, kept across screens. */
-    var draft by mutableStateOf("")
+    /** The dibs chat's box. */
+    val chat = Composer(null)
+    private val boxes = HashMap<Long, Composer>()
+
+    /** A task's own box. */
+    fun box(task: Long): Composer = boxes.getOrPut(task) { Composer(task) }
     /** Typed answers, Tell it… texts and the like, by field, kept across tabs. */
     val fields = mutableStateMapOf<String, String>()
-    /** Files picked for the next message. */
-    val picked = mutableStateListOf<Picked>()
     /** Lines (by id) opened to their full text, earlier days unfolded, cards opened. */
     val open = mutableStateMapOf<String, Boolean>()
     /**
@@ -91,20 +141,8 @@ object Dibs {
     /** A tab asked for by an intent (a notification, a shortcut), taken by the screen. */
     var tab by mutableStateOf<String?>(null)
 
-    /** Sends the box (text and picked files); it shows as pending until the view lists its uid. */
-    fun send() {
-        val text = draft.trim()
-        val files = picked.toList()
-        if (text.isEmpty() && files.isEmpty()) return
-        val uid = UUID.randomUUID().toString()
-        _pending.update { it + Pending(uid, text, files) }
-        draft = ""
-        picked.clear()
-        if (files.isEmpty()) {
-            host.act("say", JSONObject().put("text", text), uid)
-        } else {
-            host.send(uid, text, files.map { it.uri }) { uri, id -> sentIds[uri] = id }
-        }
+    internal fun addPending(p: Pending) {
+        _pending.update { it + p }
     }
 
     /** Drops an echo that will never be listed (nothing could be sent). */
@@ -112,11 +150,21 @@ object Dibs {
         _pending.update { list -> list.filter { it.uid != uid } }
     }
 
-    /** Forgets the echoes a view now lists, and the answers to what it no longer asks. */
+    /**
+     * Forgets the echoes a view now lists (in the dibs chat or a task's), and the answers to what
+     * it no longer asks.
+     */
     fun seen(view: DibsView?) {
         val ids = view?.talk?.mapTo(HashSet()) { it.id } ?: return
-        _pending.update { list -> list.filter { it.uid !in ids } }
+        val listed = HashSet(ids)
+        view.yours?.forEach { t -> t.talk.forEach { listed += it.id } }
+        _pending.update { list -> list.filter { it.uid !in listed } }
         val asked = HashSet<String>()
+        // A tick, untick or open here shows at once, until the view agrees.
+        view.yours?.forEach { t ->
+            asked += if (t.ticked == null) "tick:${t.id}" else "untick:${t.id}"
+            if (t.unread) asked += "seen:${t.id}"
+        }
         view.questions.forEach { asked += "q${it.id}" }
         view.talk.forEach { l -> l.ask?.takeIf { it.open }?.let { asked += "q${it.q}" } }
         view.decided.forEach { asked += it.ack }

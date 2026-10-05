@@ -19,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -54,6 +55,10 @@ object Core {
     private val _progress = MutableStateFlow<Map<String, Pair<Long, Long>>>(emptyMap())
     val progress: StateFlow<Map<String, Pair<Long, Long>>> = _progress.asStateFlow()
 
+    /** Counts the files app channels' apps have sent (dibs's fetched transcripts); a new one bumps it. */
+    private val _channelFiles = MutableStateFlow(0L)
+    val channelFiles: StateFlow<Long> = _channelFiles.asStateFlow()
+
     /** The chat is on screen: incoming messages are read, not notified. */
     @Volatile var chatVisible = false
 
@@ -79,6 +84,9 @@ object Core {
     }
 
     val outgoingDir: File get() = File(app.filesDir, "outgoing")
+
+    /** Where the core keeps the files an app channel's app sent ([name]'s own folder). */
+    fun channelDir(name: String): File = File(File(app.filesDir, "state/channels"), name)
 
     /** Starts the node if needed and keeps it running until [release] with the same [reason]. */
     suspend fun acquire(reason: String): TetherNode = lock.withLock {
@@ -242,7 +250,10 @@ object Core {
         }
         if (m.state != MsgState.RECEIVED) return
         // A file sent to an app channel is that app's (dibs reads it): not Downloads, not the chat.
-        if (m.channel != null) return
+        if (m.channel != null) {
+            _channelFiles.update { it + 1 }
+            return
+        }
         when (m.kind) {
             MsgKind.FILE -> scope.launch {
                 Downloads.publish(app, m)
