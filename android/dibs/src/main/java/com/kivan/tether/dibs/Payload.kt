@@ -93,7 +93,12 @@ data class FeedItem(
     val more: List<String> = emptyList(),
     /** The task's report, in full. */
     val report: String? = null,
+    /** Stays the same while the piece of work goes on (an older dibs sends none). */
+    val id: String? = null,
 ) {
+    /** What keeps its row open while new lines arrive. */
+    val key: String get() = "feed:" + (id ?: "$ts:$who")
+
     /** A tap shows more than the folded row does. */
     val opens: Boolean get() = asked != null || more.isNotEmpty() || report != null
 
@@ -160,7 +165,7 @@ data class DibsView(
                 feed = recap.optJSONArray("feed").objects().map {
                     FeedItem(
                         it.optLong("ts"), it.optString("kind"), it.optString("who"), it.optString("text"),
-                        it.str("repo"), it.str("why"), it.str("asked"), it.optJSONArray("more").strings(), it.str("report"),
+                        it.str("repo"), it.str("why"), it.str("asked"), it.optJSONArray("more").strings(), it.str("report"), it.str("id"),
                     )
                 },
                 lend = o.optJSONObject("lend")?.let { Lend(it.optLong("until").takeIf { u -> u > 0 }, it.str("holder"), it.optString("text")) },

@@ -100,7 +100,7 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
                 "task": 16?, "holds": ["repo:dibs:master"]}],
   "peek": {"who": "…", "at": …, "lines": ["…"]}?,
   "recap": {"away": {"id": 4, "title": "…", "lines": ["…"], "seen": false}?,
-            "feed": [{"ts": …, "kind": "done|stopped|did|closed|update", "who": "…", "text": "what changed, whole",
+            "feed": [{"id": "t25", "ts": …, "kind": "done|stopped|did|closed|update", "who": "…", "text": "what changed, whole",
                       "repo": "…"?, "why": "first sentence of the ask"?, "asked": "the whole ask"?,
                       "more": ["its other lines, whole"]?, "report": "the task's report, whole"?}]},
   "badges": {"waiting": 3, "work": 1, "recap": 1}

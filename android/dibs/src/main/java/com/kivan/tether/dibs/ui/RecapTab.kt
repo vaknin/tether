@@ -4,6 +4,7 @@ import android.text.format.DateFormat
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -73,7 +75,7 @@ internal fun RecapTab(view: DibsView) {
         }
         for ((day, items) in days) {
             item(key = "day-$day") { Section(dayWords(day, today)) }
-            itemsIndexed(items, key = { i, f -> "f-$day-$i-${f.ts}" }) { _, f -> FeedRow(f, "feed:${f.ts}:${f.who}") }
+            itemsIndexed(items, key = { i, f -> f.id?.let { "f-$it" } ?: "f-$day-$i" }) { _, f -> FeedRow(f) }
         }
         if (view.feed.isEmpty()) item(key = "_empty") { Quiet("Nothing yet. What dibs and its sessions get done shows here.") }
     }
@@ -103,21 +105,24 @@ private fun AwayCard(a: Away) {
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FeedRow(f: FeedItem, key: String) {
+private fun FeedRow(f: FeedItem) {
+    val key = f.key
     val ctx = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val open = Dibs.open[key] == true
     var cut by remember(f) { mutableStateOf(false) }
     val opens = f.opens || cut
     val (icon, tint) = kindMark(f.kind)
+    val longPress = {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        copy(ctx, f.full())
+    }
     Row(
         Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
-            .combinedClickable(
-                onClick = { if (opens || open) Dibs.toggle(key) },
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    copy(ctx, f.full())
-                },
+            // A row with nothing behind it only copies: no ripple for a tap that does nothing.
+            .then(
+                if (opens || open) Modifier.combinedClickable(onClick = { Dibs.toggle(key) }, onLongClick = longPress)
+                else Modifier.pointerInput(f) { detectTapGestures(onLongPress = { longPress() }) },
             )
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -146,6 +151,7 @@ private fun FeedRow(f: FeedItem, key: String) {
                     color = Palette.Muted,
                     maxLines = if (open) Int.MAX_VALUE else 1,
                     overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { if (it.hasVisualOverflow) cut = true },
                 )
             }
             if (open && f.more.isNotEmpty()) {
