@@ -186,6 +186,8 @@ object Channels {
                     _views.value = _views.value + (e.channel to v)
                     prunePending()
                     pruneDismissed()
+                    val pin = v.optJSONObject("pin")
+                    if (pin == null) Notifier.unpin(app, e.channel)
                     val c = info(e.channel) ?: return
                     // `open_tags` lists the tagged posts still current; the others were answered (maybe
                     // on the laptop). It wins over the badge: a channel with nothing waiting can still
@@ -205,13 +207,12 @@ object Channels {
                     }
                     // A state to keep in sight while the view has it (dibs has your phone), even with
                     // the channel open.
-                    val pin = v.optJSONObject("pin")
                     if (c.notify && pin != null) {
                         val actions = pin.optJSONArray("actions")?.let { a ->
                             (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { it.optString("id") to it.optString("label") }
                         }.orEmpty()
                         Notifier.pin(app, c, pin.optString("title", c.title), pin.optString("text"), actions)
-                    } else {
+                    } else if (pin != null) {
                         Notifier.unpin(app, e.channel)
                     }
                 }

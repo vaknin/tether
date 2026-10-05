@@ -37,7 +37,12 @@ class ChatActionReceiver : BroadcastReceiver() {
                     Channels.act(ch, org.json.JSONObject().put("action", id))
                     // Only the tapped notification; buttons from before tags clear the channel's.
                     val tag = intent.getStringExtra(NOTE_TAG)
-                    if (tag != null) Notifier.cancelApp(app, tag, intent.getIntExtra(NOTE_ID, 0)) else Notifier.clearApp(app, ch)
+                    when {
+                        // A pin stays until a view comes without it.
+                        intent.getBooleanExtra(KEEP, false) -> {}
+                        tag != null -> Notifier.cancelApp(app, tag, intent.getIntExtra(NOTE_ID, 0))
+                        else -> Notifier.clearApp(app, ch)
+                    }
                     SyncWorker.start(app, "action")
                 } catch (e: Exception) {
                     Log.w("Tether", "app action $id on $ch failed", e)
@@ -97,6 +102,7 @@ class ChatActionReceiver : BroadcastReceiver() {
         const val ACTION_ID = "action_id"
         const val NOTE_TAG = "note_tag"
         const val NOTE_ID = "note_id"
+        const val KEEP = "keep"
         const val IDS = "ids"
         const val TEXT = "text"
         private const val HOLD = "notification"

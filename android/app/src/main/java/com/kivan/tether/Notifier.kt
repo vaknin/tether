@@ -423,7 +423,8 @@ object Notifier {
 
     /**
      * A view's `pin`: an ongoing, silent notification kept while the channel's view carries it
-     * ([unpin] when one comes without it). Its buttons send actions like a card's; a tap clears it.
+     * ([unpin] when one comes without it). Its buttons send actions like a card's; a tap leaves it up
+     * (the laptop may refuse the action), and the next view without the pin removes it.
      */
     fun pin(context: Context, c: ChannelInfo, title: String, text: String, actions: List<Pair<String, String>>) {
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -447,7 +448,7 @@ object Notifier {
                 context, code * 31 + i,
                 ChatActionReceiver.intent(context, ChatActionReceiver.APP_ACTION)
                     .putExtra(ChatActionReceiver.CHANNEL, c.name).putExtra(ChatActionReceiver.ACTION_ID, a.first)
-                    .putExtra(ChatActionReceiver.NOTE_TAG, noteTag).putExtra(ChatActionReceiver.NOTE_ID, 0),
+                    .putExtra(ChatActionReceiver.KEEP, true),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             b.addAction(NotificationCompat.Action.Builder(0, a.second, pi).setShowsUserInterface(false).build())
