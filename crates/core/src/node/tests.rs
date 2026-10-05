@@ -563,3 +563,28 @@ async fn a_queued_channel_file_is_resent_as_one() {
     assert_eq!(got.channel.as_deref(), Some("dibs"));
     assert_eq!(got.path.unwrap(), d.path().join("a/state/channels/dibs/log.txt"));
 }
+
+#[tokio::test]
+async fn the_laptop_sends_a_channel_file_to_the_phone() {
+    // `tether send --channel dibs`: a transcript for the dibs app, kept with the channel.
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    let (mut ea, mut eb) = (a.events(), b.events());
+    let file = d.path().join("transcript-31-ab12.json.gz");
+    std::fs::write(&file, vec![7u8; 300_000]).unwrap();
+
+    let f = a.send_channel_file("dibs", &file).await.unwrap();
+    let got = wait_for(&mut eb, |e| msg_in(e, f.id, State::Received)).await;
+    let Event::Message(got) = got else { unreachable!() };
+    assert_eq!(got.channel.as_deref(), Some("dibs"));
+    let saved = got.path.clone().unwrap();
+    assert_eq!(saved, d.path().join("b/state/channels/dibs/transcript-31-ab12.json.gz"));
+    assert_eq!(std::fs::read(&saved).unwrap(), vec![7u8; 300_000]);
+    wait_for(&mut ea, |e| msg_in(e, f.id, State::Delivered)).await;
+
+    assert!(b.recent(10).unwrap().is_empty());
+    assert_eq!(b.unread().unwrap(), 0);
+    let files = b.app_files("dibs", 10).unwrap();
+    assert_eq!(files.iter().map(|m| m.id).collect::<Vec<_>>(), vec![f.id]);
+    assert!(!d.path().join("b/dl/transcript-31-ab12.json.gz").exists());
+}

@@ -22,6 +22,8 @@ pub enum Request {
     Pair { code: String },
     Unpair,
     Send { paths: Vec<PathBuf> },
+    /// Files to the phone on an app channel (`tether send --channel`), queued like `Send`.
+    SendChannelFile { channel: String, paths: Vec<PathBuf> },
     /// Stop a file I'm sending.
     Cancel { id: String },
     Msg { text: String },

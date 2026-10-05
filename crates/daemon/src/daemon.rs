@@ -390,6 +390,14 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
             }
             serde_json::to_value(sent)?
         }
+        Request::SendChannelFile { channel, paths } => {
+            check_channel(&channel)?;
+            let mut sent = Vec::new();
+            for p in paths {
+                sent.push(node.send_channel_file(&channel, &p).await?);
+            }
+            serde_json::to_value(sent)?
+        }
         Request::Cancel { id } => {
             anyhow::ensure!(node.cancel(id.parse().context("bad message id")?)?, "not a file that is still sending");
             Value::Null

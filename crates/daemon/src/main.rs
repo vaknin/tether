@@ -79,6 +79,10 @@ enum Cmd {
         /// Send the image on the clipboard.
         #[arg(long)]
         clipboard: bool,
+        /// To an app channel instead of the chat: the phone keeps them with the channel, out of
+        /// Downloads and the chat.
+        #[arg(long, conflicts_with_all = ["pick", "clipboard"])]
+        channel: Option<String>,
     },
     /// Stop sending a file (its id is in `tether json`); the phone drops what it got.
     Cancel { id: String },
@@ -369,7 +373,7 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Send { files, pick, clipboard } => {
+        Cmd::Send { files, pick, clipboard, channel } => {
             let mut paths = files.iter().map(std::path::absolute).collect::<std::io::Result<Vec<_>>>()?;
             if pick {
                 paths.extend(pick::choose_files().await?);
@@ -380,7 +384,11 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             if paths.is_empty() {
                 return Ok(());
             }
-            let sent = call(&sock, &Request::Send { paths }).await?;
+            let req = match channel {
+                Some(channel) => Request::SendChannelFile { channel, paths },
+                None => Request::Send { paths },
+            };
+            let sent = call(&sock, &req).await?;
             for m in sent.as_array().into_iter().flatten() {
                 println!("{} {}", m["state"].as_str().unwrap_or("?"), m["file_name"].as_str().unwrap_or("?"));
             }

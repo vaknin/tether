@@ -198,6 +198,8 @@ without a CRDT. A channel with no app is a plain **thread** (ntfy-style `tether 
   count, Downloads and the laptop's toast and clipboard. `Node::app_files(channel)` lists them; the
   daemon's `thread` merges them in as `{"id","from_me","ts_ms","file":{"name","size","state","path"?}}`,
   and `watch` sends the channel's notice for them. ffi: `send_channel_file`, `ChatMessage.channel`.
+  The laptop sends one with `tether send --channel <ch> <file>…` (socket `send_channel_file`; dibs hands the
+  phone transcripts and reports this way).
 
 ### Data (JSON in `data`; Tether reads only what it draws)
 - View (app → phone/panel, `replace`): `{"v":1, "blocks":[…], "badge":N?, "notify":{"title","text"}?, "open_tags":[…]?}`.
