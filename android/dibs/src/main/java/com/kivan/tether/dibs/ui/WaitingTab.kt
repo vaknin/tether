@@ -3,6 +3,7 @@ package com.kivan.tether.dibs.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -51,12 +52,17 @@ internal fun WaitingTab(view: DibsView) {
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item(key = "_hero") { Hero("Waiting on you", "${questions.size + decided.size}") }
+        item(key = "_hero") { Hero("Waiting on you", "${questions.size}") }
         items(questions, key = { "q${it.id}" }) { q ->
             QuestionCard(q, now, Modifier.animateItem())
         }
         if (decided.isNotEmpty()) {
-            item(key = "_decided") { Section("Decided for you") }
+            item(key = "_decided") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                    Box(Modifier.weight(1f)) { Section("Decided for you") }
+                    if (decided.size > 1) ActButton("Got it to all", "plain") { Dibs.ackAll(decided) }
+                }
+            }
             items(decided, key = { "d${it.id}" }) { d -> DecisionRow(d, now, armed, Modifier.animateItem()) }
         }
         if (questions.isEmpty() && decided.isEmpty()) item(key = "_empty") { Quiet("Nothing waiting.") }
@@ -126,9 +132,9 @@ private fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifier
     Row(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(painterResource(R.drawable.lucide_check), null, Modifier.size(16.dp), tint = Palette.Success)
         Column(Modifier.weight(1f)) {
-            Text(d.text, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+            TapFold(d.text, "dec:${d.id}", 2)
             val meta = listOfNotNull(d.why.ifBlank { null }, d.from.ifBlank { null }, age(now - d.ts)).joinToString(" · ")
-            Text(meta, style = AppType.small, color = Palette.Muted)
+            TapFold(meta, "decwhy:${d.id}", 1, style = AppType.small, color = Palette.Muted)
         }
         if (d.undo) {
             val k = "undo${d.id}"

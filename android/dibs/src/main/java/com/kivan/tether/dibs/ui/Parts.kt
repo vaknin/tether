@@ -7,6 +7,7 @@ import android.graphics.ImageDecoder
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.R
@@ -253,6 +255,29 @@ internal fun Hero(label: String, value: String, after: String? = null, style: Te
             }
         }
     }
+}
+
+/** Text that shows [lines] lines, ending in …, until a tap opens it whole ([Dibs.open] by [key]); a tap folds it again. */
+@Composable
+internal fun TapFold(
+    text: String,
+    key: String,
+    lines: Int,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.bodyMedium,
+    color: Color = Palette.Text,
+) {
+    val open = Dibs.open[key] == true
+    var long by remember(text) { mutableStateOf(false) }
+    Text(
+        text,
+        if (long || open) modifier.clickable { Dibs.toggle(key) } else modifier,
+        style = style,
+        color = color,
+        maxLines = if (open) Int.MAX_VALUE else lines,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { if (it.hasVisualOverflow) long = true },
+    )
 }
 
 /** A card on the ground: the medium radius on the surface colour. */

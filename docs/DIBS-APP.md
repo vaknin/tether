@@ -103,6 +103,8 @@ Today's ids stay: `a|d|y|n|x|k<id>`, `r<id>` (typed answer), `w<id>` (away "Got 
 (hide), `say` (`value.text`). New: `say` with `value.files` (ids of files sent to the channel, below),
 `peek` (`value.who`), `tell` (`value.task`, `value.text`), `stop` (`value.task`), `undo` (`value.item`:
 handed to the brain as the user's request), `phone-back` (task #19).
+`ack-decided` (`value.items`: the decision ids the Waiting tab showed; "Got it to all", questions
+among them stay open). `badges.waiting` counts questions only.
 
 ### Files to dibs (Tether's core and daemon)
 - New body `Body::ChannelFile { channel, name, size, sha256 }`, appended to the enum (an older peer

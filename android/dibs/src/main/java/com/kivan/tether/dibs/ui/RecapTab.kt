@@ -75,10 +75,10 @@ private fun AwayCard(a: Away) {
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         Hero("While you were away", awayMinutes(a)?.let(::duration) ?: "", style = AppType.heroSmall)
         Column(Modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
-            for (line in a.lines) {
+            for ((i, line) in a.lines.withIndex()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.padding(top = 8.dp).size(5.dp).background(Palette.Muted, CircleShape))
-                    Text(line, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+                    TapFold(line, "away:${a.id}:$i", 3)
                 }
             }
             ActButton("Got it", "primary", Modifier.padding(top = 2.dp)) { Dibs.answer("w${a.id}", "Got it", "w${a.id}") }
