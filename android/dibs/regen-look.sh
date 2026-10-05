@@ -3,8 +3,8 @@
 # its theme at dibs's hue, the launcher and notification icon (renamed ic_dibs_*, since the
 # app's same-named resources would win the merge) and its Lucide icons. Never edit the outputs.
 set -euo pipefail
-HUE=150
-MARK=hand
+HUE=180
+MARK=dibs-mark.svg  # the deadpan face, drawn for dibs (the user's pick, 2026-10-05)
 ICONS=(message-circle inbox hammer history paperclip send-horizontal image camera file file-text
   chevron-down chevron-up check x arrow-down smartphone ellipsis-vertical copy eye-off undo-2
   sparkles circle-stop triangle-alert message-square-reply external-link laptop clock)

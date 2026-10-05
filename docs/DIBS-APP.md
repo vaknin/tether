@@ -50,6 +50,8 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
   17 accent under protan) and 170 (teal: 10 and 12). 60 to 120 sit on the warning amber, 0 to 50 near
   danger red. The mockup page shows them side by side, normal and protan.
 - The mark: handshake (today's channel icon), hand (raised: "dibs!"), or another Lucide mark.
+- **Chosen (the user, 2026-10-05):** teal 180 and a deadpan face drawn for dibs (`android/dibs/dibs-mark.svg`),
+  from five marks based on dibs's personality.
 
 ## How it's built
 
