@@ -13,7 +13,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kivan.tether.dibs.ui.DibsApp
 import com.kivan.tether.dibs.ui.theme.AppTheme
@@ -270,6 +272,89 @@ class ScreensTest {
         compose.waitForIdle()
         noEllipsis()
         shot("task-long-small")
+    }
+
+    @Test
+    fun theTasksTabDrawsDibssBoard() {
+        show(boardView())
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        for (h in listOf("WORKING NOW", "UP NEXT", "LATER", "DONE · 12")) compose.onNodeWithText(h).assertIsDisplayed()
+        compose.onNodeWithText(LONG_TITLE).assertIsDisplayed()
+        compose.onNodeWithText("#31").assertIsDisplayed()
+        compose.onNodeWithText("On hold").assertIsDisplayed()
+        compose.onNodeWithText("Full story").assertIsDisplayed()
+        // Done is folded, and the old project groups aren't drawn.
+        compose.onAllNodes(hasText("Lend toggles")).assertCountEquals(0)
+        compose.onAllNodes(hasText("TETHER")).assertCountEquals(0)
+        noEllipsis()
+        shot("tasks-board")
+        compose.onNodeWithText("DONE · 12").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Lend toggles").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun theBoardOnASmallScreen() {
+        show(boardView())
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        noEllipsis()
+        shot("tasks-board-small")
+    }
+
+    @Test
+    fun aBoardCardsMenuOffersOnlyItsActions() {
+        show(boardView())
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText(LONG_TITLE).performTouchInput { longClick() }
+        compose.waitForIdle()
+        for (w in listOf("Put on hold", "Stop", "Full story", "Move to Up next")) compose.onAllNodes(hasText(w)).assertCountEquals(if (w == "Full story") 2 else 1)
+        for (w in listOf("Resume", "Delete", "Move up", "Move to Later")) compose.onAllNodes(hasText(w)).assertCountEquals(0)
+        // Stop asks again; only the second tap sends it.
+        compose.onNodeWithText("Stop").performClick()
+        compose.waitForIdle()
+        assertTrue(host.acts.none { it.first == Dibs.TASK_ACT })
+        compose.onNodeWithText("Stop it?").performClick()
+        compose.waitForIdle()
+        val (_, stop) = host.acts.single { it.first == Dibs.TASK_ACT }
+        assertEquals("task:31", stop!!.getString("key"))
+        assertEquals("stop", stop.getString("act"))
+        // An idea has no page: a tap opens its menu.
+        compose.onNodeWithText("A widget that shows the board on the home screen").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Move up").performClick()
+        compose.waitForIdle()
+        val move = host.acts.last().second!!
+        assertEquals("idea:7", move.getString("key"))
+        assertEquals("up", move.getString("act"))
+        assertTrue(Dibs.pages.isEmpty())
+    }
+
+    /** A board as dibs sends it: one card per column (the first with a long title, tags and a story), Done folded. */
+    private fun boardView(): JSONObject {
+        val v = view(talk = longTalk())
+        val d = v.getJSONObject("dibs")
+        d.put("yours", JSONArray().put(yours(31, LONG_TITLE, "working").put("busy", true)).put(yours(29, "Lend toggles", "done")))
+        fun card(key: String, n: Long?, title: String, state: String, now: String = "", tags: List<String> = emptyList(), actions: List<String>, story: JSONObject? = null) =
+            JSONObject().put("key", key).put("n", n ?: JSONObject.NULL).put("title", title).put("state_words", state).put("now", now)
+                .put("tags", JSONArray(tags)).put("story", story ?: JSONObject.NULL).put("actions", JSONArray(actions))
+        d.put("board", JSONObject()
+            .put("columns", JSONArray()
+                .put(JSONObject().put("key", "now").put("title", "Working now").put("cards", JSONArray().put(
+                    card("task:31", 31, LONG_TITLE, "working", "Running the screen tests again after the header change",
+                        listOf("work saved"), listOf("hold", "stop", "story", "to_next"), JSONObject().put("state", "ready").put("have", true)),
+                )))
+                .put(JSONObject().put("key", "next").put("title", "Up next").put("cards", JSONArray().put(
+                    card("idea:7", null, "A widget that shows the board on the home screen", "an idea", actions = listOf("up", "down", "to_later", "delete")),
+                )))
+                .put(JSONObject().put("key", "later").put("title", "Later").put("cards", JSONArray().put(
+                    card("task:30", 30, "Pick the phone's notification sound", "on hold (you held it)", tags = listOf("On hold", "work saved"), actions = listOf("resume", "to_next", "delete")),
+                ))))
+            .put("done", JSONObject().put("count", 12).put("cards", JSONArray().put(card("task:29", 29, "Lend toggles", "done", actions = emptyList())))))
+        return v
     }
 
     /** No "…" in anything drawn (the user's rule): the app's own words never end in one, and nothing is cut. */

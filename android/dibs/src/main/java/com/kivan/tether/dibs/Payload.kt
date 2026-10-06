@@ -251,6 +251,35 @@ data class YourTask(
     val finishedState: Boolean get() = state == "done" || state == "stopped" || state == "failed"
 }
 
+/**
+ * One card on dibs's board (docs/DIBS-APP.md, "The board"): a task (`task:<id>`, [n] its number) or an
+ * idea (`idea:<id>`, no number). Drawn as dibs sends it: [title] whole, [stateWords] its state in plain
+ * words, [now] what it's doing (may be empty), [tags] "On hold" and "work saved", and [actions] what its
+ * long press offers (hold, resume, stop, delete, up, down, to_next, to_later, story).
+ */
+data class BoardCard(
+    val key: String,
+    val n: Long?,
+    val title: String,
+    val stateWords: String,
+    val now: String = "",
+    val tags: List<String> = emptyList(),
+    val story: Story? = null,
+    val actions: List<String> = emptyList(),
+) {
+    /** Its task's id, for a task card; null for an idea. */
+    val task: Long? get() = key.removePrefix("task:").takeIf { key.startsWith("task:") }?.toLongOrNull()
+}
+
+/** A column of the board: now, next or later, its title ("Working now") and its cards, in dibs's order. */
+data class BoardColumn(val key: String, val title: String, val cards: List<BoardCard>)
+
+/**
+ * dibs's board for the Tasks tab: its columns in order, and what's done ([doneCount], [done] its cards).
+ * The phone draws it unchanged: no grouping or sorting of its own (the user, 2026-10-06).
+ */
+data class Board(val columns: List<BoardColumn>, val doneCount: Int, val done: List<BoardCard>)
+
 data class DibsView(
     /** dibs's clock when it published. */
     val now: Long,
@@ -271,6 +300,8 @@ data class DibsView(
     val badges: Badges,
     /** The user's own tasks; null from a dibs that doesn't send them (it shows the old Work tab). */
     val yours: List<YourTask>? = null,
+    /** dibs's board; null from a dibs that doesn't send one (the Tasks tab groups [yours] itself then). */
+    val board: Board? = null,
 ) {
     fun task(id: Long): YourTask? = yours?.firstOrNull { it.id == id }
 
@@ -322,6 +353,7 @@ data class DibsView(
                 lends = o.optJSONObject("lends")?.let { l -> Lends(l.optJSONObject("phone")?.let(::lendToggle), l.optJSONObject("laptop")?.let(::lendToggle)) },
                 badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap"), b.optInt("tasks")),
                 yours = if (o.has("yours")) o.optJSONArray("yours").objects().map(::yourTask) else null,
+                board = o.optJSONObject("board")?.let(::board),
             )
         }
 
@@ -358,11 +390,32 @@ data class DibsView(
                         note = who == "note", ts = l.optLong("ts"), files = files(l.optJSONArray("files")), ask = null,
                     )
                 },
-                story = o.optJSONObject("story")?.let { s ->
-                    Story(s.optString("state"), s.long("ts"), s.optBoolean("stale"), s.optBoolean("have"), s.long("since"), s.str("by"))
-                },
+                story = o.optJSONObject("story")?.let(::story),
             )
         }
+
+        private fun story(s: JSONObject) = Story(s.optString("state"), s.long("ts"), s.optBoolean("stale"), s.optBoolean("have"), s.long("since"), s.str("by"))
+
+        private fun board(o: JSONObject): Board {
+            val done = o.optJSONObject("done") ?: JSONObject()
+            val doneCards = done.optJSONArray("cards").objects().map(::card)
+            return Board(
+                columns = o.optJSONArray("columns").objects().map { BoardColumn(it.optString("key"), it.optString("title"), it.optJSONArray("cards").objects().map(::card)) },
+                doneCount = if (done.has("count")) done.optInt("count") else doneCards.size,
+                done = doneCards,
+            )
+        }
+
+        private fun card(o: JSONObject) = BoardCard(
+            key = o.optString("key"),
+            n = o.long("n"),
+            title = o.optString("title"),
+            stateWords = o.optString("state_words"),
+            now = o.optString("now"),
+            tags = o.optJSONArray("tags").strings(),
+            story = o.optJSONObject("story")?.let(::story),
+            actions = o.optJSONArray("actions").strings(),
+        )
 
         private fun decision(o: JSONObject) =
             Decision(

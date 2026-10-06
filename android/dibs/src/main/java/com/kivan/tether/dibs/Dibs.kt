@@ -217,6 +217,17 @@ object Dibs {
         host.act("seen", JSONObject().put("task", t.id))
     }
 
+    /**
+     * A board card's action ([BoardCard.actions]: hold, resume, stop, delete, up, down, to_next,
+     * to_later) for the card [key]; [before] the card a move goes before, when it says.
+     */
+    fun taskAct(key: String, act: String, before: String? = null) {
+        host.act(TASK_ACT, JSONObject().put("key", key).put("act", act).apply { before?.let { put("before", it) } })
+    }
+
+    /** The phone action a board card's menu sends (docs/DIBS-APP.md, "The board"); its name may still change. */
+    const val TASK_ACT = "task-act"
+
     fun stop(task: Long) {
         host.act("stop", JSONObject().put("task", task))
     }

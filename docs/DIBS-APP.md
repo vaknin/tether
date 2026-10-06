@@ -228,6 +228,30 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
     first clause, never cut (until 0.5.9 it was cut at 60 characters with "…").
   - **The laptop** (word 145): a "Laptop" line at the top, memory, load, builds running and waiting, agents, from
     `state.laptop` when dibs sends it.
+- **The board** (app 0.5.9, the user's decision 2026-10-06: the phone app doesn't group or sort tasks itself; dibs
+  builds the board and both apps draw it unchanged). From a dibs that sends `board` next to `yours`, the tab draws it
+  in place of the project groups and the Ticked fold; without it, the old list stays. The Laptop line and the
+  "for you" words stay on top.
+  - Each column with cards gets its title as a section heading ("Working now", "Up next", "Later") and its cards in
+    the order sent; an empty column is left out, and one quiet line shows when all are. Then **Done · 12**, folded
+    by default, with its cards. dibs's own work stays folded at the bottom.
+  - **A card:** "#31" (small, muted; ideas have no number), the title whole and wrapping, dibs's state words (a
+    working one with the busy dot when its `yours` task is busy), the tags as small pills ("On hold", "work saved"),
+    a "Full story" pill once a story is ready or being written, and `now` muted when it says something.
+  - **A tap** opens a task's page; an idea has none, so a tap opens its menu. **A long press** opens the menu of the
+    card's `actions` in plain words: Put on hold, Resume, Stop, Delete, Move up, Move down, Move to Up next, Move to
+    Later, Full story. Only what the card lists shows. Stop and Delete ask again ("Stop it?") and act on the second
+    tap within 4 s. Full story opens the story's page; the rest go back as the phone action `task-act`
+    (`Dibs.TASK_ACT`, one constant, as the name may still change):
+    `{"key": "task:31", "act": "hold", "before": "task:30"?}`.
+  - Payload (`Payload.kt`: `Board`, `BoardColumn`, `BoardCard`; `DibsView.board` is null without it):
+    ```json
+    "board": {"columns": [{"key": "now|next|later", "title": "Working now", "cards": [Card]}],
+              "done": {"count": 12, "cards": [Card]}}
+    Card: {"key": "task:31|idea:7", "n": 31|null, "title": "whole", "state_words": "built, waiting to land",
+           "now": "what it's doing, or empty", "tags": ["On hold", "work saved"], "story": {…like yours[].story}|null,
+           "actions": ["hold","resume","stop","delete","up","down","to_next","to_later","story"]}
+    ```
 - **dibs's own work** (its background tasks, the live sessions, ships) folds into one line at the bottom,
   "dibs's own work · 3", which opens on a tap. It holds today's Work tab content, and nothing in it pings.
 - **One ping per task** when it finishes, when it asks the user something, or when its agent replies to the user. A
@@ -305,6 +329,8 @@ These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Olde
   - `tick` / `untick` (`value.task`).
   - `seen` (`value.task`): sent when its page opens. It clears `unread` and the task's ping.
   - `fetch` (`value.task`, `value.what`: `transcript|report`).
+  - `task-act` (0.5.9, `value.key`: a board card's key, `value.act`: one of its `actions`, `value.before`?: for a
+    move): a board card's long-press menu ("The board" above).
 - Unchanged: `stop`, `reopen` and the question answers. `tell` stays for older apps.
 
 ### What changes in Tether

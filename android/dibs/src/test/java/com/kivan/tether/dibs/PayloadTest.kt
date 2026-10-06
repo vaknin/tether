@@ -243,4 +243,55 @@ class PayloadTest {
         assertTrue(writing.story!!.writing)
         assertNull(never.story)
     }
+
+    @Test
+    fun parsesTheBoardAsSent() {
+        val d = DibsView.parse(
+            JSONObject(
+                """
+                {"now": 1791213484, "yours": [],
+                 "board": {
+                   "columns": [
+                     {"key": "now", "title": "Working now", "cards": [
+                       {"key": "task:31", "n": 31, "title": "Recap: one entry per finished job", "state_words": "working",
+                        "now": "Running the tests", "tags": ["work saved"], "story": {"state": "ready", "ts": 1791213000, "have": true},
+                        "actions": ["hold", "stop", "story"]}]},
+                     {"key": "next", "title": "Up next", "cards": [
+                       {"key": "idea:7", "n": null, "title": "A widget for the board", "state_words": "an idea", "now": "",
+                        "tags": [], "story": null, "actions": ["up", "down", "to_later", "delete"]}]},
+                     {"key": "later", "title": "Later", "cards": []}
+                   ],
+                   "done": {"count": 12, "cards": [{"key": "task:29", "n": 29, "title": "Lend toggles", "state_words": "done"}]}
+                 }}
+                """,
+            ),
+        )
+        val b = d.board!!
+        assertEquals(listOf("now", "next", "later"), b.columns.map { it.key })
+        assertEquals("Working now", b.columns[0].title)
+        val c = b.columns[0].cards.single()
+        assertEquals("task:31", c.key)
+        assertEquals(31L, c.n)
+        assertEquals(31L, c.task)
+        assertEquals("working", c.stateWords)
+        assertEquals("Running the tests", c.now)
+        assertEquals(listOf("work saved"), c.tags)
+        assertEquals("ready", c.story?.state)
+        assertTrue(c.story!!.have)
+        assertEquals(listOf("hold", "stop", "story"), c.actions)
+        val idea = b.columns[1].cards.single()
+        assertNull("an idea has no number", idea.n)
+        assertNull("nor a task page", idea.task)
+        assertNull(idea.story)
+        assertEquals("", idea.now)
+        assertTrue(b.columns[2].cards.isEmpty())
+        assertEquals(12, b.doneCount)
+        assertEquals("Lend toggles", b.done.single().title)
+        assertEquals(emptyList<String>(), b.done.single().actions)
+    }
+
+    @Test
+    fun anOlderDibsSendsNoBoard() {
+        assertNull(DibsView.ofView(view)!!.board)
+    }
 }

@@ -7,6 +7,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +36,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.kivan.tether.dibs.BoardCard
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Page
@@ -52,12 +55,28 @@ import com.kivan.tether.dibs.ui.theme.Space
 import java.time.LocalDate
 import java.time.ZoneId
 
-// The Tasks tab (docs/DIBS-APP.md, "Your tasks"): every task the user asked for, grouped by
-// project, from its start until they tick it off; a tap opens its page. dibs's own work and the
-// ticked ones fold away at the bottom.
+// The Tasks tab (docs/DIBS-APP.md, "Your tasks"): every task the user asked for, from its start
+// until they tick it off; a tap opens its page. From a dibs that sends its board, the tab draws
+// that board unchanged ("The board": its columns and cards in its order, then Done); from an
+// older one, the tasks grouped by project here, the ticked ones folded at the bottom. dibs's own
+// work folds away at the bottom either way.
 
 private const val OWN_WORK = "fold:own-work"
 private const val TICKED = "fold:ticked"
+private const val DONE = "fold:done"
+
+/** A board card's actions in plain words, in the order its menu would show them if dibs sent them so. */
+private val ACT_WORDS = mapOf(
+    "hold" to "Put on hold",
+    "resume" to "Resume",
+    "stop" to "Stop",
+    "delete" to "Delete",
+    "up" to "Move up",
+    "down" to "Move down",
+    "to_next" to "Move to Up next",
+    "to_later" to "Move to Later",
+    "story" to "Full story",
+)
 
 @Composable
 internal fun TasksTab(view: DibsView) {
@@ -88,16 +107,33 @@ internal fun TasksTab(view: DibsView) {
         forYouWords(read, asking)?.let { words ->
             item(key = "_for_you") { Eyebrow(words, Modifier.padding(top = Space.M, bottom = Space.XS), dot = true, color = Palette.Accent) }
         }
-        for (g in list.groups) {
-            item(key = "g-${g.project}") { Section(g.project) }
-            items(g.tasks, key = { "y${it.id}" }) { t -> TaskRow(t, view, now, Modifier.animateItem()) }
+        val board = view.board
+        if (board != null) {
+            // dibs's board as it sent it: no grouping or sorting here.
+            val columns = board.columns.filter { it.cards.isNotEmpty() }
+            for (c in columns) {
+                item(key = "col-${c.key}") { Section(c.title) }
+                items(c.cards, key = { "c-${c.key}-${it.key}" }) { card -> BoardCardRow(card, view, armed, Modifier.animateItem()) }
+            }
+            if (columns.isEmpty()) item(key = "_none") { Quiet("Nothing on the board. Tasks you ask for show here.") }
+            if (board.doneCount > 0 || board.done.isNotEmpty()) {
+                item(key = "_done") { FoldRow("Done · ${board.doneCount}", DONE) }
+                if (Dibs.open[DONE] == true) {
+                    items(board.done, key = { "d-${it.key}" }) { card -> BoardCardRow(card, view, armed, Modifier.animateItem()) }
+                }
+            }
+        } else {
+            for (g in list.groups) {
+                item(key = "g-${g.project}") { Section(g.project) }
+                items(g.tasks, key = { "y${it.id}" }) { t -> TaskRow(t, view, now, Modifier.animateItem()) }
+            }
+            if (list.open == 0) item(key = "_none") { Quiet("Nothing open. Tasks you ask for wait here until you tick them off.") }
         }
-        if (list.open == 0) item(key = "_none") { Quiet("Nothing open. Tasks you ask for wait here until you tick them off.") }
 
         item(key = "_own") { FoldRow("dibs's own work · $own", OWN_WORK) }
         if (Dibs.open[OWN_WORK] == true) workItems(view, now, armed, ownOnly = true)
 
-        if (list.ticked.isNotEmpty()) {
+        if (board == null && list.ticked.isNotEmpty()) {
             item(key = "_ticked") { FoldRow("Ticked · ${list.ticked.size}", TICKED) }
             if (Dibs.open[TICKED] == true) {
                 items(list.ticked, key = { "k${it.id}" }) { t -> TickedRow(t, Modifier.animateItem()) }
@@ -159,6 +195,97 @@ private fun TaskRow(t: YourTask, view: DibsView, now: Long, modifier: Modifier) 
             }
         }
         TaskMenu(menu, t, view) { menu = false }
+    }
+}
+
+/**
+ * A card of dibs's board, drawn as sent: "#31" (a task's number), its title whole, its state in
+ * dibs's words (a working one with the busy dot), its tags, a "Full story" mark once one is ready or
+ * being written, and what it's doing. A tap opens a task's page (an idea has none: its menu); a long
+ * press, the menu of what dibs lets it do ([BoardCard.actions]).
+ */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: Modifier) {
+    val haptics = LocalHapticFeedback.current
+    var menu by remember { mutableStateOf(false) }
+    // Its page needs the task in `yours`; one dibs no longer lists there opens its menu instead.
+    val t = c.task?.let(view::task)
+    val acts = c.actions.filter { it in ACT_WORDS && (it != "story" || t != null) }
+    val openMenu = {
+        if (acts.isNotEmpty()) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            menu = true
+        }
+    }
+    Box(modifier) {
+        Column(
+            Modifier.card().clip(MaterialTheme.shapes.medium)
+                .combinedClickable(onClick = { if (t != null) Dibs.open(Page.Task(t.id)) else openMenu() }, onLongClick = openMenu)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                c.n?.let { Text("#$it", Modifier.alignByBaseline(), style = AppType.mono, color = Palette.Muted) }
+                Text(
+                    c.title,
+                    Modifier.weight(1f).alignByBaseline(),
+                    style = AppType.body.copy(fontWeight = if (t != null && Dibs.unread(t)) FontWeight.W600 else FontWeight.W400),
+                    color = Palette.Text,
+                )
+            }
+            if (c.stateWords.isNotBlank()) CardState(c.stateWords, busy = t?.busy == true)
+            val story = c.story?.takeIf { it.state == "ready" || it.writing }
+            if (c.tags.isNotEmpty() || story != null) {
+                FlowRow(Modifier.padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (tag in c.tags) Chip(tag)
+                    if (story != null) Chip(if (story.writing) "Full story · being written" else "Full story", accent = true)
+                }
+            }
+            if (c.now.isNotBlank()) Text(c.now, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
+        }
+        CardMenu(menu, c, acts, armed) { menu = false }
+    }
+}
+
+/** dibs's state words: a working one with the busy dot (filled while its session works), the rest muted. */
+@Composable
+private fun CardState(words: String, busy: Boolean) {
+    if (words.startsWith("working", ignoreCase = true)) StateWord(words, busy = busy) else Text(words, style = AppType.small, color = Palette.Muted)
+}
+
+/**
+ * What dibs lets a card do, in plain words, nothing else. Stop and Delete ask again ("Stop it?") and
+ * act on the second tap within 4 s; Full story opens the story's page.
+ */
+@Composable
+private fun CardMenu(expanded: Boolean, c: BoardCard, acts: List<String>, armed: Armed, onDismiss: () -> Unit) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        for (a in acts) {
+            val words = ACT_WORDS.getValue(a)
+            val k = "act:${c.key}:$a"
+            val confirm = a == "stop" || a == "delete"
+            val asking = confirm && armed.key == k
+            DropdownMenuItem(
+                text = { Text(if (asking) "$words it?" else words, color = if (confirm) Palette.Danger else Palette.Text) },
+                onClick = {
+                    when {
+                        a == "story" -> {
+                            onDismiss()
+                            c.task?.let { Dibs.open(Page.Story(it)) }
+                        }
+                        confirm -> armed.press(k) {
+                            onDismiss()
+                            Dibs.taskAct(c.key, a)
+                        }
+                        else -> {
+                            onDismiss()
+                            Dibs.taskAct(c.key, a)
+                        }
+                    }
+                },
+            )
+        }
     }
 }
 
