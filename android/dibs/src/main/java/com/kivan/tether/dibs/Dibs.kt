@@ -84,6 +84,16 @@ data class Pending(val uid: String, val text: String, val files: List<Picked>, v
 data class Picked(val uri: Uri, val name: String, val image: Boolean, val source: Uri = uri)
 
 /**
+ * What a message to dibs is about, from a task's full story ([Page.Story]): [kind] `ask` (Ask dibs
+ * about this) or `follow` (Start a follow-up), with the paragraph long-pressed ([quote]). It rides
+ * in the `say` as `about`, so dibs gives its brain the story with the user's words; [title] is
+ * only for the chip over the box.
+ */
+data class About(val story: Long, val kind: String, val title: String, val quote: String? = null) {
+    fun json(): JSONObject = JSONObject().put("story", story).put("kind", kind).apply { quote?.let { put("quote", it) } }
+}
+
+/**
  * A message box: its draft and picked files, kept across screens. The dibs chat has one, and each
  * of the user's tasks has its own ([task]: its messages go to that task's agent, `task-say`).
  */
@@ -93,6 +103,8 @@ class Composer(val task: Long?) {
     var draft by mutableStateOf("")
     /** Files picked for the next message. */
     val picked = mutableStateListOf<Picked>()
+    /** What the next message is about (a full story), shown as a chip over the box; the dibs chat's only. */
+    var about by mutableStateOf<About?>(null)
 
     /** Sends the box (text and picked files); it shows as pending until the view lists its uid. */
     fun send() {
@@ -103,8 +115,12 @@ class Composer(val task: Long?) {
         Dibs.addPending(Pending(uid, text, files, task = task))
         draft = ""
         picked.clear()
+        val on = about?.takeIf { task == null }?.json()
+        about = null
         val action = if (task == null) "say" else "task-say"
-        val extra = { if (task == null) JSONObject() else JSONObject().put("task", task) }
+        val extra = {
+            if (task == null) JSONObject().apply { on?.let { put("about", it) } } else JSONObject().put("task", task)
+        }
         if (files.isEmpty()) {
             Dibs.host.act(action, extra().put("text", text), uid)
         } else {
@@ -119,11 +135,12 @@ class Composer(val task: Long?) {
     }
 }
 
-/** A screen over the tabs (docs/DIBS-APP.md, "Your tasks"): a task's page, its transcript, its report. */
+/** A screen over the tabs (docs/DIBS-APP.md, "Your tasks"): a task's page, its transcript, its report, its full story. */
 sealed interface Page {
     data class Task(val id: Long) : Page
     data class Transcript(val id: Long) : Page
     data class Report(val id: Long) : Page
+    data class Story(val id: Long) : Page
 }
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
@@ -201,10 +218,39 @@ object Dibs {
         host.act("reopen", JSONObject().put("reopen", key))
     }
 
-    /** Asks dibs for a task's transcript or report ([what]); it comes as a file on the channel. */
+    /**
+     * Asks dibs for a task's transcript, report or full story ([what]); it comes as a file on the
+     * channel. A story none was written of yet is written first (a few minutes).
+     */
     fun fetch(task: Long, what: String) {
         host.act("fetch", JSONObject().put("task", task).put("what", what))
     }
+
+    /** Asks dibs to write a task's full story ([again]: anew, though one is kept); the file follows when done. */
+    fun story(task: Long, again: Boolean) {
+        host.act("story", JSONObject().put("task", task).put("again", again))
+    }
+
+    /**
+     * Opens the dibs chat about a task's full story: the chip over the box says so, and the next
+     * message carries it ([About]). A follow-up starts its draft with "Follow-up: ", so the line
+     * reads right in the chat later.
+     */
+    fun chatAboutStory(t: YourTask, kind: String, quote: String? = null) {
+        chat.draft = chat.draft.removePrefix(FOLLOW_UP)
+        if (kind == "follow") chat.draft = FOLLOW_UP + chat.draft
+        chat.about = About(t.id, kind, t.label, quote)
+        pages.clear()
+        tab = DibsActivity.TAB_CHAT
+    }
+
+    /** ✕ on the chip: the next message is about nothing in particular (and loses "Follow-up: "). */
+    fun dropAbout() {
+        if (chat.about?.kind == "follow") chat.draft = chat.draft.removePrefix(FOLLOW_UP)
+        chat.about = null
+    }
+
+    private const val FOLLOW_UP = "Follow-up: "
 
     internal fun addPending(p: Pending) {
         _pending.update { it + p }

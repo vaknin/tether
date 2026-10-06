@@ -49,6 +49,7 @@ import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.duration
 import com.kivan.tether.dibs.ranMinutes
+import com.kivan.tether.dibs.storyWords
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Pill
@@ -56,7 +57,8 @@ import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.flow.first
 
 // A task's page (docs/DIBS-APP.md, "Your tasks"): its state and times, its open questions, what it
-// did, its result, what was asked, the transcript, and the earlier messages with its agent, read-only.
+// did, its result, its full story, what was asked, the transcript, and the earlier messages with its
+// agent, read-only.
 // The user talks only to dibs (word 221): no box here; "Ask dibs about it" opens the dibs chat with the
 // task named, and dibs passes on what's for the agent.
 
@@ -123,6 +125,7 @@ private fun AskDibs(t: YourTask) {
         Text("Questions or changes go through dibs.", Modifier.weight(1f), style = AppType.small, color = Palette.Muted)
         ActButton("Ask dibs about it", "primary") {
             val about = "About ${t.label}: "
+            Dibs.dropAbout()
             if (!Dibs.chat.draft.startsWith(about)) Dibs.chat.draft = about + Dibs.chat.draft
             Dibs.pages.clear()
             Dibs.tab = DibsActivity.TAB_CHAT
@@ -164,7 +167,7 @@ private fun TaskActions(t: YourTask, view: DibsView, armed: Armed) {
     }
 }
 
-/** Top to bottom: state and times, open questions, what it did, result, what was asked, the transcript. */
+/** Top to bottom: state and times, open questions, what it did, result, the full story, what was asked, the transcript. */
 private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
     item(key = "_state") { StateBlock(t, now) }
     val questions = view.questions.filter { it.id in t.questions && "q${it.id}" !in Dibs.answered }
@@ -185,6 +188,7 @@ private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
     if (result != null && (result.reportMd || result.shipped.isNotEmpty())) {
         item(key = "_result") { ResultBlock(t) }
     }
+    item(key = "_story") { StoryLink(t) }
     if (t.asked.isNotBlank()) {
         item(key = "_asked") {
             Column(verticalArrangement = Arrangement.spacedBy(Space.XS)) {
@@ -246,16 +250,34 @@ private fun ResultBlock(t: YourTask) {
 /** "Transcript": everything it did and said, from the top, on its own screen. */
 @Composable
 private fun TranscriptLink(t: YourTask) {
+    LinkRow(R.drawable.lucide_scroll_text, "Transcript", "Everything it did and said", Modifier.padding(top = Space.S)) {
+        Dibs.open(Page.Transcript(t.id))
+    }
+}
+
+/**
+ * "Full story": a long read of the task, written only when asked (a tap asks, the first time). Its
+ * second line says where it stands.
+ */
+@Composable
+private fun StoryLink(t: YourTask) {
+    val written = t.story?.ts?.let { whenWords(it) }
+    LinkRow(R.drawable.lucide_book_open, "Full story", storyWords(t.story, written), Modifier.padding(top = Space.L)) { Dibs.open(Page.Story(t.id)) }
+}
+
+/** A row that opens a screen of the task's: its icon, a title over one muted line, and ›. */
+@Composable
+private fun LinkRow(icon: Int, title: String, line: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Row(
-        Modifier.padding(top = Space.S).card().clip(MaterialTheme.shapes.medium).clickable { Dibs.open(Page.Transcript(t.id)) }
+        modifier.card().clip(MaterialTheme.shapes.medium).clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(painterResource(R.drawable.lucide_scroll_text), null, Modifier.size(18.dp), tint = Palette.Muted)
+        Icon(painterResource(icon), null, Modifier.size(18.dp), tint = Palette.Muted)
         Column(Modifier.weight(1f)) {
-            Text("Transcript", style = AppType.body, color = Palette.Text)
-            Text("Everything it did and said", style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = AppType.body, color = Palette.Text)
+            Text(line, style = AppType.small, color = Palette.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(18.dp), tint = Palette.Muted)
     }

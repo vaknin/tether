@@ -117,7 +117,7 @@ fun DibsApp() {
     // The keyboard needs the room; the tabs come back when it closes.
     val typing = WindowInsets.isImeVisible
 
-    // A task's page (and its transcript or report) over the tabs; back pops it.
+    // A task's page (and its transcript, report or full story) over the tabs; back pops it.
     val page = Dibs.pages.lastOrNull()
     BackHandler(enabled = page != null) { Dibs.back() }
     if (page != null && view != null) {
@@ -129,6 +129,7 @@ fun DibsApp() {
                 is Page.Task -> TaskPage(page.id, view)
                 is Page.Transcript -> TranscriptScreen(page.id, view)
                 is Page.Report -> ReportScreen(page.id, view)
+                is Page.Story -> StoryScreen(page.id, view)
             }
         }
         return

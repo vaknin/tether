@@ -115,3 +115,24 @@ fun laptopWords(l: Laptop): String? {
     )
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
+
+/**
+ * The task page's line under "Full story": what it is before it was ever asked for, then where it
+ * stands. [written] is when the kept one was written, as the phone says times.
+ */
+fun storyWords(s: Story?, written: String?): String = when {
+    s == null -> "A long read: what it tried, what failed, the choices, what's left"
+    s.writing && s.have && written != null -> "Written $written · a new one is being written"
+    s.writing -> if (s.by == "agent") "Its agent is writing it…" else "dibs is writing it…"
+    s.state == "failed" && !s.have -> "It couldn't be written"
+    written == null -> "Written"
+    s.stale -> "Written $written · the task moved on since"
+    else -> "Written $written"
+}
+
+/** The chip over the chat box while a message is about a full story: "About the full story of X", "Follow-up to X". */
+fun aboutWords(a: About): String = when {
+    a.kind == "follow" -> "Follow-up to ${a.title}"
+    a.quote != null -> "About a part of the full story of ${a.title}"
+    else -> "About the full story of ${a.title}"
+}

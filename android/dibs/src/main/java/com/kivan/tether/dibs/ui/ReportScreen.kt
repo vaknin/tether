@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -30,10 +31,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.MdBlock
@@ -48,7 +51,31 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 // A task's REPORT.md as plain readable text: headings, paragraphs, bullets, code in monospace.
-// dibs sends it as `report-<task>-<hash>.md` on its channel when asked (`fetch`).
+// dibs sends it as `report-<task>-<hash>.md` on its channel when asked (`fetch`). Its blocks are
+// shared with the full story (StoryScreen.kt), which reads in roomier type.
+
+/**
+ * How Markdown reads: each heading level's style and the room above it, the body's style, and the
+ * space between blocks. [ReportLook] is compact; the full story's is roomier.
+ */
+@Immutable
+internal data class ReadLook(
+    val h1: TextStyle,
+    val h1Top: Dp,
+    val h2: TextStyle,
+    val h2Top: Dp,
+    val h3: TextStyle,
+    val h3Top: Dp,
+    val body: TextStyle,
+    val gap: Dp,
+)
+
+internal val ReportLook = ReadLook(
+    h1 = AppType.heading, h1Top = Space.M,
+    h2 = AppType.body.copy(fontWeight = FontWeight.W600), h2Top = Space.M,
+    h3 = AppType.body.copy(fontWeight = FontWeight.W600), h3Top = Space.S,
+    body = bodyStyle, gap = Space.S,
+)
 
 @Composable
 internal fun ReportScreen(id: Long, view: DibsView) {
@@ -70,9 +97,9 @@ internal fun ReportScreen(id: Long, view: DibsView) {
                     LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.XS, bottom = Space.XXL),
-                        verticalArrangement = Arrangement.spacedBy(Space.S),
+                        verticalArrangement = Arrangement.spacedBy(ReportLook.gap),
                     ) {
-                        itemsIndexed(b) { _, block -> Block(block) }
+                        itemsIndexed(b) { _, block -> Block(block, ReportLook) }
                     }
                 }
                 bad && !fetch.waiting -> Column(
@@ -89,29 +116,30 @@ internal fun ReportScreen(id: Long, view: DibsView) {
     }
 }
 
+/** One Markdown block as [look] reads; [modifier] goes on its outside (a long press, say). */
 @Composable
-private fun Block(b: MdBlock) {
+internal fun Block(b: MdBlock, look: ReadLook, modifier: Modifier = Modifier) {
     when (b) {
         is MdBlock.Heading -> Text(
-            inline(b.text),
-            Modifier.padding(top = if (b.level <= 2) Space.M else Space.S),
-            style = if (b.level == 1) AppType.heading else AppType.body.copy(fontWeight = FontWeight.W600),
+            remember(b.text) { inline(b.text) },
+            modifier.padding(top = if (b.level == 1) look.h1Top else if (b.level == 2) look.h2Top else look.h3Top),
+            style = if (b.level == 1) look.h1 else if (b.level == 2) look.h2 else look.h3,
             color = Palette.Text,
         )
-        is MdBlock.Para -> Text(inline(b.text), style = bodyStyle, color = Palette.Text)
-        is MdBlock.Item -> Row(Modifier.padding(start = (b.depth * 16).dp)) {
-            Text(b.mark, Modifier.width(22.dp), style = bodyStyle, color = Palette.Muted)
-            Text(inline(b.text), Modifier.weight(1f), style = bodyStyle, color = Palette.Text)
+        is MdBlock.Para -> Text(remember(b.text) { inline(b.text) }, modifier, style = look.body, color = Palette.Text)
+        is MdBlock.Item -> Row(modifier.padding(start = (b.depth * 16).dp)) {
+            Text(b.mark, Modifier.width(22.dp), style = look.body, color = Palette.Muted)
+            Text(remember(b.text) { inline(b.text) }, Modifier.weight(1f), style = look.body, color = Palette.Text)
         }
         is MdBlock.Code -> Text(
             b.text,
-            Modifier.fillMaxWidth().background(Palette.SurfaceLow, MaterialTheme.shapes.small)
+            modifier.fillMaxWidth().background(Palette.SurfaceLow, MaterialTheme.shapes.small)
                 .horizontalScroll(rememberScrollState()).padding(10.dp),
             style = AppType.mono,
             color = Palette.Text,
         )
         is MdBlock.Table -> Column(
-            Modifier.fillMaxWidth().background(Palette.Surface, MaterialTheme.shapes.small).padding(10.dp),
+            modifier.fillMaxWidth().background(Palette.Surface, MaterialTheme.shapes.small).padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             b.rows.forEachIndexed { i, cells ->
@@ -122,7 +150,7 @@ private fun Block(b: MdBlock) {
                 )
             }
         }
-        MdBlock.Rule -> Spacer(Modifier.height(Space.S))
+        MdBlock.Rule -> Spacer(modifier.height(Space.S))
     }
 }
 
@@ -130,7 +158,7 @@ private val urls = Regex("""\b(?:https?://|www\.)[^\s<>"]+[^\s<>".,;:!?)\]']""")
 private val mdLink = Regex("""\[([^\]]+)]\(([^)\s]+)\)""")
 
 /** **bold**, `code` and links ([text](url) shows its text) in a line. */
-private fun inline(text: String): AnnotatedString = buildAnnotatedString {
+internal fun inline(text: String): AnnotatedString = buildAnnotatedString {
     val links = ArrayList<Pair<String, String>>()
     val plain = mdLink.replace(text) { m ->
         links += m.groupValues[1] to m.groupValues[2]

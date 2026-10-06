@@ -59,6 +59,7 @@ class TranscriptTest {
     fun fetchedFileNames() {
         assertEquals("transcript" to 31L, fetchedOf("transcript-31-ab12.json.gz"))
         assertEquals("report" to 7L, fetchedOf("report-7-0a1b2c3d4e (1).md"))
+        assertEquals("story" to 85L, fetchedOf("story-85-9f3e.md"))
         assertEquals(null, fetchedOf("IMG_1.jpg"))
     }
 }

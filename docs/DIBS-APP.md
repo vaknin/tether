@@ -365,3 +365,38 @@ one matters" flag would be the next step.
   sends now get a thumbnail on arrival (`Core`), so they show as pictures, not chips.
 - **Usage** (word 131): the header shows each window, "5h 88% · resets 12:20", amber from 80 %, from
   `state.limits` (`{"ts", "windows": [{"name", "pct", "resets"}]}`, added on the dibs side by task #66).
+
+## Full story (task #85, 2026-10-06)
+
+The user's words: a long readable account of a task (what was asked, what the agent tried, what failed and why, the
+choices and their reasons, research findings, what's left), written only when they ask. The dibs side writes it;
+the app (0.5.7) asks for it, shows it and lets them talk to dibs about it.
+
+- **Contract.** Each `yours[]` task may carry `"story": {"state": "writing"|"ready"|"failed", "ts"?, "stale"?,
+  "have"?, "since"?, "by"?: "agent"|"writer"}` (`Story` in `Payload.kt`; absent: never asked). `ts` is when the kept
+  one was written, `stale` that the task moved on since, `have` that one is kept (readable while a new one is
+  written), `since` when writing began.
+  - Getting it: `fetch` with `{"task", "what": "story"}`. A kept one comes at once as `story-<task>-<hash>.md`
+    (plain Markdown); with none, dibs starts writing it (a few minutes) and sends the file when done.
+  - Writing it anew: `story` with `{"task", "again": true}` (`Dibs.story`).
+  - A chat line may carry `"open": {"story": <task>}` (`TalkLine.open`): dibs's note that a story is ready.
+  - From the story, messages to dibs are ordinary `say`s whose value also carries
+    `"about": {"story": <task>, "kind": "ask"|"follow", "quote"?}` (`About`, `Composer.about`, sent once then cleared).
+- **Task page:** a "Full story" row after the Result block, before "You asked": "A long read: what it tried, what
+  failed, the choices, what's left" until asked, then "dibs is writing it…" (or "Its agent is writing it…"),
+  "Written 21:40", "Written 21:40 · the task moved on since" (`storyWords`). A tap opens the story.
+- **The story** (`ui/StoryScreen.kt`, `Page.Story`): fetched like the transcript (`rememberFetch`, once more when
+  `story.ts` is newer than the file here), drawn with the report's blocks (`Block`, `inline`, shared through
+  `ReadLook`) in roomier type. On top, "Written 21:40 by dibs's writer" (or "by its agent"); when stale, a quiet
+  "The task moved on since this was written." with Write it again; a kept one while a new one is written says
+  "A new version is being written". With no file yet: "dibs is writing it" with "you can leave, dibs tells you in
+  the chat" (no 90-second timeout), or "It couldn't be written" with Try again (opening a failed one doesn't
+  rewrite it by itself). A long press on a paragraph or a point offers "Ask dibs about this part" (the chat opens
+  with it as `quote`) and Copy, so the text isn't selectable. The bar under it wraps on a narrow screen: Show the
+  conversation (the transcript), Start a follow-up, Ask dibs about this.
+- **Chat:** the ready note has a "Read it" chip that opens the story (while the task is listed). While the next
+  message is about a story, a chip over the box says so ("About the full story of X", "Follow-up to X", with the
+  quoted paragraph); ✕ drops it. A follow-up's draft starts "Follow-up: " so the line reads right later.
+- `:app` prunes fetched stories like transcripts and reports (`fetchedOf`): the newest per task is kept.
+- Tests: `PayloadTest.fullStories`, `FormatTest` (`storyWords`, `aboutWords`), `DibsTest` (what the `say` carries),
+  `ScreensTest` (the row, the story at 412 and 320 dp, writing, Read it and the chip).

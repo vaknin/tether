@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -98,6 +99,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kivan.tether.dibs.About
 import com.kivan.tether.dibs.Ask
 import com.kivan.tether.dibs.ChatRow
 import com.kivan.tether.dibs.Composer
@@ -109,10 +111,12 @@ import com.kivan.tether.dibs.FileRef
 import com.kivan.tether.dibs.FoldRow
 import com.kivan.tether.dibs.LineRow
 import com.kivan.tether.dibs.NoteRow
+import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.Pending
 import com.kivan.tether.dibs.Picked
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.TalkLine
+import com.kivan.tether.dibs.aboutWords
 import com.kivan.tether.dibs.chatRows
 import com.kivan.tether.dibs.dayWords
 import com.kivan.tether.dibs.fileSize
@@ -145,11 +149,11 @@ private const val ASK = "ask:"
 
 /**
  * How a chat draws: [name] on the first bubble of each run of the other side's (a task's agent),
- * whether a line can be hidden (dibs's own chat only), and the [Dibs.open] prefix its unfolded
- * days are kept under.
+ * whether a line can be hidden (dibs's own chat only), the [Dibs.open] prefix its unfolded days
+ * are kept under, and the tasks whose full story a line's "Read it" can open ([stories]).
  */
 @Immutable
-internal data class ChatLook(val name: String? = null, val hide: Boolean = true, val days: String = DAY)
+internal data class ChatLook(val name: String? = null, val hide: Boolean = true, val days: String = DAY, val stories: Set<Long> = emptySet())
 
 /** The chat's rows from [talk] and the echoes still waiting, regrouped as the clock moves on. */
 @Composable
@@ -265,33 +269,56 @@ private fun DayHeader(row: DayRow, look: ChatLook) {
     ) { Eyebrow(row.label) }
 }
 
-/** dibs's own note ("Started task …"): a small centred line; a tap shows the full text. */
+/**
+ * dibs's own note ("Started task …"): a small centred line; a tap shows the full text. A note that a
+ * full story is ready has "Read it" under it.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NoteLine(l: TalkLine, look: ChatLook) {
     val open = Dibs.open[l.id] == true
     var menu by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
-    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-        Text(
-            buildAnnotatedString {
-                append(if (open || l.short == null) l.text else l.short)
-                if (l.short != null && !open) append(" ›")
-            },
-            style = AppType.small,
-            color = Palette.Muted,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(0.88f).clip(MaterialTheme.shapes.small)
-                .combinedClickable(
-                    onClick = { if (l.short != null) Dibs.toggle(l.id) },
-                    onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menu = true
-                    },
-                )
-                .padding(4.dp),
-        )
-        LineMenu(menu, l, look) { menu = false }
+    Column {
+        Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+            Text(
+                buildAnnotatedString {
+                    append(if (open || l.short == null) l.text else l.short)
+                    if (l.short != null && !open) append(" ›")
+                },
+                style = AppType.small,
+                color = Palette.Muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(0.88f).clip(MaterialTheme.shapes.small)
+                    .combinedClickable(
+                        onClick = { if (l.short != null) Dibs.toggle(l.id) },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menu = true
+                        },
+                    )
+                    .padding(4.dp),
+            )
+            LineMenu(menu, l, look) { menu = false }
+        }
+        ReadIt(l, look, Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).padding(bottom = 6.dp))
+    }
+}
+
+/** "Read it" under dibs's note that a task's full story is ready: it opens the story. */
+@Composable
+private fun ReadIt(l: TalkLine, look: ChatLook, modifier: Modifier = Modifier) {
+    val task = l.open?.takeIf { it in look.stories } ?: return
+    Box(modifier) {
+        Row(
+            Modifier.clip(Pill).background(Palette.AccentDim).clickable { Dibs.open(Page.Story(task)) }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(painterResource(R.drawable.lucide_book_open), null, Modifier.size(16.dp), tint = Palette.Accent)
+            Text("Read it", style = AppType.label, color = Palette.Accent)
+        }
     }
 }
 
@@ -399,6 +426,7 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                 if (l.text.isNotEmpty() || row.last) {
                     LineText(l.id, l.text, if (row.last) time(l.ts) else null, meta)
                 }
+                ReadIt(l, look)
                 when {
                     ask != null && outcome != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(painterResource(R.drawable.lucide_check), null, Modifier.size(16.dp), tint = Palette.Success)
@@ -645,12 +673,16 @@ internal fun Typing(line: String?) {
     }
 }
 
-/** The box: what's picked waits in a strip above it; 📎 offers Photos, Camera and Files. */
+/**
+ * The box: what the next message is about (a full story) and what's picked wait above it; 📎
+ * offers Photos, Camera and Files.
+ */
 @Composable
 internal fun InputArea(box: Composer, placeholder: String) {
     val draft = box.draft
     val canSend = draft.isNotBlank() || box.picked.isNotEmpty()
     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        box.about?.let { AboutChip(it) }
         if (box.picked.isNotEmpty()) Strip(box)
         Row(
             Modifier.fillMaxWidth().background(Palette.Surface, MaterialTheme.shapes.large).padding(6.dp),
@@ -684,6 +716,25 @@ internal fun InputArea(box: Composer, placeholder: String) {
                 ),
                 modifier = Modifier.size(40.dp),
             ) { Icon(painterResource(R.drawable.lucide_send_horizontal), "Send", Modifier.size(20.dp)) }
+        }
+    }
+}
+
+/** "About the full story of …" (and the paragraph asked about), with ✕: the next message carries it. */
+@Composable
+private fun AboutChip(a: About) {
+    Row(
+        Modifier.fillMaxWidth().background(Palette.AccentDim, MaterialTheme.shapes.medium).padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(painterResource(R.drawable.lucide_book_open), null, Modifier.size(16.dp), tint = Palette.Accent)
+        Column(Modifier.weight(1f).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(aboutWords(a), style = AppType.label, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            a.quote?.let { Text("“${it.trim()}”", style = AppType.small, color = Palette.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        }
+        IconButton(onClick = { Dibs.dropAbout() }, modifier = Modifier.size(36.dp)) {
+            Icon(painterResource(R.drawable.lucide_x), "Not about the story", Modifier.size(16.dp), tint = Palette.Muted)
         }
     }
 }

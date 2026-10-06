@@ -78,8 +78,9 @@ import java.util.zip.GZIPInputStream
 private const val FETCH_WAIT_MS = 90_000L
 
 /**
- * The newest [what] file dibs sent for [task] (`transcript` or `report`). On open it asks dibs for
- * one when there is none or it's older than [since] (the task's newest activity); [refresh] asks again.
+ * The newest [what] file dibs sent for [task] (`transcript`, `report` or `story`). On open it asks
+ * dibs for one when there is none or it's older than [since] (the task's newest activity), unless
+ * not to [ask]; [refresh] asks again.
  */
 @Stable
 internal class Fetch(private val task: Long, private val what: String) {
@@ -101,7 +102,7 @@ internal class Fetch(private val task: Long, private val what: String) {
 }
 
 @Composable
-internal fun rememberFetch(task: Long, what: String, since: Long): Fetch {
+internal fun rememberFetch(task: Long, what: String, since: Long, ask: Boolean = true): Fetch {
     val f = remember(task, what) { Fetch(task, what) }
     LaunchedEffect(f) {
         Dibs.host.channelFile("$what-$task-").collect {
@@ -111,7 +112,7 @@ internal fun rememberFetch(task: Long, what: String, since: Long): Fetch {
     }
     LaunchedEffect(f.loaded) {
         val file = f.file
-        if (f.loaded && f.askedAt == 0L && (file == null || file.lastModified() / 1000 < since)) f.refresh()
+        if (ask && f.loaded && f.askedAt == 0L && (file == null || file.lastModified() / 1000 < since)) f.refresh()
     }
     LaunchedEffect(f.askedAt) {
         if (f.askedAt == 0L) return@LaunchedEffect

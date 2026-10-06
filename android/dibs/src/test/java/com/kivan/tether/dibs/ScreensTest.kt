@@ -11,6 +11,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kivan.tether.dibs.ui.DibsApp
 import com.kivan.tether.dibs.ui.theme.AppTheme
@@ -20,6 +21,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +39,8 @@ class FakeHost(view: JSONObject?) : DibsHost {
     override val pickDir = File(System.getProperty("java.io.tmpdir"), "dibs-pick")
     override val uploads: StateFlow<Map<String, Float>> = MutableStateFlow(emptyMap())
     val acts = mutableListOf<Pair<String, JSONObject?>>()
+    /** Files dibs "sent", by the prefix a screen asks for (`story-31-`). */
+    val files = mutableMapOf<String, File>()
 
     override fun act(action: String, value: JSONObject?, uid: String?): String {
         acts += action to value
@@ -43,7 +48,7 @@ class FakeHost(view: JSONObject?) : DibsHost {
     }
 
     override fun send(uid: String, text: String, files: List<Uri>, action: String, extra: JSONObject?, onFile: (Uri, String) -> Unit) {}
-    override fun channelFile(prefix: String): Flow<File?> = flowOf(null)
+    override fun channelFile(prefix: String): Flow<File?> = flowOf(files[prefix])
     override fun thumb(fileId: String): ImageBitmap? = null
     override val thumbs: StateFlow<Int> = MutableStateFlow(0)
     override fun visible(on: Boolean) {}
@@ -71,6 +76,7 @@ class ScreensTest {
         Dibs.fields.clear()
         Dibs.open.clear()
         Dibs.chat.draft = ""
+        Dibs.chat.about = null
     }
 
     private fun show(view: JSONObject) {
@@ -151,6 +157,100 @@ class ScreensTest {
         compose.onNodeWithText("Cut phone notification clutter").assertIsDisplayed()
         compose.onNodeWithText("Plan how dibs spends less usage").assertIsDisplayed()
         shot("tasks")
+    }
+
+    @Test
+    fun theTaskPageOffersItsFullStory() {
+        show(storyView(JSONObject().put("state", "ready").put("ts", NOW - 600).put("stale", true).put("have", true).put("by", "writer")))
+        Dibs.pages += Page.Task(31)
+        compose.waitForIdle()
+        compose.onNodeWithText("Full story").assertIsDisplayed()
+        compose.onNodeWithText("the task moved on since", substring = true).assertIsDisplayed()
+        shot("task-story-row")
+    }
+
+    @Test
+    fun theFullStoryReads() {
+        show(storyView(JSONObject().put("state", "ready").put("ts", NOW - 600).put("stale", true).put("have", true).put("by", "writer")))
+        host.files["story-31-"] = storyFile()
+        Dibs.pages += Page.Story(31)
+        compose.waitForIdle()
+        compose.onNodeWithText("Recap: one entry per finished job").assertIsDisplayed()
+        compose.onNodeWithText("The task moved on since this was written.").assertIsDisplayed()
+        compose.onNodeWithText("Ask dibs about this").assertIsDisplayed()
+        assertTrue("a kept one isn't asked for again", host.acts.none { it.first == "fetch" })
+        shot("story")
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun theFullStorysButtonsFitASmallScreen() {
+        show(storyView(JSONObject().put("state", "ready").put("ts", NOW - 600).put("have", true).put("by", "agent")))
+        host.files["story-31-"] = storyFile()
+        Dibs.pages += Page.Story(31)
+        compose.waitForIdle()
+        for (b in listOf("Show the conversation", "Start a follow-up", "Ask dibs about this")) compose.onNodeWithText(b).assertIsDisplayed()
+        shot("story-small")
+    }
+
+    @Test
+    fun aStoryNeverWrittenIsAskedForAndWritten() {
+        show(storyView(null))
+        Dibs.pages += Page.Story(31)
+        compose.waitForIdle()
+        compose.onNodeWithText("dibs is writing it").assertIsDisplayed()
+        val (_, value) = host.acts.single { it.first == "fetch" }
+        assertEquals("story", value!!.getString("what"))
+        assertEquals(31L, value.getLong("task"))
+        shot("story-writing")
+    }
+
+    @Test
+    fun aReadyNoteOpensTheStoryAndTheChatSaysWhatItsAbout() {
+        val v = storyView(JSONObject().put("state", "ready").put("ts", NOW - 600).put("have", true))
+        v.getJSONObject("dibs").put("talk", JSONArray(longTalk()).put(
+            JSONObject().put("id", "s99").put("n", 99).put("who", "dibs").put("note", true).put("ts", NOW - 30)
+                .put("text", "The full story of “Recap” is ready.").put("open", JSONObject().put("story", 31)),
+        ))
+        show(v)
+        compose.onNodeWithText("Read it").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Story(31), Dibs.pages.lastOrNull())
+        Dibs.pages.clear()
+        Dibs.chat.about = About(31, "ask", "Recap", "It tried folding by day first, which hid the newest entry.")
+        compose.waitForIdle()
+        compose.onNodeWithText("About a part of the full story of Recap").assertIsDisplayed()
+        shot("chat-about-story")
+    }
+
+    private fun storyView(story: JSONObject?): JSONObject {
+        val v = view(talk = longTalk())
+        val t = yours(31, "Recap", "done").put("report", "Recap shows one entry per job.")
+        if (story != null) t.put("story", story)
+        v.getJSONObject("dibs").put("yours", JSONArray().put(t))
+        return v
+    }
+
+    private fun storyFile(): File = File.createTempFile("story-31-", ".md").apply {
+        deleteOnExit()
+        writeText(
+            """
+            # Recap: one entry per finished job
+
+            You asked for **Recap** to stop repeating itself: every finished job showed up three times.
+
+            ## What it tried
+
+            It first folded the lines by day, which hid the newest entry. Then it keyed them by `task`, which held.
+
+            - Folding by day: dropped, it hid the newest line.
+            - Keying by task: kept.
+
+            ## What's left
+
+            Nothing on the phone; dibs's side still writes two titles.
+            """.trimIndent(),
+        )
     }
 
     private fun yours(id: Long, title: String, state: String, asked: String = title, unread: Boolean = false) = JSONObject()

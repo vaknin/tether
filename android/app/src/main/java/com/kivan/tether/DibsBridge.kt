@@ -140,7 +140,7 @@ class DibsBridge(context: Context) : DibsHost {
     private fun dibsDir() = Core.channelDir(Channels.DIBS)
 
     /**
-     * Keeps the newest transcript and report per task and drops the rest; the newest goes too
+     * Keeps the newest transcript, report and full story per task and drops the rest; the newest goes too
      * after 14 days, or 7 days after its task was ticked off (while the view still lists it).
      */
     private fun prune() {
@@ -201,7 +201,7 @@ class DibsBridge(context: Context) : DibsHost {
     }
 }
 
-/** A fetched transcript or report is kept at most this long. */
+/** A fetched transcript, report or full story is kept at most this long. */
 private const val KEEP_MS = 14 * 24 * 3600_000L
 /** And this long after its task was ticked off. */
 private const val TICKED_KEEP_S = 7 * 24 * 3600L

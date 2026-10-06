@@ -216,4 +216,31 @@ class PayloadTest {
         assertEquals(emptyList<Limit>(), old.state.limits)
         assertNull(old.state.laptop)
     }
+
+    // As dibs writes a task's full story (task #85): absent until asked, and its "ready" note in the chat.
+    @Test
+    fun fullStories() {
+        val d = DibsView.parse(
+            JSONObject(
+                """{"talk": [{"id": "s70", "n": 70, "who": "dibs", "text": "The full story of “Recap” is ready.", "note": true, "ts": 9,
+                              "open": {"story": 31}},
+                             {"id": "s71", "n": 71, "who": "dibs", "text": "Hi", "ts": 10, "open": {}}],
+                  "yours": [
+                    {"id": 31, "title": "Recap", "state": "done",
+                     "story": {"state": "ready", "ts": 1791230000, "stale": true, "have": true, "by": "writer"}},
+                    {"id": 32, "title": "Mini PC", "state": "working",
+                     "story": {"state": "writing", "since": 1791230100, "by": "agent"}},
+                    {"id": 33, "title": "Never asked", "state": "done"}
+                  ]}""",
+            ),
+        )
+        assertEquals(31L, d.talk[0].open)
+        assertNull("an open without a story opens nothing", d.talk[1].open)
+        val (ready, writing, never) = d.yours!!
+        assertEquals(Story("ready", ts = 1791230000, stale = true, have = true, by = "writer"), ready.story)
+        assertFalse(ready.story!!.writing)
+        assertEquals(Story("writing", since = 1791230100, by = "agent"), writing.story)
+        assertTrue(writing.story!!.writing)
+        assertNull(never.story)
+    }
 }

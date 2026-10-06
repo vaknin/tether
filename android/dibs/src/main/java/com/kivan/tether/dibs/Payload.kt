@@ -32,6 +32,8 @@ data class TalkLine(
     val ts: Long,
     val files: List<FileRef>,
     val ask: Ask?,
+    /** dibs's note that a task's full story is ready: its task id, whose story a tap opens. */
+    val open: Long? = null,
 )
 
 data class Question(
@@ -186,6 +188,23 @@ data class TaskResult(
 )
 
 /**
+ * A task's full story (a long account written only when the user asks, docs/DIBS-APP.md "Full
+ * story"): [state] writing | ready | failed; [ts] when the kept one was written; [stale] the task
+ * moved on since; [have] one is kept (readable while a new one is written); [since] when writing
+ * began; [by] agent | writer.
+ */
+data class Story(
+    val state: String,
+    val ts: Long? = null,
+    val stale: Boolean = false,
+    val have: Boolean = false,
+    val since: Long? = null,
+    val by: String? = null,
+) {
+    val writing: Boolean get() = state == "writing"
+}
+
+/**
  * One of the user's own tasks (docs/DIBS-APP.md, "Your tasks"): it waits in the Tasks tab from its
  * start until they tick it off. Its [talk] is the chat with its own agent (who: user, agent, note).
  */
@@ -222,6 +241,8 @@ data class YourTask(
     val ticked: Long? = null,
     /** The chat with its agent, the last 30 lines, oldest first. */
     val talk: List<TalkLine> = emptyList(),
+    /** Its full story, once asked for; null when it never was. */
+    val story: Story? = null,
 ) {
     /** Its name as the screens show it. */
     val label: String get() = plainTitle(title, asked).ifBlank { name }.ifBlank { "Task $id" }
@@ -337,6 +358,9 @@ data class DibsView(
                         note = who == "note", ts = l.optLong("ts"), files = files(l.optJSONArray("files")), ask = null,
                     )
                 },
+                story = o.optJSONObject("story")?.let { s ->
+                    Story(s.optString("state"), s.long("ts"), s.optBoolean("stale"), s.optBoolean("have"), s.long("since"), s.str("by"))
+                },
             )
         }
 
@@ -363,6 +387,7 @@ data class DibsView(
             ask = o.optJSONObject("ask")?.let { a ->
                 Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"), a.str("hint"))
             },
+            open = o.optJSONObject("open")?.long("story"),
         )
 
         private fun question(o: JSONObject): Question {

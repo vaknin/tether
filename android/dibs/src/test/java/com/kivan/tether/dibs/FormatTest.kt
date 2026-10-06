@@ -88,4 +88,23 @@ class FormatTest {
         assertEquals("0 building", laptopWords(Laptop(null, null, null, null, 0, 0, null)))
         assertNull(laptopWords(Laptop(null, null, null, null, null, null, null)))
     }
+
+    @Test
+    fun aFullStorysLine() {
+        assertEquals("A long read: what it tried, what failed, the choices, what's left", storyWords(null, null))
+        assertEquals("dibs is writing it…", storyWords(Story("writing"), null))
+        assertEquals("Its agent is writing it…", storyWords(Story("writing", by = "agent"), null))
+        assertEquals("Written 21:40 · a new one is being written", storyWords(Story("writing", ts = 5, have = true), "21:40"))
+        assertEquals("Written 21:40", storyWords(Story("ready", ts = 5, have = true), "21:40"))
+        assertEquals("Written 21:40 · the task moved on since", storyWords(Story("ready", ts = 5, stale = true, have = true), "21:40"))
+        assertEquals("It couldn't be written", storyWords(Story("failed"), null))
+        assertEquals("Written 21:40", storyWords(Story("failed", ts = 5, have = true), "21:40"))
+    }
+
+    @Test
+    fun theChipOverTheBox() {
+        assertEquals("About the full story of Recap", aboutWords(About(31, "ask", "Recap")))
+        assertEquals("About a part of the full story of Recap", aboutWords(About(31, "ask", "Recap", "It tried X first.")))
+        assertEquals("Follow-up to Recap", aboutWords(About(31, "follow", "Recap")))
+    }
 }

@@ -29,7 +29,9 @@ internal fun ChatTab(view: DibsView) {
     val pending = remember(all) { all.filter { it.task == null } }
     val hidden = Dibs.hidden.keys.toSet()
     val talk = remember(view.talk, hidden) { view.talk.filter { it.id !in hidden } }
-    val rows = rememberChatRows(talk, pending, ChatLook())
+    // A note that a task's full story is ready opens it ("Read it") while the task is listed.
+    val look = remember(view.yours) { ChatLook(stories = view.yours?.mapTo(HashSet()) { it.id }.orEmpty()) }
+    val rows = rememberChatRows(talk, pending, look)
     val echoes = remember(pending) { pending.associateBy { it.uid } }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -42,7 +44,7 @@ internal fun ChatTab(view: DibsView) {
                     modifier = Modifier.align(Alignment.Center).padding(Space.XL),
                 )
             }
-            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line)
+            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line, look = look)
         }
         InputArea(Dibs.chat, "Message dibs")
     }
