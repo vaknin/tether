@@ -25,6 +25,7 @@ use crate::{
     apps::{self, Apps, Channel},
     fcm,
     ipc::{AppDone, Request},
+    presence,
 };
 
 const RING_TTL: Duration = Duration::from_secs(120);
@@ -57,6 +58,8 @@ pub struct Ctx {
     /// App channels with a client subscribed, and how many.
     pub clients: Clients,
     pub apps: Arc<Apps>,
+    /// The phone's newest presence (`_presence`), for `status` and `watch`.
+    pub presence: presence::Tracker,
 }
 
 pub type Clients = Arc<Mutex<HashMap<String, usize>>>;
@@ -83,8 +86,9 @@ impl Ctx {
         unanswered: fcm::Unanswered,
         clients: Clients,
         apps: Arc<Apps>,
+        presence: presence::Tracker,
     ) -> Self {
-        Self { node, wake, unanswered, hold_until: Arc::default(), clients, apps }
+        Self { node, wake, unanswered, hold_until: Arc::default(), clients, apps, presence }
     }
 
     /// Manifests first, then the channels that only have items (threads), each with its newest
@@ -283,28 +287,40 @@ async fn client(ctx: Ctx, stream: UnixStream) -> Result<()> {
         Err(e) => return reply(&mut w, Err(anyhow::anyhow!("bad request: {e}"))).await,
     };
     if let Request::AppSubscribe { channel } = req {
+        if reserved(&channel) {
+            return reply(&mut w, Err(anyhow::anyhow!("{channel} is the daemon's own channel"))).await;
+        }
         return subscribe(&ctx, channel, lines, w).await;
     }
     if let Request::Watch = req {
         let mut rx = node.events();
+        let mut presence = ctx.presence.subscribe();
         loop {
-            match rx.recv().await {
-                // App data is for its channel's client only; UIs get a notice to re-read.
-                Ok(Event::App { id: Some(_), channel, view, .. }) => {
-                    send_line(&mut w, &json!({ "type": "app", "channel": channel, "view": view })).await?;
-                }
-                Ok(Event::App { id: None, .. }) => {}
-                // A channel's file is its channel's business too: a notice, as for its items.
-                Ok(Event::Message(m)) if m.channel.is_some() => {
-                    send_line(&mut w, &json!({ "type": "app", "channel": m.channel, "view": false })).await?;
-                }
-                Ok(e) => {
-                    let mut line = serde_json::to_vec(&e)?;
-                    line.push(b'\n');
-                    w.write_all(&line).await?;
-                }
-                Err(RecvError::Lagged(n)) => debug!("watcher lagged by {n} events"),
-                Err(RecvError::Closed) => return Ok(()),
+            tokio::select! {
+                ev = rx.recv() => match ev {
+                    // App data is for its channel's client only; UIs get a notice to re-read.
+                    Ok(Event::App { id: Some(_), channel, view, .. }) => {
+                        send_line(&mut w, &json!({ "type": "app", "channel": channel, "view": view })).await?;
+                    }
+                    // Live app frames are their client's; `_presence` comes parsed, below.
+                    Ok(Event::App { id: None, .. }) => {}
+                    // A channel's file is its channel's business too: a notice, as for its items.
+                    Ok(Event::Message(m)) if m.channel.is_some() => {
+                        send_line(&mut w, &json!({ "type": "app", "channel": m.channel, "view": false })).await?;
+                    }
+                    Ok(e) => {
+                        let mut line = serde_json::to_vec(&e)?;
+                        line.push(b'\n');
+                        w.write_all(&line).await?;
+                    }
+                    Err(RecvError::Lagged(n)) => debug!("watcher lagged by {n} events"),
+                    Err(RecvError::Closed) => return Ok(()),
+                },
+                p = presence.recv() => match p {
+                    Ok(p) => send_line(&mut w, &p.watch_json()).await?,
+                    Err(RecvError::Lagged(n)) => debug!("watcher lagged by {n} presence frames"),
+                    Err(RecvError::Closed) => return Ok(()),
+                },
             }
         }
     }
@@ -375,6 +391,7 @@ async fn handle(ctx: &Ctx, req: Request) -> Result<Value> {
             let mut v = serde_json::to_value(node.status()?)?;
             v["wake_unanswered"] = ctx.unanswered.load(std::sync::atomic::Ordering::Relaxed).into();
             v["phone_app"] = node.peer_app()?.into();
+            v["phone_presence"] = ctx.presence.latest().map_or(Value::Null, |p| p.status_json());
             v
         }
         Request::PairOffer => json!({ "code": node.pair_offer() }),
@@ -491,6 +508,12 @@ fn check_channel(channel: &str) -> Result<()> {
     Ok(())
 }
 
+/// The live channels the daemon itself answers (`check_channel` refuses them, as any `_…` name,
+/// for sending); no app client gets their frames either.
+fn reserved(channel: &str) -> bool {
+    channel == ADB_CHANNEL || channel == presence::CHANNEL
+}
+
 /// Completes a laptop UI's action envelope: `from`, `uid` and `ts` unless it set them.
 fn action(data: &str) -> Result<String> {
     let mut v: Value = serde_json::from_str(data).context("an action is a JSON object")?;
@@ -514,5 +537,7 @@ mod tests {
         assert!(action("nope").is_err());
         assert!(check_channel("_channels").is_err());
         assert!(check_channel("teen").is_ok());
+        assert!(check_channel(presence::CHANNEL).is_err());
+        assert!(reserved(presence::CHANNEL) && reserved(ADB_CHANNEL) && !reserved("teen"));
     }
 }

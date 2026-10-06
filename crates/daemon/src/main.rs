@@ -10,6 +10,7 @@ mod lists;
 mod mark;
 mod mpris;
 mod pick;
+mod presence;
 mod viewcheck;
 
 use std::{path::PathBuf, process::ExitCode, time::Duration};
@@ -345,8 +346,11 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
                 warn!("publishing the channel list: {e:#}");
             }
             tokio::spawn(apps::run(node.clone(), clients.clone(), apps.clone()));
+            let presence = presence::Tracker::default();
+            tokio::spawn(presence::run(node.clone(), presence.clone()));
+            let ctx = daemon::Ctx::new(node.clone(), wake, unanswered, clients, apps, presence);
             let res = tokio::select! {
-                r = daemon::serve(daemon::Ctx::new(node.clone(), wake, unanswered, clients, apps), &sock) => r,
+                r = daemon::serve(ctx, &sock) => r,
                 _ = shutdown_signal() => Ok(()),
             };
             node.shutdown().await;
