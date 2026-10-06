@@ -23,8 +23,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.kivan.tether.dibs.Action
 import com.kivan.tether.dibs.Decision
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
@@ -38,15 +40,14 @@ import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
 import org.json.JSONObject
 
-// The Waiting tab: every open question as a full card, then what dibs decided for you. A card
-// answered here goes at once; the next view drops it for good (or shows it again if it didn't take).
+// The Waiting tab: only what needs the user, every open question as a full card (what dibs
+// decided for them is in Recap: the user, 2026-10-06, word 127). A card answered here goes at
+// once; the next view drops it for good (or shows it again if it didn't take).
 
 @Composable
 internal fun WaitingTab(view: DibsView) {
     val now by rememberNow()
-    val armed = rememberArmed()
     val questions = view.questions.filter { "q${it.id}" !in Dibs.answered }
-    val decided = view.decided.filter { it.ack !in Dibs.answered }
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
@@ -56,16 +57,7 @@ internal fun WaitingTab(view: DibsView) {
         items(questions, key = { "q${it.id}" }) { q ->
             QuestionCard(q, now, Modifier.animateItem(), task = q.task?.takeIf { view.task(it) != null })
         }
-        if (decided.isNotEmpty()) {
-            item(key = "_decided") {
-                Row(Modifier.fillMaxWidth().padding(top = Space.L - 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Eyebrow("Decided for you", Modifier.weight(1f))
-                    if (decided.size > 1) ActButton("Got it to all", "plain") { Dibs.ackAll(decided) }
-                }
-            }
-            items(decided, key = { "d${it.id}" }) { d -> DecisionRow(d, now, armed, Modifier.animateItem()) }
-        }
-        if (questions.isEmpty() && decided.isEmpty()) item(key = "_empty") { Quiet("Nothing waiting.") }
+        if (questions.isEmpty()) item(key = "_empty") { Quiet("Nothing waiting on you.") }
     }
 }
 
@@ -77,7 +69,6 @@ internal fun WaitingTab(view: DibsView) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long? = null) {
-    val key = "q${q.id}"
     Column(modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (q.kind == "phone") Icon(painterResource(R.drawable.lucide_smartphone), "Phone request", Modifier.size(14.dp), tint = Palette.Muted)
@@ -88,16 +79,7 @@ internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long
         Text(q.title, style = AppType.body.copy(fontWeight = Bold), color = Palette.Text)
         if (q.why.isNotBlank()) Text(q.why, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
         q.details?.let { Details(q.id, it) }
-        if (q.actions.isNotEmpty()) {
-            FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (a in q.actions) ActButton(a.label, a.style) { Dibs.answer(key, a.label, a.id) }
-            }
-        }
-        q.reply?.let { reply ->
-            AnswerField("q/${q.id}", "Answer…", Modifier.fillMaxWidth().padding(top = 2.dp)) { text ->
-                Dibs.answer(key, text, reply, JSONObject().put("item", q.id.toString()).put("text", text))
-            }
-        }
+        QuestionControls(q.id, "q/${q.id}", q.actions, q.reply, q.hint, Modifier.padding(top = 4.dp))
         if (task != null) {
             Row(
                 Modifier.clip(MaterialTheme.shapes.small).clickable { Dibs.open(Page.Task(task)) }.padding(vertical = 4.dp),
@@ -106,6 +88,46 @@ internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long
             ) {
                 Text("Open task", style = AppType.label, color = Palette.Accent)
                 Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(16.dp), tint = Palette.Accent)
+            }
+        }
+    }
+}
+
+/**
+ * A question's buttons and its box for words, the same in Waiting and the chat ([field] keeps
+ * each place's draft). Sent alone, the words are the answer (on a question that runs something,
+ * dibs reads them and settles it); typed before a tap, they go with it as a comment (the user's
+ * rule: a yes/no question also takes a free comment). Either place answers the one question, so
+ * both close.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun QuestionControls(
+    id: Long,
+    field: String,
+    actions: List<Action>,
+    reply: String?,
+    hint: String?,
+    modifier: Modifier = Modifier,
+    background: Color = Palette.SurfaceLow,
+) {
+    val key = "q$id"
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (actions.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (a in actions) {
+                    ActButton(a.label, a.style) {
+                        // A close (x…) takes no words: it's "no answer".
+                        val comment = Dibs.fields[field]?.trim().orEmpty().takeIf { reply != null && !a.id.startsWith("x") && it.isNotEmpty() }
+                        Dibs.answer(key, a.label, a.id, comment?.let { JSONObject().put("comment", it) })
+                        if (comment != null) Dibs.fields.remove(field)
+                    }
+                }
+            }
+        }
+        reply?.let { r ->
+            AnswerField(field, hint ?: "Answer…", Modifier.fillMaxWidth(), background = background) { text ->
+                Dibs.answer(key, text, r, JSONObject().put("item", id.toString()).put("text", text))
             }
         }
     }
@@ -141,9 +163,9 @@ private fun Details(id: Long, details: String) {
     }
 }
 
-/** Something dibs decided: Got it clears it; Undo asks dibs to undo it (a second press, within 4 s). */
+/** Something decided for the user, in Recap: Undo asks dibs to undo it (a second press, within 4 s). Nothing to clear. */
 @Composable
-private fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifier) {
+internal fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifier) {
     Row(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(painterResource(R.drawable.lucide_check), null, Modifier.size(16.dp), tint = Palette.Success)
         Column(Modifier.weight(1f)) {
@@ -151,12 +173,13 @@ private fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifier
             val meta = listOfNotNull(d.why.ifBlank { null }, d.from.ifBlank { null }, age(now - d.ts)).joinToString(" · ")
             TapFold(meta, "dec:${d.id}", 1, style = AppType.small, color = Palette.Muted)
         }
-        if (d.undo) {
+        if (d.undo && Dibs.answered[d.ack] == "Undo") {
+            Text("Undo asked", style = AppType.small, color = Palette.Muted)
+        } else if (d.undo) {
             val k = "undo${d.id}"
             ActButton(if (armed.key == k) "Undo it?" else "Undo", if (armed.key == k) "" else "plain") {
                 armed.press(k) { Dibs.answer(d.ack, "Undo", "undo", JSONObject().put("item", d.id)) }
             }
         }
-        ActButton("Got it", "") { Dibs.answer(d.ack, "Got it", d.ack) }
     }
 }

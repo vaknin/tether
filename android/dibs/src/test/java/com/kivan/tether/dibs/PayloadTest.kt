@@ -19,21 +19,23 @@ class PayloadTest {
             {"id": "u-1", "n": 63, "who": "user", "text": "Is it ready?", "ts": 1791212000},
             {"id": "s64", "n": 64, "who": "dibs", "text": "Started task x, as you said (\"long quote\").", "short": "Started task x.", "note": true, "ts": 1791212701},
             {"id": "s65", "n": 65, "who": "dibs", "text": "Inside Tether?", "ts": 1791212800,
-             "ask": {"q": 249, "actions": [{"id": "y249", "label": "Yes", "style": "primary"}, {"id": "x249", "label": "Dismiss", "style": "plain"}], "reply": "r249"}},
+             "ask": {"q": 249, "actions": [{"id": "y249", "label": "Yes", "style": "primary"}, {"id": "x249", "label": "Drop this question", "style": "plain"}], "reply": "r249", "hint": "Answer in your own words…"}},
             {"id": "s66", "n": 66, "who": "dibs", "text": "Separate app?", "ts": 1791212900, "ask": {"q": 250, "outcome": "Answered: Inside Tether"}},
             {"id": "u-2", "n": 67, "who": "user", "text": "look", "ts": 1791213000,
              "files": [{"id": "f1", "name": "a.jpg", "size": 1234, "image": true}, {"id": "f2", "name": "log.txt", "size": 9, "image": false}]}
           ],
           "questions": [{"id": 249, "title": "Inside Tether?", "why": "The plan", "details": "Longer", "from": "dibs", "repo": "tether",
                          "ts": 1791212800, "blocking": false, "kind": "phone", "phone": {"secs": 1800, "unlock": true},
-                         "actions": [{"id": "y249", "label": "Lend it", "style": "primary"}], "reply": "r249"}],
+                         "actions": [{"id": "y249", "label": "Lend it", "style": "primary"}], "reply": "r249", "hint": "Add a comment…"}],
           "decided": [{"id": 250, "text": "Shipped", "why": "2 commits", "from": "dibs", "ts": 1791213100, "undo": true, "ack": "k250"}],
           "tasks": [{"id": 16, "name": "build-it", "state": "running", "repo": "tether", "minutes": 112, "text": "Build", "doing": "Writing", "status": "busy", "dir": "~/x"}],
           "sessions": [{"name": "dibs-brain", "repo": "dibs", "branch": "brain-2b", "status": "idle", "task": null, "holds": ["repo:dibs:master", "phone"]}],
           "ships": [{"repo": "dibs", "who": "s", "why": "ship cron", "since": 1791213000, "left": 300}],
           "peek": {"who": "build-it", "at": 1791213400, "lines": ["one", "two"]},
           "recap": {"away": {"id": 4, "title": "While you were away (3h 7m)", "lines": ["Shipped"], "since": 1791200000, "until": 1791211220},
-                    "feed": [{"ts": 1791213000, "kind": "did", "who": "a", "text": "Shipped the fix"}]},
+                    "feed": [{"ts": 1791213000, "kind": "did", "who": "a", "text": "Shipped the fix"}],
+                    "decided": [{"id": 251, "text": "Picked blue", "why": "", "from": "a", "ts": 1791213200, "undo": true, "ack": "k251"},
+                                {"id": 250, "text": "Shipped", "why": "2 commits", "from": "dibs", "ts": 1791213100, "undo": true, "ack": "k250"}]},
           "badges": {"waiting": 2, "work": 1, "recap": 1}
         }}
         """,
@@ -54,6 +56,7 @@ class PayloadTest {
         val ask = d.talk[2].ask!!
         assertTrue(ask.open)
         assertEquals("r249", ask.reply)
+        assertEquals("Answer in your own words…", ask.hint)
         assertEquals(listOf("primary", "plain"), ask.actions.map { it.style })
         assertFalse(d.talk[3].ask!!.open)
         assertEquals("Answered: Inside Tether", d.talk[3].ask!!.outcome)
@@ -66,8 +69,10 @@ class PayloadTest {
         assertEquals("Longer", q.details)
         assertEquals("tether", q.repo)
         assertEquals("r249", q.reply)
+        assertEquals("Add a comment…", q.hint)
 
         assertEquals(Decision(250, "Shipped", "2 commits", "dibs", 1791213100, true, "k250"), d.decided.single())
+        assertEquals("Recap's own list, read ones too", listOf(251L, 250L), d.recapDecided.map { it.id })
         assertEquals("busy", d.tasks.single().status)
         assertEquals(112, d.tasks.single().minutes)
         assertNull(d.sessions.single().task)
@@ -138,7 +143,10 @@ class PayloadTest {
         val q = DibsView.parse(JSONObject("""{"questions": [{"id": 3, "title": "t"}]}""")).questions.single()
         assertEquals("question", q.kind)
         assertNull(q.reply)
+        assertNull(q.hint)
         assertNull(q.phoneSecs)
+        val old = DibsView.parse(JSONObject("""{"decided": [{"id": 9, "text": "x", "undo": false, "ack": "k9"}], "recap": {"feed": []}}"""))
+        assertEquals("an older dibs: Recap shows the unread ones", listOf(9L), old.recapDecided.map { it.id })
         assertNull("an older dibs sends no yours: the old Work tab", d.yours)
         assertNull(q.task)
     }

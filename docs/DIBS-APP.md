@@ -13,9 +13,11 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Four tabs at the bottom, each with a badge:
   1. **Chat** (home): the conversation with dibs, newest at the bottom, the box pinned. Photos and files
      go with a message (📎: photo picker, camera, any file; or Share → dibs from another app). A question
-     asked in the chat carries its buttons on its line.
-  2. **Waiting**: every open question as a full card (line, why, Details, named buttons, an answer box),
-     phone requests, and "decided for you" lines (Got it, Undo).
+     asked in the chat carries its buttons on its line, and every question waiting on the user shows
+     there too (task #66, 2026-10-06: dibs adds a quiet line for it, no notification of its own; the
+     same question as its Waiting card, so answering either closes both).
+  2. **Waiting**: only what needs the user: every open question as a full card (line, why, Details,
+     named buttons, a box for words), phone requests. "Decided for you" moved to Recap (word 127).
   3. **Work**: tasks (state, repo, what it's doing now, how long), the live sessions (busy or idle, what
      they hold), ships in progress. Tap a task for its recent lines; Tell it something; Stop it.
   4. **Recap**: "while you were away" and the day's feed. **One entry per finished piece of work** (the user,
@@ -93,12 +95,13 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
   "lends": {"phone": {"lent": false, "text": "", "until": null, "action": "phone-lend"},
             "laptop": {"lent": true, "text": "Until you take it back · rami-0f is on it", "until": 1791240000, "action": "laptop-back"}}?,
   "talk": [{"id": "64", "who": "user|dibs", "text": "full text", "short": "…"?, "ts": 1791212701,
-            "note": true?, "ask": {"q": 249, "actions": [{"id","label","style"}], "reply": true,
-                                   "outcome": "Inside Tether"?}?,
+            "note": true?, "ask": {"q": 249, "actions": [{"id","label","style"}], "reply": "r249"?,
+                                   "hint": "Add a comment…"?, "outcome": "Inside Tether"?}?,
             "files": [{"id": "<tether file id>", "name": "a.jpg", "size": 123, "image": true}]?}],
   "questions": [{"id": 249, "title": "…", "why": "…", "details": "…"?, "from": "dibs", "repo": "tether"?,
                  "ts": …, "blocking": false, "phone": {"secs": 1800, "unlock": true}?,
-                 "actions": [{"id": "y249", "label": "Yes", "style": "primary"}], "reply": "r249"?}],
+                 "actions": [{"id": "y249", "label": "Yes", "style": "primary"}], "reply": "r249"?,
+                 "hint": "Answer in your own words…"?}],
   "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …}],
   "tasks": [{"id": 16, "name": "…", "state": "running", "repo": "dibs", "minutes": 46,
              "text": "…", "doing": "last line", "background": false}],
@@ -109,7 +112,8 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
             "feed": [{"id": "t25", "ts": …, "kind": "done|stopped|did|closed|update", "who": "…", "text": "what changed, whole",
                       "repo": "…"?, "why": "first sentence of the ask"?, "asked": "the whole ask"?,
                       "more": ["its other lines, whole"]?, "report": "the task's report, whole"?,
-                      "reopen": "<claude session id>"?}]},
+                      "reopen": "<claude session id>"?}],
+            "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …, "undo": true}]?},
   "badges": {"waiting": 3, "work": 1, "recap": 1}
 }
 ```
@@ -123,7 +127,14 @@ handed to the brain as the user's request), `phone-back` (task #19), `phone-lend
 `action` as is; a tap seen more than 10 min late lends nothing, and taps made while an agent works the phone's
 screen lend nothing either).
 `ack-decided` (`value.items`: the decision ids the Waiting tab showed; "Got it to all", questions
-among them stay open). `badges.waiting` counts questions only.
+among them stay open; unused since 0.5.x, when decisions moved to Recap with Undo only). `badges.waiting` counts questions only.
+
+**Questions' buttons and words (task #66, 2026-10-06).** Each button says what a tap does (dibs's
+docs/PLAN.md, "Question buttons", lists every kind). An `x<id>` button (a close: "Drop this
+question", "Never offer it") comes only where it differs from the second one, so a card has two or
+three. Every question but the weekly retro's has `reply` and a `hint` (its box's placeholder): the
+words sent alone are `r<id>` as before; typed and then a button tapped (not `x`), the tap carries
+them as `value.comment`, which dibs hands to its brain (the tap still answers).
 
 ### Files to dibs (Tether's core and daemon)
 - New body `Body::ChannelFile { channel, name, size, sha256 }`, appended to the enum (an older peer

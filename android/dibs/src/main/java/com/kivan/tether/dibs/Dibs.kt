@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
@@ -252,13 +251,6 @@ object Dibs {
     fun answer(key: String, label: String, action: String, value: JSONObject? = null) {
         answered[key] = label
         host.act(action, value)
-    }
-
-    /** Got it to every decision in [decided] at once (`ack-decided`); questions are never among them. */
-    fun ackAll(decided: List<Decision>) {
-        if (decided.isEmpty()) return
-        decided.forEach { answered[it.ack] = "Got it" }
-        host.act("ack-decided", JSONObject().put("items", JSONArray(decided.map { it.id })))
     }
 
     fun toggle(key: String) {

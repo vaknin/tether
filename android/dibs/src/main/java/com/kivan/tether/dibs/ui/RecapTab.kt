@@ -3,6 +3,7 @@ package com.kivan.tether.dibs.ui
 import android.text.format.DateFormat
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -56,11 +58,19 @@ import java.time.ZoneId
 import java.util.Date
 import org.json.JSONObject
 
-// The Recap tab: "while you were away" first, then the day's feed, newest first, grouped by day:
-// one row per piece of work (dibs folds a task's lines into one), a tap for the whole story.
+// The Recap tab: "while you were away" first, then what was decided for you (Undo, nothing to
+// clear: the user, 2026-10-06, word 127, wants Waiting for what needs them only), then the day's
+// feed, newest first, grouped by day: one row per piece of work (dibs folds a task's lines into
+// one), a tap for the whole story.
+
+/** Decisions shown before "Show all". */
+private const val DECIDED_SHOWN = 3
+private const val DECIDED_ALL = "recap:decided"
 
 @Composable
 internal fun RecapTab(view: DibsView) {
+    val now by rememberNow()
+    val armed = rememberArmed()
     val away = view.away?.takeIf { "w${it.id}" !in Dibs.answered }
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
@@ -74,6 +84,21 @@ internal fun RecapTab(view: DibsView) {
             item(key = "_away") { AwayCard(away) }
         } else {
             item(key = "_hero") { Hero("Done today", "${days[today]?.count { it.kind != "update" } ?: 0}") }
+        }
+        if (view.recapDecided.isNotEmpty()) {
+            val all = Dibs.open[DECIDED_ALL] == true
+            item(key = "_decided") { Section("Decided for you") }
+            items(if (all) view.recapDecided else view.recapDecided.take(DECIDED_SHOWN), key = { "d${it.id}" }) { d -> DecisionRow(d, now, armed, Modifier) }
+            if (view.recapDecided.size > DECIDED_SHOWN) {
+                item(key = "_decided_more") {
+                    Text(
+                        if (all) "Show fewer" else "Show all ${view.recapDecided.size}",
+                        Modifier.clip(MaterialTheme.shapes.small).clickable { Dibs.toggle(DECIDED_ALL) }.padding(vertical = 6.dp),
+                        style = AppType.label,
+                        color = Palette.Accent,
+                    )
+                }
+            }
         }
         for ((day, items) in days) {
             item(key = "day-$day") { Section(dayWords(day, today)) }

@@ -10,8 +10,11 @@ data class Action(val id: String, val label: String, val style: String = "")
 
 data class FileRef(val id: String, val name: String, val size: Long, val image: Boolean)
 
-/** A question asked in the chat: its buttons while open, then how it ended. */
-data class Ask(val q: Long, val actions: List<Action>, val reply: String?, val outcome: String?) {
+/**
+ * A question in the chat: its buttons while open (and a box for words, [hint] its placeholder),
+ * then how it ended.
+ */
+data class Ask(val q: Long, val actions: List<Action>, val reply: String?, val outcome: String?, val hint: String? = null) {
     val open: Boolean get() = outcome == null
 }
 
@@ -45,6 +48,8 @@ data class Question(
     val actions: List<Action>,
     /** The typed answer's action id (`r<id>`), when it takes one. */
     val reply: String?,
+    /** The box's placeholder: an answer in words, or a comment on a question that runs something. */
+    val hint: String? = null,
     val phoneSecs: Long?,
     val phoneUnlock: Boolean,
     /** Asked by one of the user's tasks ([YourTask.id]). */
@@ -217,6 +222,8 @@ data class DibsView(
     val talk: List<TalkLine>,
     val questions: List<Question>,
     val decided: List<Decision>,
+    /** What was decided for the user lately, read or not: Recap's "Decided for you" (an older dibs: [decided]). */
+    val recapDecided: List<Decision>,
     val tasks: List<Task>,
     val sessions: List<Session>,
     val ships: List<Ship>,
@@ -250,9 +257,8 @@ data class DibsView(
                 ),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
-                decided = o.optJSONArray("decided").objects().map {
-                    Decision(it.optLong("id"), it.optString("text"), it.optString("why"), it.optString("from"), it.optLong("ts"), it.optBoolean("undo"), it.optString("ack"))
-                },
+                decided = o.optJSONArray("decided").objects().map(::decision),
+                recapDecided = (if (recap.has("decided")) recap.optJSONArray("decided") else o.optJSONArray("decided")).objects().map(::decision),
                 tasks = o.optJSONArray("tasks").objects().map {
                     val started = it.optLong("started")
                     val minutes = if (started > 0) (System.currentTimeMillis() / 1000 - started) / 60 else it.optLong("minutes")
@@ -319,6 +325,9 @@ data class DibsView(
             )
         }
 
+        private fun decision(o: JSONObject) =
+            Decision(o.optLong("id"), o.optString("text"), o.optString("why"), o.optString("from"), o.optLong("ts"), o.optBoolean("undo"), o.optString("ack"))
+
         private fun files(a: JSONArray?) = a.objects().map { FileRef(it.optString("id"), it.optString("name"), it.optLong("size"), it.optBoolean("image")) }
 
         private fun lendToggle(o: JSONObject): LendToggle? =
@@ -334,7 +343,7 @@ data class DibsView(
             ts = o.optLong("ts"),
             files = files(o.optJSONArray("files")),
             ask = o.optJSONObject("ask")?.let { a ->
-                Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"))
+                Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"), a.str("hint"))
             },
         )
 
@@ -352,6 +361,7 @@ data class DibsView(
                 kind = o.optString("kind", "question"),
                 actions = actions(o.optJSONArray("actions")),
                 reply = o.str("reply"),
+                hint = o.str("hint"),
                 phoneSecs = phone?.optLong("secs"),
                 phoneUnlock = phone?.optBoolean("unlock") == true,
                 task = o.long("task"),

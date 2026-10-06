@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -127,7 +126,6 @@ import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
@@ -414,21 +412,10 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
     }
 }
 
-/** An open question's buttons (the first is the main one) and, when it takes one, a typed answer. */
-@OptIn(ExperimentalLayoutApi::class)
+/** An open question's buttons (the first is the main one) and its box for words, as on its Waiting card. */
 @Composable
 private fun AskButtons(ask: Ask) {
-    val key = "q${ask.q}"
-    if (ask.actions.isNotEmpty()) {
-        FlowRow(Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (a in ask.actions) ActButton(a.label, a.style) { Dibs.answer(key, a.label, a.id) }
-        }
-    }
-    ask.reply?.let { reply ->
-        AnswerField("ask/${ask.q}", "Answer…", Modifier.fillMaxWidth(), background = Palette.SurfaceLow) { text ->
-            Dibs.answer(key, text, reply, JSONObject().put("item", ask.q.toString()).put("text", text))
-        }
-    }
+    QuestionControls(ask.q, "ask/${ask.q}", ask.actions, ask.reply, ask.hint, Modifier.padding(top = 3.dp))
 }
 
 /** A message of mine not in a view yet: what was picked for it, its text, a clock (and how far its files got). */
