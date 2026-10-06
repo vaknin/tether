@@ -176,6 +176,34 @@ async fn a_file_gone_before_sending_fails_and_is_cancelled() {
     assert_eq!(a.status().unwrap().queued, 0);
 }
 
+/// When both sides dial at once, a file can fail on the link that just lost, after the winner's
+/// resend went out without the cancel (the flake of the test above, 2026-10-06). The cancel must
+/// still reach the peer, on the winner.
+#[tokio::test]
+async fn a_file_failing_on_a_replaced_link_is_cancelled_on_the_new_one() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = paired(d.path()).await;
+    let (mut ea, mut eb) = (a.events(), b.events());
+    a.connect().await.unwrap();
+    let old = a.inner.current().unwrap();
+    a.inner.drop_link(CLOSE_DUPLICATE, b"duplicate");
+    wait_for(&mut eb, |e| matches!(e, Event::Disconnected)).await;
+    a.connect().await.unwrap();
+    assert_ne!(a.inner.current().unwrap().serial, old.serial);
+
+    // Queued after the new link's resend; the peer had it from the old link.
+    let gone = d.path().join("gone.pdf");
+    let body = Body::File { name: "gone.pdf".into(), size: 3, sha256: [0; 32] };
+    let f = a.inner.db(|s| s.enqueue(body, Some(gone), None)).unwrap();
+    b.inner.db(|s| s.receive(&f.item())).unwrap();
+    // The old link's FileWant is served only now.
+    assert!(a.inner.stream_file(&old, f.id, 0).await.is_err());
+
+    wait_for(&mut ea, |e| matches!(e, Event::SendFailed { id, .. } if *id == f.id)).await;
+    wait_for(&mut ea, |e| msg_in(e, f.id, State::Cancelled)).await;
+    assert_eq!(b.db_state(f.id), State::Cancelled);
+}
+
 #[tokio::test]
 async fn a_file_without_a_path_fails_once_instead_of_every_link() {
     let d = tempfile::tempdir().unwrap();

@@ -481,10 +481,7 @@ impl Node {
     /// Sends live state (media, notifications, StopRing, …). Never queued: returns false when
     /// there is no link.
     pub fn send_live(&self, frame: Frame) -> bool {
-        match self.inner.current() {
-            Some(l) => l.tx.send(frame).is_ok(),
-            None => false,
-        }
+        self.inner.send_live(frame)
     }
 
     /// Keeps the link open past the idle timeout (media playing, chat open) and tells the peer.
@@ -572,6 +569,15 @@ impl Inner {
 
     fn current(&self) -> Option<Link> {
         self.link.lock().unwrap().clone().filter(|l| l.conn.close_reason().is_none())
+    }
+
+    /// Sends on the link that is current now. A frame that settles a change already in the
+    /// store (a cancel, an ack) goes here, not on the link of the task that made the change: when
+    /// both sides dial at once, that link can have been replaced meanwhile, and the new link's
+    /// resend ran before the change, so the frame would wait for yet another link. A link made
+    /// after the change resends it itself.
+    fn send_live(&self, frame: Frame) -> bool {
+        self.current().is_some_and(|l| l.tx.send(frame).is_ok())
     }
 
     fn drop_link(&self, code: u32, reason: &[u8]) {
@@ -916,13 +922,13 @@ impl Inner {
     }
 
     /// Gives up on a file of mine that can't be sent: cancelled like [`Node::cancel`], so the
-    /// peer drops its part, plus [`Event::SendFailed`] with the reason.
-    fn fail_send(&self, link: &Link, msg: &Message, reason: &str) -> Result<()> {
+    /// peer drops its part, plus [`Event::SendFailed`] with the reason. Only once per file, though
+    /// two links can ask for it at once.
+    fn fail_send(&self, msg: &Message, reason: &str) -> Result<()> {
+        let Some(m) = self.db(|s| s.cancel(msg.id))? else { return Ok(()) };
         warn!("file {} can't be sent: {reason}", msg.id);
-        if let Some(m) = self.db(|s| s.cancel(msg.id))? {
-            self.emit(Event::Message(m));
-            let _ = link.tx.send(Frame::Cancel { id: msg.id });
-        }
+        self.emit(Event::Message(m));
+        self.send_live(Frame::Cancel { id: msg.id });
         let name = msg.file_name.clone().unwrap_or_else(|| "file".into());
         self.emit(Event::SendFailed { id: msg.id, name, reason: reason.into() });
         Ok(())
@@ -945,14 +951,14 @@ impl Inner {
             .context("not a queued file of mine")?;
         // A queued file with no path can never be sent: fail it once instead of on every link.
         let Some(path) = msg.path.clone() else {
-            self.fail_send(link, &msg, "the file has no local copy")?;
+            self.fail_send(&msg, "the file has no local copy")?;
             bail!("file {id} has no local path");
         };
         let size = msg.file_size.unwrap_or(0);
         let mut f = match tokio::fs::File::open(&path).await {
             Ok(f) => f,
             Err(e) => {
-                self.fail_send(link, &msg, "the file is gone")?;
+                self.fail_send(&msg, "the file is gone")?;
                 return Err(e).with_context(|| format!("open {}", path.display()));
             }
         };
@@ -974,7 +980,7 @@ impl Inner {
             let n = f.read(&mut buf[..want]).await?;
             if n == 0 {
                 let _ = s.reset(RESET_CANCELLED.into());
-                self.fail_send(link, &msg, "the file changed while sending")?;
+                self.fail_send(&msg, "the file changed while sending")?;
                 bail!("{} shrank while sending", path.display());
             }
             s.write_all(&buf[..n]).await?;
@@ -1098,7 +1104,7 @@ impl Inner {
             return Ok(());
         };
         self.emit(Event::Message(m));
-        let _ = link.tx.send(Frame::Ack { id: hdr.id });
+        self.send_live(Frame::Ack { id: hdr.id });
         Ok(())
     }
 
