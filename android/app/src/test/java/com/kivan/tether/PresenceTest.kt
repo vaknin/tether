@@ -25,6 +25,16 @@ class PresenceTest {
     }
 
     @Test
+    fun anUnlockAfterTheScreenWentOffIsAlwaysSent() {
+        val g = Presence.Gate()
+        assertTrue(g.unlock(1_000))
+        g.screenOff()
+        // Off and on again within the minute: the laptop heard "off", so it must hear this unlock.
+        assertTrue(g.unlock(21_000))
+        assertFalse(g.unlock(30_000))
+    }
+
+    @Test
     fun renewalsFollowTheLastPresentSent() {
         val g = Presence.Gate()
         assertEquals("nothing sent yet: a full period", Presence.RENEW_MS, g.renewIn(0))

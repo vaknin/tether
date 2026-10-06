@@ -16,9 +16,10 @@ import kotlinx.coroutines.launch
  * Tells the laptop when the user unlocks or uses the phone, so dibs knows they're on it even away
  * from home: live frames on the reserved channel `_presence` (the daemon's `presence.rs`), never
  * queued. Battery (CLAUDE.md "Battery"): an unlock dials at most once a minute ([DEBOUNCE_MS]),
- * a `use` renewal dials every [RENEW_MS] only while the screen is on and unlocked, and `off` goes
- * only over a link that is already up. There's no service of its own: [PhoneListener], which the
- * system keeps bound, registers the receiver ([start]/[stop]).
+ * unless the screen went off in between (the laptop heard "off", and the link from the last unlock
+ * is usually still up then); a `use` renewal dials every [RENEW_MS] only while the screen is on and
+ * unlocked; and `off` goes only over a link that is already up. There's no service of its own:
+ * [PhoneListener], which the system keeps bound, registers the receiver ([start]/[stop]).
  *
  * Data: `{"op":"present","why":"unlock"|"use","ts":<epoch ms>}` and `{"op":"off","ts":<ms>}`.
  */
@@ -51,6 +52,14 @@ object Presence {
         /** A `use` renewal went out. */
         fun renewed(now: Long) {
             lastPresent = now
+        }
+
+        /**
+         * The screen went off (and the laptop was told, if a link was up): the next unlock is sent
+         * whenever it comes, or the laptop would think the user gone while they're on the phone.
+         */
+        fun screenOff() {
+            lastUnlock = null
         }
 
         /** How long until the next renewal: [renewMs] after the last `present` sent, at once if overdue. */
@@ -99,6 +108,7 @@ object Presence {
             Intent.ACTION_SCREEN_ON -> if (!keyguardLocked()) unlocked()
             Intent.ACTION_SCREEN_OFF -> {
                 main.removeCallbacks(renew)
+                gate.screenOff()
                 val data = off(System.currentTimeMillis())
                 if (Core.sendLive { it.sendAppLive(CHANNEL, data) }) Log.i(TAG, "presence: off")
             }

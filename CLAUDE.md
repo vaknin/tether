@@ -48,7 +48,7 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   frames on the reserved channel `_presence` (never queued): `{"op":"present","why":"unlock"|"use","ts":<phone ms>}`
   and `{"op":"off","ts":…}`. `PhoneListener` (bound by the system, so no service of ours) registers the receiver
   for USER_PRESENT, SCREEN_ON (counts as an unlock when the keyguard isn't locked) and SCREEN_OFF. Battery: an
-  unlock dials at most once a minute; while the screen stays on and unlocked a `use` renewal dials every 5 min;
+  unlock dials at most once a minute (unless the screen went off between, as the laptop was told "off"); while the screen stays on and unlocked a `use` renewal dials every 5 min;
   `off` goes only over a link already up (`Core.sendLive`), never dials; nothing while refused or unpaired. The
   daemon keeps the newest (by the phone's ts) in memory: `tether watch` gets
   `{"type":"presence","op","why"|null,"ts_ms","got_ms"}` per frame, `tether status --json` `phone_presence`
