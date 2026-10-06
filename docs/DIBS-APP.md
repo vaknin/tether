@@ -20,7 +20,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
   2. **Waiting**: only what needs the user: every open question as a full card (line, why, Details,
      named buttons, a box for words), phone requests. "Decided for you" moved to Recap (word 127).
   3. **Work**: tasks (state, repo, what it's doing now, how long), the live sessions (busy or idle, what
-     they hold), ships in progress. Tap a task for its recent lines; Tell it something; Stop it.
+     they hold), ships in progress. Tap a task for its recent lines; Stop it. (No "Tell it": the user talks only to dibs, word 221.)
   4. **Recap**: "while you were away" and the day's feed. **One entry per finished piece of work** (the user,
      2026-10-05, task #31: a finished task showed three or four near-identical lines, some technical, cut with
      "…" and nothing behind a tap): a short plain line of what changed for them, "You asked: …" (why), whose
@@ -84,7 +84,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -244,7 +244,7 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
      tether · 3 changes" with their "For you" lines.
    - **You asked:** folded (it was written for the agent).
    - **Transcript.**
-   - The chat with its agent (below).
+   - The earlier messages with its agent, read-only (below), and **Ask dibs about it**.
    - The top bar has **Tick off ✓** once the task is finished, Stop while it runs, and Open on laptop in the ⋮ menu.
 3. **The transcript** reads like a document from the top, with "↓ End" to jump.
    - The task's prompt comes first, folded.
@@ -256,12 +256,12 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
    - Seams between the task's sessions read "Continued in a fresh context" (after a handoff or /clear) or "Reopened
      22:10".
    - A running task's transcript is a snapshot: "As of 21:40 · Refresh".
-4. **The task chat goes straight to that task's own agent, not to dibs's brain** (the user, relayed by the brain,
-   2026-10-05).
-   - The user's message goes into that agent's Claude session, and its replies come back into this chat.
-   - The bubbles, day headers and input bar are the dibs chat's ("Message <title>…", 📎 for photos and files).
-   - The agent's bubbles carry its name. "<title> is on it" shows as dots while its session is busy.
-   - Muted lines say what dibs did: "Reopened its chat on the laptop", "Its chat can't be reopened: <why>".
+4. **No chat with the task's agent** (the user, word 221, 2026-10-06: "I ONLY talk to dibs, never to other agents").
+   Until then (2026-10-05) the page had a box that went straight to the agent; it's gone.
+   - The messages exchanged before stay, read-only, under "Earlier messages", in the dibs chat's bubbles.
+   - **Ask dibs about it** at the bottom opens the dibs chat with "About <title>: " typed in. dibs passes on what's
+     for the agent (`dibs task tell`).
+   - "<title> is on it" shows as dots while its session is busy.
 
 ### Data (dibs → phone)
 These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Older apps keep `tasks` and the Work tab.
@@ -297,7 +297,8 @@ These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Olde
 
 ### Actions (phone → dibs)
 - New:
-  - `task-say` (`value.task`, `value.text`, `value.files`?): a message to that task's agent.
+  - `task-say` (`value.task`, `value.text`, `value.files`?): sent only by apps before 0.5.5. Since word 221 dibs hands
+    it to its brain as the user's chat line about that task, never to the agent.
   - `tick` / `untick` (`value.task`).
   - `seen` (`value.task`): sent when its page opens. It clears `unread` and the task's ping.
   - `fetch` (`value.task`, `value.what`: `transcript|report`).
