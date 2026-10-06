@@ -54,7 +54,7 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   `{"type":"presence","op","why"|null,"ts_ms","got_ms"}` per frame, `tether status --json` `phone_presence`
   (the same without `type`, null until the first frame since the daemon started). `_presence` and `_adb` are
   refused for sending (`check_channel`, as any `_…`) and for `app_subscribe`.
-- dibs's own app (`android/dibs`, Gradle module `:dibs`, plan in `docs/DIBS-APP.md`, version 0.5.9): `DibsActivity`
+- dibs's own app (`android/dibs`, Gradle module `:dibs`, plan in `docs/DIBS-APP.md`, version 0.5.10): `DibsActivity`
   (own launcher icon and Recents card) with four tabs (Chat, Waiting, Tasks, Recap) drawn from the `dibs` payload in
   the dibs channel's view (`Payload.kt`; chat folding in `ChatModel.kt`, task order in `TasksModel.kt`, unit-tested).
   Tasks holds the user's own tasks (`yours`) until ticked, with dibs's own work folded at its bottom (a dibs without

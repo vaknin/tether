@@ -164,7 +164,9 @@ data class Laptop(
 )
 
 /**
- * [usage]: the line while dibs is out of usage. [limits]: the plan's windows, and [laptop] the
+ * [usage]: the line while dibs is out of usage. [doing] and [words]: what the brain is doing
+ * ("working|idle|out|starting|off"; "Out of usage until 12:20"), from a dibs that sends them (older
+ * ones don't: [stateWords] falls back to [busy] and [usage]). [limits]: the plan's windows, and [laptop] the
  * laptop's state (a dibs that sends them).
  */
 data class State(
@@ -174,6 +176,8 @@ data class State(
     val usage: String?,
     val limits: List<Limit> = emptyList(),
     val laptop: Laptop? = null,
+    val doing: String? = null,
+    val words: String? = null,
 )
 
 data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
@@ -323,6 +327,7 @@ data class DibsView(
                     st.optJSONObject("laptop")?.let { l ->
                         Laptop(l.long("mem_used"), l.long("mem_total"), l.double("load"), l.long("cores")?.toInt(), l.long("builds")?.toInt(), l.long("waiting")?.toInt(), l.long("agents")?.toInt())
                     },
+                    st.str("doing"), st.str("words"),
                 ),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
