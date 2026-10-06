@@ -220,6 +220,24 @@ class PayloadTest {
         assertNull(old.state.laptop)
     }
 
+    @Test
+    fun readsWhetherTheBrainIsOnButDown() {
+        val down = DibsView.ofView(JSONObject("""{"dibs": {"state": {"brain": null, "enabled": true, "busy": false, "doing": "down", "words": "Not running"}}}"""))!!
+        assertEquals(true, down.state.enabled)
+        assertEquals(true, down.state.brainDown)
+        assertEquals("Not running", stateWords(Link.CONNECTED, down.state))
+        val up = DibsView.ofView(JSONObject("""{"dibs": {"state": {"brain": "running", "enabled": true}}}"""))!!
+        assertEquals(false, up.state.brainDown)
+        val starting = DibsView.ofView(JSONObject("""{"dibs": {"state": {"brain": "starting", "enabled": true}}}"""))!!
+        assertEquals(false, starting.state.brainDown)
+        val off = DibsView.ofView(JSONObject("""{"dibs": {"state": {"brain": null, "enabled": false}}}"""))!!
+        assertEquals(false, off.state.brainDown)
+        // An older dibs sends no "enabled": no button.
+        val old = DibsView.ofView(JSONObject("""{"dibs": {"state": {"busy": true}}}"""))!!
+        assertEquals(false, old.state.enabled)
+        assertEquals(false, old.state.brainDown)
+    }
+
     // As dibs writes a task's full story (task #85): absent until asked, and its "ready" note in the chat.
     @Test
     fun fullStories() {

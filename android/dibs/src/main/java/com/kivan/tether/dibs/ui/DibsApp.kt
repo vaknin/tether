@@ -209,40 +209,48 @@ private fun Header(link: Link, state: State?, typing: Boolean) {
         state.doing == null && !state.busy && !state.usage.isNullOrBlank() -> Palette.Warning
         else -> Palette.Accent
     }
-    Row(
-        Modifier.fillMaxWidth().background(Palette.Bg).statusBarsPadding().padding(start = Space.L, end = Space.XS, top = 6.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(36.dp).clip(CircleShape).background(Palette.Tile), contentAlignment = Alignment.Center) {
-            // The launcher's monochrome layer: its mark fills 46 of 108 dp, so draw it larger than the tile.
-            Icon(painterResource(R.drawable.ic_dibs_monochrome), null, Modifier.requiredSize(48.dp), tint = Palette.Text)
-        }
-        // The usage steps aside while typing. With it, the state takes what it needs up to 130 dp (a
-        // longer one, "Waiting for dibs", wraps), and the usage the rest; without, all of it.
-        val limits = state?.limits?.takeIf { it.isNotEmpty() && !typing }
-        Column(
-            (if (limits != null) Modifier.widthIn(max = 130.dp) else Modifier.weight(1f)).padding(start = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+    Column(Modifier.fillMaxWidth().background(Palette.Bg).statusBarsPadding()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = Space.L, end = Space.XS, top = 6.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Eyebrow(words, color = color)
-            Text("dibs", style = AppType.heading, color = Palette.Text)
-        }
-        if (limits != null) {
-            Box(Modifier.weight(1f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) { Usage(limits) }
-        }
-        Box {
-            IconButton(onClick = { menu = true }) {
-                Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More", tint = Palette.Muted)
+            Box(Modifier.size(36.dp).clip(CircleShape).background(Palette.Tile), contentAlignment = Alignment.Center) {
+                // The launcher's monochrome layer: its mark fills 46 of 108 dp, so draw it larger than the tile.
+                Icon(painterResource(R.drawable.ic_dibs_monochrome), null, Modifier.requiredSize(48.dp), tint = Palette.Text)
             }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(
-                    text = { Text("Open Tether") },
-                    leadingIcon = { Icon(painterResource(R.drawable.lucide_external_link), null, Modifier.size(18.dp)) },
-                    onClick = {
-                        menu = false
-                        Dibs.host.openTether()
-                    },
-                )
+            // The usage steps aside while typing. With it, the state takes what it needs up to 130 dp (a
+            // longer one, "Waiting for dibs", wraps), and the usage the rest; without, all of it.
+            val limits = state?.limits?.takeIf { it.isNotEmpty() && !typing }
+            Column(
+                (if (limits != null) Modifier.widthIn(max = 130.dp) else Modifier.weight(1f)).padding(start = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Eyebrow(words, color = color)
+                Text("dibs", style = AppType.heading, color = Palette.Text)
+            }
+            if (limits != null) {
+                Box(Modifier.weight(1f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) { Usage(limits) }
+            }
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More", tint = Palette.Muted)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Open Tether") },
+                        leadingIcon = { Icon(painterResource(R.drawable.lucide_external_link), null, Modifier.size(18.dp)) },
+                        onClick = {
+                            menu = false
+                            Dibs.host.openTether()
+                        },
+                    )
+                }
+            }
+        }
+        // dibs's brain is on but down: one tap starts it (your start: no limit holds it back).
+        if (link == Link.CONNECTED && state?.brainDown == true) {
+            Row(Modifier.fillMaxWidth().padding(start = Space.L, end = Space.L, bottom = 10.dp), horizontalArrangement = Arrangement.End) {
+                ActButton("Start dibs", "primary") { Dibs.host.act("brain-start") }
             }
         }
     }

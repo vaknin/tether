@@ -186,7 +186,12 @@ data class State(
     val doing: String? = null,
     val words: String? = null,
     val hold: Hold? = null,
-)
+    /** dibs's brain is switched on (it may still be down: [brain] null). */
+    val enabled: Boolean = false,
+) {
+    /** The brain is on but neither running nor starting: the header offers "Start dibs". */
+    val brainDown: Boolean get() = brain == null && enabled
+}
 
 data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
 
@@ -339,6 +344,7 @@ data class DibsView(
                     },
                     st.str("doing"), st.str("words"),
                     st.optJSONObject("hold")?.let(::hold),
+                    enabled = st.optBoolean("enabled"),
                 ),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
