@@ -515,12 +515,14 @@ fn reserved(channel: &str) -> bool {
 }
 
 /// Completes a laptop UI's action envelope: `from`, `uid` and `ts` unless it set them.
+/// A local action's envelope. `from` and `ts` are always ours: a local caller can't pass its
+/// action off as the phone's, or date it back (dibs takes a phone tap as the user's own word).
 fn action(data: &str) -> Result<String> {
     let mut v: Value = serde_json::from_str(data).context("an action is a JSON object")?;
     let o = v.as_object_mut().context("an action is a JSON object")?;
-    o.entry("from").or_insert_with(|| json!("laptop"));
+    o.insert("from".into(), json!("laptop"));
     o.entry("uid").or_insert_with(|| json!(uuid::Uuid::new_v4().to_string()));
-    o.entry("ts").or_insert_with(|| json!(tether_core::store::now_ms()));
+    o.insert("ts".into(), json!(tether_core::store::now_ms()));
     Ok(v.to_string())
 }
 
@@ -533,6 +535,10 @@ mod tests {
         let v: Value = serde_json::from_str(&action(r#"{"action":"add","uid":"u1"}"#).unwrap()).unwrap();
         assert_eq!((v["action"].as_str(), v["from"].as_str(), v["uid"].as_str()), (Some("add"), Some("laptop"), Some("u1")));
         assert!(v["ts"].as_i64().is_some_and(|t| t > 0));
+        // Posing as the phone, or backdating, doesn't stick.
+        let v: Value = serde_json::from_str(&action(r#"{"action":"a42","from":"phone","ts":1}"#).unwrap()).unwrap();
+        assert_eq!(v["from"].as_str(), Some("laptop"));
+        assert!(v["ts"].as_i64().is_some_and(|t| t > 1));
         assert!(action("[1]").is_err());
         assert!(action("nope").is_err());
         assert!(check_channel("_channels").is_err());

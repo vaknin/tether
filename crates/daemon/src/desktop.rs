@@ -78,6 +78,8 @@ async fn on_file(who: &str, path: &Path) -> Result<()> {
         });
     }
     let headline = format!("{who} sent a file");
+    // A name like `--image=…` would be read as the toast's option: lead it with an invisible joiner.
+    let name = if name.starts_with('-') { format!("\u{2060}{name}") } else { name };
     args.extend([headline.as_str(), name.as_str()]);
     toast(&args, &["xdg-open", &path.to_string_lossy()]).await
 }
