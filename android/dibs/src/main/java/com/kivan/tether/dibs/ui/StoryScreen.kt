@@ -79,8 +79,9 @@ private val StoryLook = ReadLook(
 internal fun StoryScreen(id: Long, view: DibsView) {
     val t = view.task(id) ?: return Gone()
     val s = t.story
-    // Opening asks for it (dibs writes one if none is kept); after a failure only Try again does.
-    val fetch = rememberFetch(id, "story", since = s?.ts ?: 0, ask = !(s?.state == "failed" && !s.have))
+    // Opening asks for it only when it was never asked for (dibs writes one) or one is ready to get.
+    // While one is written, or after a failure, it never asks: each ask could start a paid write.
+    val fetch = rememberFetch(id, "story", since = s?.ts ?: 0, ask = s == null || s.state == "ready")
     // Asked to write it again here: it shows as being written until dibs's view moves on.
     var again by remember(id, s?.state, s?.since) { mutableStateOf(false) }
     val writeAgain = {
@@ -92,7 +93,8 @@ internal fun StoryScreen(id: Long, view: DibsView) {
     // A newer one was written than the file here: dibs sends it when done; ask once if it doesn't come.
     var askedFor by remember(id) { mutableStateOf<Long?>(null) }
     LaunchedEffect(s?.ts, fetch.file, fetch.loaded) {
-        val ts = s?.ts ?: return@LaunchedEffect
+        if (s?.state != "ready") return@LaunchedEffect
+        val ts = s.ts ?: return@LaunchedEffect
         val f = fetch.file
         if (!fetch.loaded || fetch.waiting || ts == askedFor || (f != null && f.lastModified() / 1000 >= ts)) return@LaunchedEffect
         delay(STORY_NUDGE_MS)

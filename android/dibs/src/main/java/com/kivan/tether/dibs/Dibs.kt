@@ -106,8 +106,17 @@ class Composer(val task: Long?) {
     /** What the next message is about (a full story), shown as a chip over the box; the dibs chat's only. */
     var about by mutableStateOf<About?>(null)
 
+    /**
+     * There is something to send: words or files. A follow-up's "Follow-up: " alone isn't words
+     * (sent bare, dibs would start a task from nothing).
+     */
+    val canSend: Boolean
+        get() = picked.isNotEmpty() ||
+            (if (about?.kind == "follow") draft.trim().removePrefix(Dibs.FOLLOW_UP.trim()) else draft).isNotBlank()
+
     /** Sends the box (text and picked files); it shows as pending until the view lists its uid. */
     fun send() {
+        if (!canSend) return
         val text = draft.trim()
         val files = picked.toList()
         if (text.isEmpty() && files.isEmpty()) return
@@ -250,7 +259,7 @@ object Dibs {
         chat.about = null
     }
 
-    private const val FOLLOW_UP = "Follow-up: "
+    internal const val FOLLOW_UP = "Follow-up: "
 
     internal fun addPending(p: Pending) {
         _pending.update { it + p }

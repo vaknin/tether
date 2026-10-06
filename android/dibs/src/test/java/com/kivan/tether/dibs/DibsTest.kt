@@ -43,6 +43,12 @@ class DibsTest {
     fun aFollowUpIsSaidInTheDraftAndGoesWithTheChip() {
         Dibs.chatAboutStory(task, "follow")
         assertEquals("Follow-up: ", Dibs.chat.draft)
+        assertFalse("the prefix alone isn't a message", Dibs.chat.canSend)
+        Dibs.chat.send()
+        assertTrue(host.acts.isEmpty())
+        Dibs.chat.draft = "Follow-up: use the cache"
+        assertTrue(Dibs.chat.canSend)
+        Dibs.chat.draft = "Follow-up: "
         Dibs.chatAboutStory(task, "follow")
         assertEquals("not twice", "Follow-up: ", Dibs.chat.draft)
         Dibs.dropAbout()

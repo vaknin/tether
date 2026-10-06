@@ -386,17 +386,18 @@ the app (0.5.7) asks for it, shows it and lets them talk to dibs about it.
   failed, the choices, what's left" until asked, then "dibs is writing it…" (or "Its agent is writing it…"),
   "Written 21:40", "Written 21:40 · the task moved on since" (`storyWords`). A tap opens the story.
 - **The story** (`ui/StoryScreen.kt`, `Page.Story`): fetched like the transcript (`rememberFetch`, once more when
-  `story.ts` is newer than the file here), drawn with the report's blocks (`Block`, `inline`, shared through
+  `story.ts` is newer than the file here), but only when it was never asked for or is `ready`: while one is written,
+  or after a failure, entering never sends `fetch` (each could start a paid write), drawn with the report's blocks (`Block`, `inline`, shared through
   `ReadLook`) in roomier type. On top, "Written 21:40 by dibs's writer" (or "by its agent"); when stale, a quiet
   "The task moved on since this was written." with Write it again; a kept one while a new one is written says
   "A new version is being written". With no file yet: "dibs is writing it" with "you can leave, dibs tells you in
-  the chat" (no 90-second timeout), or "It couldn't be written" with Try again (opening a failed one doesn't
-  rewrite it by itself). A long press on a paragraph or a point offers "Ask dibs about this part" (the chat opens
+  the chat" (no 90-second timeout), or "It couldn't be written" with Try again. A long press on a paragraph or a point offers "Ask dibs about this part" (the chat opens
   with it as `quote`) and Copy, so the text isn't selectable. The bar under it wraps on a narrow screen: Show the
   conversation (the transcript), Start a follow-up, Ask dibs about this.
 - **Chat:** the ready note has a "Read it" chip that opens the story (while the task is listed). While the next
   message is about a story, a chip over the box says so ("About the full story of X", "Follow-up to X", with the
-  quoted paragraph); ✕ drops it. A follow-up's draft starts "Follow-up: " so the line reads right later.
+  quoted paragraph); ✕ drops it. A follow-up's draft starts "Follow-up: " so the line reads right later; that prefix alone
+  can't be sent (`Composer.canSend`), as a bare follow-up would start a task from nothing.
 - `:app` prunes fetched stories like transcripts and reports (`fetchedOf`): the newest per task is kept.
 - Tests: `PayloadTest.fullStories`, `FormatTest` (`storyWords`, `aboutWords`), `DibsTest` (what the `say` carries),
   `ScreensTest` (the row, the story at 412 and 320 dp, writing, Read it and the chip).

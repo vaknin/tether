@@ -680,7 +680,7 @@ internal fun Typing(line: String?) {
 @Composable
 internal fun InputArea(box: Composer, placeholder: String) {
     val draft = box.draft
-    val canSend = draft.isNotBlank() || box.picked.isNotEmpty()
+    val canSend = box.canSend
     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
         box.about?.let { AboutChip(it) }
         if (box.picked.isNotEmpty()) Strip(box)

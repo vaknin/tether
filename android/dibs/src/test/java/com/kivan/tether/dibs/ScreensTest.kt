@@ -206,6 +206,24 @@ class ScreensTest {
     }
 
     @Test
+    fun aStoryBeingWrittenIsNeverFetched() {
+        show(storyView(JSONObject().put("state", "writing").put("since", NOW - 60).put("by", "writer")))
+        Dibs.pages += Page.Story(31)
+        compose.waitForIdle()
+        compose.onNodeWithText("dibs is writing it").assertIsDisplayed()
+        assertTrue("entering must not start a write", host.acts.none { it.first == "fetch" || it.first == "story" })
+    }
+
+    @Test
+    fun aFailedStoryIsNeverFetched() {
+        show(storyView(JSONObject().put("state", "failed")))
+        Dibs.pages += Page.Story(31)
+        compose.waitForIdle()
+        compose.onNodeWithText("It couldn't be written").assertIsDisplayed()
+        assertTrue("only Try again writes it", host.acts.none { it.first == "fetch" || it.first == "story" })
+    }
+
+    @Test
     fun aReadyNoteOpensTheStoryAndTheChatSaysWhatItsAbout() {
         val v = storyView(JSONObject().put("state", "ready").put("ts", NOW - 600).put("have", true))
         v.getJSONObject("dibs").put("talk", JSONArray(longTalk()).put(
