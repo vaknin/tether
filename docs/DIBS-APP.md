@@ -15,7 +15,8 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
      go with a message (📎: photo picker, camera, any file; or Share → dibs from another app). A question
      asked in the chat carries its buttons on its line, and every question waiting on the user shows
      there too (task #66, 2026-10-06: dibs adds a quiet line for it, no notification of its own; the
-     same question as its Waiting card, so answering either closes both).
+     same question as its Waiting card, so answering either closes both). The chat is where the user wants
+     questions (word 217): a question's notification opens the chat, not Waiting.
   2. **Waiting**: only what needs the user: every open question as a full card (line, why, Details,
      named buttons, a box for words), phone requests. "Decided for you" moved to Recap (word 127).
   3. **Work**: tasks (state, repo, what it's doing now, how long), the live sessions (busy or idle, what

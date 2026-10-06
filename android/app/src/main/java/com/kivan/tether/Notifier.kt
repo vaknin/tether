@@ -509,15 +509,15 @@ object Notifier {
 
     /**
      * dibs's own screen: one of the user's tasks (tag `task:<id>`: its done card, its questions, its
-     * agent's replies) opens that task's page; a question (a numeric tag, its id) opens Waiting;
-     * anything else the chat.
+     * agent's replies) opens that task's page; anything else the chat, a question too (a numeric tag,
+     * its id): it shows there with its buttons, the one place the user wants questions (word 217).
      */
     private fun openDibs(context: Context, tag: String?): PendingIntent {
         tag?.removePrefix("task:")?.takeIf { it != tag }?.toLongOrNull()?.let { task ->
             // One request code per task: the extras aren't part of a PendingIntent's identity.
             return PendingIntent.getActivity(context, "dibs:task:$task".hashCode(), DibsActivity.task(context, task), PendingIntent.FLAG_IMMUTABLE)
         }
-        val tab = if (tag != null && tag.isNotEmpty() && tag.all { it.isDigit() }) DibsActivity.TAB_WAITING else DibsActivity.TAB_CHAT
+        val tab = DibsActivity.TAB_CHAT
         // One request code per tab: the extras aren't part of a PendingIntent's identity.
         return PendingIntent.getActivity(context, "dibs:$tab".hashCode(), DibsActivity.intent(context, tab), PendingIntent.FLAG_IMMUTABLE)
     }
