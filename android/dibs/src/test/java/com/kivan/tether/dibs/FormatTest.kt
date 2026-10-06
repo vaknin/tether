@@ -60,5 +60,11 @@ class FormatTest {
         assertEquals("On it", stateWords(Link.CONNECTED, idle.copy(busy = true, usage = "Out until 18:00")))
         assertEquals("Out of usage", stateWords(Link.CONNECTED, idle.copy(usage = "Out until 18:00")))
         assertEquals("Ready", stateWords(Link.CONNECTED, idle))
+        // A dibs that says what its brain is doing: its words win, also over a reply still pending.
+        val out = idle.copy(busy = true, usage = "Out until 12:20", doing = "out", words = "Out of usage until 12:20")
+        assertEquals("Out of usage until 12:20", stateWords(Link.CONNECTED, out))
+        assertEquals("Working", stateWords(Link.CONNECTED, idle.copy(doing = "working", words = "Working")))
+        assertEquals("Idle", stateWords(Link.CONNECTED, idle.copy(doing = "idle", words = "Idle")))
+        assertEquals("Not connected", stateWords(Link.OFFLINE, out))
     }
 }

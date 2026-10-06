@@ -13,7 +13,7 @@ class PayloadTest {
         """
         {"v": 1, "badge": 2, "blocks": [], "dibs": {
           "v": 1, "now": 1791213484,
-          "state": {"brain": "running", "enabled": true, "busy": true, "line": "dibs is on it", "usage": null},
+          "state": {"brain": "running", "enabled": true, "busy": true, "line": "dibs is on it", "usage": null, "doing": "working", "words": "Working"},
           "lend": {"until": 1791215000, "holder": "rami-0f", "waiting": 2, "text": "Until 15:40"},
           "talk": [
             {"id": "u-1", "n": 63, "who": "user", "text": "Is it ready?", "ts": 1791212000},
@@ -45,6 +45,8 @@ class PayloadTest {
         assertEquals(1791213484, d.now)
         assertTrue(d.state.busy)
         assertNull("a null usage is no usage line", d.state.usage)
+        assertEquals("working", d.state.doing)
+        assertEquals("Working", d.state.words)
         assertEquals("rami-0f", d.lend?.holder)
         assertEquals(5, d.talk.size)
         assertTrue(d.talk[0].mine)

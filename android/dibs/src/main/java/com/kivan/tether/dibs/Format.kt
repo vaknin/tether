@@ -66,6 +66,7 @@ fun stateWords(link: Link, state: State?): String = when {
     link == Link.UNPAIRED -> "Pairing lost"
     link == Link.OFFLINE -> "Not connected"
     state == null -> "Waiting for dibs"
+    !state.words.isNullOrBlank() -> state.words
     state.busy -> "On it"
     !state.usage.isNullOrBlank() -> "Out of usage"
     else -> "Ready"

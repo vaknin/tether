@@ -164,7 +164,8 @@ private fun Header(link: Link, state: State?) {
     val color = when {
         link == Link.UNPAIRED -> Palette.Danger
         link == Link.OFFLINE || state == null -> Palette.Muted
-        !state.busy && !state.usage.isNullOrBlank() -> Palette.Warning
+        state.doing == "out" -> Palette.Warning
+        state.doing == null && !state.busy && !state.usage.isNullOrBlank() -> Palette.Warning
         else -> Palette.Accent
     }
     Row(

@@ -127,7 +127,14 @@ data class LendToggle(val lent: Boolean, val text: String, val action: String)
 /** The phone's and the laptop's toggles; null in a payload from a dibs without them. */
 data class Lends(val phone: LendToggle?, val laptop: LendToggle?)
 
-data class State(val brain: String?, val busy: Boolean, val line: String?, val usage: String?)
+/**
+ * [doing] and [words]: what the brain is doing ("working|idle|out|starting|off"; "Out of usage until 12:20"),
+ * from a dibs that sends them (older ones don't: [stateWords] falls back to [busy] and [usage]).
+ */
+data class State(
+    val brain: String?, val busy: Boolean, val line: String?, val usage: String?,
+    val doing: String? = null, val words: String? = null,
+)
 
 data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
 
@@ -216,7 +223,7 @@ data class DibsView(
             val b = o.optJSONObject("badges") ?: JSONObject()
             return DibsView(
                 now = o.optLong("now"),
-                state = State(st.str("brain"), st.optBoolean("busy"), st.str("line"), st.str("usage")),
+                state = State(st.str("brain"), st.optBoolean("busy"), st.str("line"), st.str("usage"), st.str("doing"), st.str("words")),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
                 decided = o.optJSONArray("decided").objects().map {
