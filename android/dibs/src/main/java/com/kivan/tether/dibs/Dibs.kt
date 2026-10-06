@@ -236,6 +236,8 @@ object Dibs {
         view.questions.forEach { asked += "q${it.id}" }
         view.talk.forEach { l -> l.ask?.takeIf { it.open }?.let { asked += "q${it.q}" } }
         view.decided.forEach { asked += it.ack }
+        // Recap's Undo shows "Undo asked" until dibs lists it without Undo.
+        view.recapDecided.forEach { if (it.undo) asked += it.ack }
         view.away?.let { asked += "w${it.id}" }
         answered.keys.retainAll(asked)
         hidden.keys.retainAll(ids)

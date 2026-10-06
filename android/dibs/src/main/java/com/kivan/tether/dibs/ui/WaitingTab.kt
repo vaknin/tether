@@ -126,8 +126,19 @@ internal fun QuestionControls(
             }
         }
         reply?.let { r ->
+            // Words alone on a question whose buttons run something (approve/deny) go to dibs and the
+            // question stays open: its buttons stay, with a note that dibs has the words.
+            val approval = actions.any { it.id.startsWith("a") }
+            val sent = "sent:$id"
+            if (approval && Dibs.open[sent] == true) Text("Sent to dibs. It acts on your words, or asks.", style = AppType.small, color = Palette.Muted)
             AnswerField(field, hint ?: "Answer…", Modifier.fillMaxWidth(), background = background) { text ->
-                Dibs.answer(key, text, r, JSONObject().put("item", id.toString()).put("text", text))
+                val value = JSONObject().put("item", id.toString()).put("text", text)
+                if (approval) {
+                    Dibs.open[sent] = true
+                    Dibs.host.act(r, value)
+                } else {
+                    Dibs.answer(key, text, r, value)
+                }
             }
         }
     }
