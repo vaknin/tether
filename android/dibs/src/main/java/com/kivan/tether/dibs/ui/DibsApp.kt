@@ -150,7 +150,11 @@ fun DibsApp() {
             }
             // Two toggles from a dibs that sends them; the older "dibs has your phone" bar otherwise.
             val lends = view.lends
-            if (lends != null && (lends.phone != null || lends.laptop != null)) LendToggles(lends) else view.lend?.let { LendBar(it) }
+            // While typing they give their room to the chat: with the keyboard open on a small
+            // screen they left the box no room at all (the user, 2026-10-06, word 117).
+            if (!typing) {
+                if (lends != null && (lends.phone != null || lends.laptop != null)) LendToggles(lends) else view.lend?.let { LendBar(it) }
+            }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 // The other tabs keep their place (scroll, folds) under a page and across tab
                 // changes; the chat opens at its newest line, as always.
