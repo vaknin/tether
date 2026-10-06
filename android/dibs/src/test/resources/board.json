@@ -1,0 +1,129 @@
+{
+  "about": "A recorded sample of the task board dibs sends: `board` in the phone payload and in `dibs status --json`. The phone (Tether) and the desktop app read it in their tests. Written by board.rs's test; `DIBS_GOLDEN_UPDATE=1 cargo test board` writes it again.",
+  "board": {
+    "columns": [
+      {
+        "key": "now",
+        "title": "Working now",
+        "cards": [
+          {
+            "key": "task:1",
+            "n": 1,
+            "title": "Fix the phone losing your notes when it syncs",
+            "state_words": "working",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [
+              "hold",
+              "stop",
+              "story"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "next",
+        "title": "Up next",
+        "cards": [
+          {
+            "key": "task:3",
+            "n": 3,
+            "title": "Make landing work on master faster",
+            "state_words": "next in line",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [
+              "down",
+              "to_later",
+              "delete"
+            ],
+            "delete_text": "Delete removes this task. No work is lost."
+          },
+          {
+            "key": "task:2",
+            "n": 2,
+            "title": "Water plan for the balcony",
+            "state_words": "2nd in line",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [
+              "up",
+              "to_later",
+              "delete"
+            ],
+            "delete_text": "Delete removes this task. No work is lost."
+          }
+        ]
+      },
+      {
+        "key": "later",
+        "title": "Later",
+        "cards": [
+          {
+            "key": "idea:1",
+            "n": null,
+            "title": "Read the weekly retro aloud",
+            "state_words": "an idea, not started",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [
+              "down",
+              "to_next",
+              "delete"
+            ],
+            "delete_text": "Delete removes this idea. No work is lost."
+          },
+          {
+            "key": "task:4",
+            "n": 4,
+            "title": "The dibs app on the laptop",
+            "state_words": "on hold (you held it)",
+            "now": "",
+            "tags": [
+              "On hold",
+              "work saved"
+            ],
+            "story": null,
+            "actions": [
+              "resume",
+              "up",
+              "to_next",
+              "stop",
+              "delete",
+              "story"
+            ],
+            "delete_text": "Delete throws away 3 saved changes that are not on master yet, and its folder. Stop keeps them."
+          }
+        ]
+      }
+    ],
+    "done": {
+      "count": 1,
+      "cards": [
+        {
+          "key": "task:5",
+          "n": 5,
+          "title": "A Full story button on each task",
+          "state_words": "done",
+          "now": "Each task now has a Full story button.",
+          "tags": [],
+          "story": null,
+          "actions": [
+            "story"
+          ]
+        }
+      ]
+    }
+  },
+  "action": {
+    "action": "task-act",
+    "key": "task:2",
+    "act": "to_later",
+    "before": null,
+    "confirm": false
+  }
+}

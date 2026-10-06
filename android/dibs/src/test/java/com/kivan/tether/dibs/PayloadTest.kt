@@ -1,5 +1,6 @@
 package com.kivan.tether.dibs
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -288,6 +289,58 @@ class PayloadTest {
         assertEquals(12, b.doneCount)
         assertEquals("Lend toggles", b.done.single().title)
         assertEquals(emptyList<String>(), b.done.single().actions)
+    }
+
+    /** dibs's own recorded board (its tests/samples/board.json, copied here) reads as sent. */
+    @Test
+    fun parsesDibssSampleBoard() {
+        val sample = JSONObject(javaClass.getResource("/board.json")!!.readText())
+        val b = DibsView.parse(JSONObject().put("now", 1791213484).put("yours", JSONArray()).put("board", sample.getJSONObject("board"))).board!!
+        assertEquals(listOf("now", "next", "later"), b.columns.map { it.key })
+        assertEquals(listOf("task:3", "task:2"), b.columns[1].cards.map { it.key })
+        val first = b.columns[0].cards.single()
+        assertEquals("", first.now)
+        assertNull(first.story)
+        assertNull(first.deleteText)
+        val held = b.columns[2].cards.single { it.key == "task:4" }
+        assertTrue(held.deleteText!!.startsWith("Delete throws away 3 saved changes"))
+        assertNull(b.columns[2].cards.single { it.key == "idea:1" }.n)
+        assertEquals(1, b.doneCount)
+        assertEquals(listOf("story"), b.done.single().actions)
+    }
+
+    /** A JSON null never reads as the word "null", and keyless or repeated cards and columns are dropped. */
+    @Test
+    fun aBoardWithNullsAndRepeatsStaysDrawable() {
+        val d = DibsView.parse(
+            JSONObject(
+                """
+                {"now": 1791213484, "yours": [],
+                 "board": {
+                   "columns": [
+                     {"key": "now", "title": null, "cards": [
+                       {"key": "task:1", "n": 1, "title": null, "state_words": null, "now": null, "tags": ["work saved", null], "actions": [null, "stop"]},
+                       {"key": "task:1", "n": 1, "title": "again"},
+                       {"key": null, "title": "no key"},
+                       {"title": "no key either"}]},
+                     {"key": "now", "title": "again", "cards": []},
+                     {"key": null, "title": "no key", "cards": []}
+                   ],
+                   "done": {"count": null}
+                 }}
+                """,
+            ),
+        )
+        val b = d.board!!
+        assertEquals(listOf("now"), b.columns.map { it.key })
+        assertEquals("", b.columns[0].title)
+        val c = b.columns[0].cards.single()
+        assertEquals("", c.title)
+        assertEquals("", c.stateWords)
+        assertEquals("", c.now)
+        assertEquals(listOf("work saved"), c.tags)
+        assertEquals(listOf("stop"), c.actions)
+        assertEquals(0, b.doneCount)
     }
 
     @Test

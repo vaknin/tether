@@ -219,10 +219,17 @@ object Dibs {
 
     /**
      * A board card's action ([BoardCard.actions]: hold, resume, stop, delete, up, down, to_next,
-     * to_later) for the card [key]; [before] the card a move goes before, when it says.
+     * to_later) for the card [key]; [before] the card a move goes before, when it says. [confirm]: the
+     * confirm step was shown and taken (dibs applies a delete only with it).
      */
-    fun taskAct(key: String, act: String, before: String? = null) {
-        host.act(TASK_ACT, JSONObject().put("key", key).put("act", act).apply { before?.let { put("before", it) } })
+    fun taskAct(key: String, act: String, before: String? = null, confirm: Boolean = false) {
+        host.act(
+            TASK_ACT,
+            JSONObject().put("key", key).put("act", act).apply {
+                before?.let { put("before", it) }
+                if (confirm) put("confirm", true)
+            },
+        )
     }
 
     /** The phone action a board card's menu sends (docs/DIBS-APP.md, "The board"); its name may still change. */

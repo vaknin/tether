@@ -255,8 +255,8 @@ private fun CardState(words: String, busy: Boolean) {
 }
 
 /**
- * What dibs lets a card do, in plain words, nothing else. Stop and Delete ask again ("Stop it?") and
- * act on the second tap within 4 s; Full story opens the story's page.
+ * What dibs lets a card do, in plain words, nothing else. Stop and Delete ask again ("Stop it?", Delete
+ * with dibs's words for what it loses) and act on the second tap within 4 s; Full story opens the story's page.
  */
 @Composable
 private fun CardMenu(expanded: Boolean, c: BoardCard, acts: List<String>, armed: Armed, onDismiss: () -> Unit) {
@@ -267,7 +267,12 @@ private fun CardMenu(expanded: Boolean, c: BoardCard, acts: List<String>, armed:
             val confirm = a == "stop" || a == "delete"
             val asking = confirm && armed.key == k
             DropdownMenuItem(
-                text = { Text(if (asking) "$words it?" else words, color = if (confirm) Palette.Danger else Palette.Text) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(if (asking) "$words it?" else words, color = if (confirm) Palette.Danger else Palette.Text)
+                        if (asking && a == "delete") c.deleteText?.let { Text(it, style = AppType.small, color = Palette.Muted) }
+                    }
+                },
                 onClick = {
                     when {
                         a == "story" -> {
@@ -276,7 +281,7 @@ private fun CardMenu(expanded: Boolean, c: BoardCard, acts: List<String>, armed:
                         }
                         confirm -> armed.press(k) {
                             onDismiss()
-                            Dibs.taskAct(c.key, a)
+                            Dibs.taskAct(c.key, a, confirm = true)
                         }
                         else -> {
                             onDismiss()

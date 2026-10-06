@@ -266,6 +266,8 @@ data class BoardCard(
     val tags: List<String> = emptyList(),
     val story: Story? = null,
     val actions: List<String> = emptyList(),
+    /** What Delete loses, in plain words ("Delete removes this idea. No work is lost."), shown at its confirm step. */
+    val deleteText: String? = null,
 ) {
     /** Its task's id, for a task card; null for an idea. */
     val task: Long? get() = key.removePrefix("task:").takeIf { key.startsWith("task:") }?.toLongOrNull()
@@ -398,23 +400,29 @@ data class DibsView(
 
         private fun board(o: JSONObject): Board {
             val done = o.optJSONObject("done") ?: JSONObject()
-            val doneCards = done.optJSONArray("cards").objects().map(::card)
+            val doneCards = cards(done.optJSONArray("cards"))
             return Board(
-                columns = o.optJSONArray("columns").objects().map { BoardColumn(it.optString("key"), it.optString("title"), it.optJSONArray("cards").objects().map(::card)) },
-                doneCount = if (done.has("count")) done.optInt("count") else doneCards.size,
+                // A column or card without a key is dropped and a repeated key kept once: the list keys on them.
+                columns = o.optJSONArray("columns").objects()
+                    .map { BoardColumn(it.str("key").orEmpty(), it.str("title").orEmpty(), cards(it.optJSONArray("cards"))) }
+                    .filter { it.key.isNotEmpty() }.distinctBy { it.key },
+                doneCount = done.long("count")?.toInt() ?: doneCards.size,
                 done = doneCards,
             )
         }
 
+        private fun cards(a: JSONArray?) = a.objects().map(::card).filter { it.key.isNotEmpty() }.distinctBy { it.key }
+
         private fun card(o: JSONObject) = BoardCard(
-            key = o.optString("key"),
+            key = o.str("key").orEmpty(),
             n = o.long("n"),
-            title = o.optString("title"),
-            stateWords = o.optString("state_words"),
-            now = o.optString("now"),
+            title = o.str("title").orEmpty(),
+            stateWords = o.str("state_words").orEmpty(),
+            now = o.str("now").orEmpty(),
             tags = o.optJSONArray("tags").strings(),
             story = o.optJSONObject("story")?.let(::story),
             actions = o.optJSONArray("actions").strings(),
+            deleteText = o.str("delete_text"),
         )
 
         private fun decision(o: JSONObject) =
@@ -478,4 +486,4 @@ private fun JSONObject.double(k: String): Double? = if (!has(k) || isNull(k)) nu
 
 private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
 
-private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { opt(it)?.toString() }
+private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { opt(it)?.takeIf { v -> v != JSONObject.NULL }?.toString() }

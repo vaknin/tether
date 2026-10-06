@@ -240,17 +240,21 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
     a "Full story" pill once a story is ready or being written, and `now` muted when it says something.
   - **A tap** opens a task's page; an idea has none, so a tap opens its menu. **A long press** opens the menu of the
     card's `actions` in plain words: Put on hold, Resume, Stop, Delete, Move up, Move down, Move to Up next, Move to
-    Later, Full story. Only what the card lists shows. Stop and Delete ask again ("Stop it?") and act on the second
-    tap within 4 s. Full story opens the story's page; the rest go back as the phone action `task-act`
-    (`Dibs.TASK_ACT`, one constant, as the name may still change):
-    `{"key": "task:31", "act": "hold", "before": "task:30"?}`.
+    Later, Full story. Only what the card lists shows. Stop and Delete ask again ("Stop it?"; Delete shows the card's
+    `delete_text` under it, what deleting loses) and act on the second tap within 4 s. Full story opens the story's
+    page; the rest go back as the phone action `task-act` (`Dibs.TASK_ACT`, one constant, as the name may still
+    change): `{"key": "task:31", "act": "hold", "before": "task:30"?, "confirm": true?}`. `confirm` is sent only
+    after the second tap of Stop or Delete; dibs applies a `delete` only with it.
+  - A card or column without a `key` is dropped and a repeated key is kept once (the list keys on them); a JSON
+    `null` text reads as empty, never as the word "null".
   - Payload (`Payload.kt`: `Board`, `BoardColumn`, `BoardCard`; `DibsView.board` is null without it):
     ```json
     "board": {"columns": [{"key": "now|next|later", "title": "Working now", "cards": [Card]}],
               "done": {"count": 12, "cards": [Card]}}
     Card: {"key": "task:31|idea:7", "n": 31|null, "title": "whole", "state_words": "built, waiting to land",
            "now": "what it's doing, or empty", "tags": ["On hold", "work saved"], "story": {…like yours[].story}|null,
-           "actions": ["hold","resume","stop","delete","up","down","to_next","to_later","story"]}
+           "actions": ["hold","resume","stop","delete","up","down","to_next","to_later","story"],
+           "delete_text": "what Delete loses, in plain words"?}
     ```
 - **dibs's own work** (its background tasks, the live sessions, ships) folds into one line at the bottom,
   "dibs's own work · 3", which opens on a tap. It holds today's Work tab content, and nothing in it pings.
@@ -330,7 +334,8 @@ These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Olde
   - `seen` (`value.task`): sent when its page opens. It clears `unread` and the task's ping.
   - `fetch` (`value.task`, `value.what`: `transcript|report`).
   - `task-act` (0.5.9, `value.key`: a board card's key, `value.act`: one of its `actions`, `value.before`?: for a
-    move): a board card's long-press menu ("The board" above).
+    move, `value.confirm`?: `true` once Stop's or Delete's confirm step was taken): a board card's long-press menu
+    ("The board" above).
 - Unchanged: `stop`, `reopen` and the question answers. `tell` stays for older apps.
 
 ### What changes in Tether

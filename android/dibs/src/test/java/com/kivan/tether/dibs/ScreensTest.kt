@@ -333,6 +333,27 @@ class ScreensTest {
         assertTrue(Dibs.pages.isEmpty())
     }
 
+    @Test
+    fun deletingACardSaysWhatItLosesAndConfirms() {
+        show(boardView())
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText("Pick the phone's notification sound").performTouchInput { longClick() }
+        compose.waitForIdle()
+        compose.onAllNodes(hasText(LOSES)).assertCountEquals(0)
+        compose.onNodeWithText("Delete").performClick()
+        compose.waitForIdle()
+        assertTrue(host.acts.none { it.first == Dibs.TASK_ACT })
+        compose.onNodeWithText(LOSES).assertExists()
+        shot("tasks-board-delete")
+        compose.onNodeWithText("Delete it?").performClick()
+        compose.waitForIdle()
+        val (_, del) = host.acts.single { it.first == Dibs.TASK_ACT }
+        assertEquals("task:30", del!!.getString("key"))
+        assertEquals("delete", del.getString("act"))
+        assertTrue("dibs applies a delete only with its confirm", del.getBoolean("confirm"))
+    }
+
     /** A board as dibs sends it: one card per column (the first with a long title, tags and a story), Done folded. */
     private fun boardView(): JSONObject {
         val v = view(talk = longTalk())
@@ -351,7 +372,8 @@ class ScreensTest {
                     card("idea:7", null, "A widget that shows the board on the home screen", "an idea", actions = listOf("up", "down", "to_later", "delete")),
                 )))
                 .put(JSONObject().put("key", "later").put("title", "Later").put("cards", JSONArray().put(
-                    card("task:30", 30, "Pick the phone's notification sound", "on hold (you held it)", tags = listOf("On hold", "work saved"), actions = listOf("resume", "to_next", "delete")),
+                    card("task:30", 30, "Pick the phone's notification sound", "on hold (you held it)", tags = listOf("On hold", "work saved"), actions = listOf("resume", "to_next", "delete"))
+                        .put("delete_text", LOSES),
                 ))))
             .put("done", JSONObject().put("count", 12).put("cards", JSONArray().put(card("task:29", 29, "Lend toggles", "done", actions = emptyList())))))
         return v
@@ -448,5 +470,6 @@ class ScreensTest {
     private companion object {
         val NOW = System.currentTimeMillis() / 1000
         const val LONG_TITLE = "Make the dibs app wrap every long title, line and usage window instead of cutting them off with an ellipsis"
+        const val LOSES = "Delete throws away 3 saved changes that are not on master yet, and its folder. Stop keeps them."
     }
 }
