@@ -77,7 +77,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19; 18 is left to the lend toggles' 0.4.4). Never uninstall: `adb install -r`.
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused). Never uninstall: `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
 The view stays a v1 view (`badge`, `open_tags`, `pin`, `notify` keep working), plus a top-level `dibs`

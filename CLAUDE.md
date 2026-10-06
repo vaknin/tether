@@ -43,7 +43,7 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   only looks up the port when it's granted). **An APK without these manifest lines drops both grants.** The app
   holds a multicast lock for 20 s per ask so adb's own mDNS sees the phone meanwhile. `tether connect` now wakes
   the phone first (it used to only dial, which timed out against an idle phone).
-- dibs's own app (`android/dibs`, Gradle module `:dibs`, plan in `docs/DIBS-APP.md`, version 0.5.0): `DibsActivity`
+- dibs's own app (`android/dibs`, Gradle module `:dibs`, plan in `docs/DIBS-APP.md`, version 0.5.1): `DibsActivity`
   (own launcher icon and Recents card) with four tabs (Chat, Waiting, Tasks, Recap) drawn from the `dibs` payload in
   the dibs channel's view (`Payload.kt`; chat folding in `ChatModel.kt`, task order in `TasksModel.kt`, unit-tested).
   Tasks holds the user's own tasks (`yours`) until ticked, with dibs's own work folded at its bottom (a dibs without
