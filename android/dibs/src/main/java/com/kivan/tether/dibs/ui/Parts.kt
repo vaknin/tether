@@ -51,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDirection
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
@@ -117,7 +116,7 @@ internal fun Chip(text: String, modifier: Modifier = Modifier, accent: Boolean =
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (warn) Icon(painterResource(R.drawable.lucide_triangle_alert), null, Modifier.size(12.dp), tint = fg)
-        Text(text, style = AppType.mono, color = fg, maxLines = 1)
+        Text(text, style = AppType.mono, color = fg)
     }
 }
 
@@ -279,29 +278,6 @@ internal fun Hero(label: String, value: String, after: String? = null, style: Te
     }
 }
 
-/** Text that shows [lines] lines, ending in …, until a tap opens it whole ([Dibs.open] by [key]); a tap folds it again. */
-@Composable
-internal fun TapFold(
-    text: String,
-    key: String,
-    lines: Int,
-    modifier: Modifier = Modifier,
-    style: TextStyle = MaterialTheme.typography.bodyMedium,
-    color: Color = Palette.Text,
-) {
-    val open = Dibs.open[key] == true
-    var long by remember(text) { mutableStateOf(false) }
-    Text(
-        text,
-        if (long || open) modifier.clickable { Dibs.toggle(key) } else modifier,
-        style = style,
-        color = color,
-        maxLines = if (open) Int.MAX_VALUE else lines,
-        overflow = TextOverflow.Ellipsis,
-        onTextLayout = { if (it.hasVisualOverflow) long = true },
-    )
-}
-
 /** A card on the ground: the medium radius on the surface colour. */
 internal fun Modifier.card() = fillMaxWidth().background(Palette.Surface, AppShapes.medium)
 
@@ -325,7 +301,7 @@ internal fun PageBar(title: String, eyebrow: String? = null, actions: @Composabl
         }
         Column(Modifier.weight(1f).padding(start = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (!eyebrow.isNullOrBlank()) Eyebrow(eyebrow)
-            Text(title, style = AppType.heading, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, style = AppType.heading, color = Palette.Text)
         }
         actions()
     }

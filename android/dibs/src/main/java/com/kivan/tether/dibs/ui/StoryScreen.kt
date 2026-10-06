@@ -139,7 +139,7 @@ internal fun StoryScreen(id: Long, view: DibsView) {
 private fun Writing(s: Story?) {
     val agent = s?.by == "agent"
     Calm(
-        if (agent) "Its agent is writing it…" else "dibs is writing it",
+        if (agent) "Its agent is writing it" else "dibs is writing it",
         (if (agent) "Its agent is going over the task" else "A writer is reading the task") +
             "; it takes a few minutes. You can leave: dibs tells you in the chat when it's ready.",
     ) {

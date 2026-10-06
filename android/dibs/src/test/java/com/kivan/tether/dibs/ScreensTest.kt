@@ -2,7 +2,9 @@ package com.kivan.tether.dibs
 
 import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.graphics.Insets
@@ -241,6 +243,56 @@ class ScreensTest {
         shot("chat-about-story")
     }
 
+    @Test
+    fun longTextsWrapAndAreNeverCut() {
+        show(longView())
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText(LONG_TITLE).assertIsDisplayed()
+        compose.onAllNodes(hasText("resets", substring = true), useUnmergedTree = true).assertCountEquals(2)
+        noEllipsis()
+        shot("tasks-long")
+        Dibs.pages += Page.Task(41)
+        compose.waitForIdle()
+        noEllipsis()
+        shot("task-long")
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun longTextsWrapOnASmallScreen() {
+        show(longView())
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        noEllipsis()
+        shot("tasks-long-small")
+        Dibs.pages += Page.Task(41)
+        compose.waitForIdle()
+        noEllipsis()
+        shot("task-long-small")
+    }
+
+    /** No "…" in anything drawn (the user's rule): the app's own words never end in one, and nothing is cut. */
+    private fun noEllipsis() {
+        compose.onAllNodes(hasText("…", substring = true), useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    /** A view whose texts are as long as they come: the week's usage with its day, a long title, line and ask. */
+    private fun longView(): JSONObject {
+        val v = view(talk = longTalk())
+        val d = v.getJSONObject("dibs")
+        d.getJSONObject("state").getJSONObject("limits").put("windows", JSONArray()
+            .put(JSONObject().put("name", "five_hour").put("pct", 87.0).put("resets", NOW + 3 * 3600))
+            .put(JSONObject().put("name", "seven_day").put("pct", 93.0).put("resets", NOW + 3 * 86400)))
+        d.getJSONObject("lends").put("laptop", JSONObject().put("lent", true).put("text", "Until 15:40, rami-0f is on it with two builds").put("action", "laptop-back"))
+        val long = yours(41, LONG_TITLE, "working")
+            .put("line", "Rebuilding the release APK after moving the board's parsing into Payload.kt, then running every screen test again")
+            .put("asked", "tether: $LONG_TITLE. Then build the release APK and look at every screenshot yourself, so nothing is cut and nothing overlaps.")
+            .put("report", "Every text wraps now.")
+        d.put("yours", JSONArray().put(long).put(yours(42, "Lend the phone?", "needs")))
+        return v
+    }
+
     private fun storyView(story: JSONObject?): JSONObject {
         val v = view(talk = longTalk())
         val t = yours(31, "Recap", "done").put("report", "Recap shows one entry per job.")
@@ -310,5 +362,6 @@ class ScreensTest {
 
     private companion object {
         val NOW = System.currentTimeMillis() / 1000
+        const val LONG_TITLE = "Make the dibs app wrap every long title, line and usage window instead of cutting them off with an ellipsis"
     }
 }

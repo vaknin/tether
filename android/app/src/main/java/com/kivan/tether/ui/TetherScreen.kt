@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
@@ -83,7 +84,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -188,7 +188,7 @@ private fun PairScreen() {
             singleLine = true,
             shape = MaterialTheme.shapes.small,
             textStyle = AppType.mono,
-            placeholder = { Text("tether:1:…", style = AppType.mono) },
+            placeholder = { Text("tether:1:", style = AppType.mono) },
             modifier = Modifier.fillMaxWidth(),
         )
         FilledTonalButton(
@@ -365,7 +365,7 @@ private fun TopBar(
     val online = Palette.Success
     Surface(color = Palette.Bg) {
         Row(
-            Modifier.fillMaxWidth().statusBarsPadding().height(68.dp).padding(start = 8.dp, end = 4.dp),
+            Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 68.dp).padding(start = 8.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             onBack?.let { BackButton(it) }
@@ -387,15 +387,13 @@ private fun TopBar(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     val line = when {
                         connected -> "Connected"
-                        connecting -> "Connecting…"
+                        connecting -> "Connecting"
                         else -> "Offline · tap to reconnect"
                     } + if (queued > 0uL) " · $queued waiting" else ""
                     Eyebrow(line, color = if (connected) online else Palette.Muted)
                     Text(
                         peerName,
                         style = AppType.heading,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -495,8 +493,6 @@ private fun EventChip(m: ChatMessage) {
                 label,
                 style = MaterialTheme.typography.labelLarge,
                 color = fg,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
             Spacer(Modifier.width(8.dp))
@@ -599,8 +595,6 @@ private fun FileChip(m: ChatMessage, progress: Pair<Long, Long>?, fg: Color) {
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     color = fg,
-                    maxLines = 1,
-                    overflow = TextOverflow.MiddleEllipsis,
                 )
                 val size = m.fileSize?.let { Formatter.formatShortFileSize(ctx, it.toLong()) }
                 val ext = m.fileName?.substringAfterLast('.', "")?.uppercase()?.takeIf { it.isNotEmpty() && it.length <= 5 }

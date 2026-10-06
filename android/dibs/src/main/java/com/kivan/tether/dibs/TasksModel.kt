@@ -59,9 +59,6 @@ fun forYouWords(read: Int, asking: Int): String? {
     return "${read + asking} for you: ${parts.joinToString(", ")}"
 }
 
-/** A title's longest, in characters, as dibs cuts them. */
-const val TITLE_MAX = 60
-
 /**
  * The title a task shows: dibs's [title], without an aside in brackets ("… (the user, word 117)",
  * or one cut open: "Cut phone clutter (the user"). A title that is only a tag before a colon in
@@ -76,7 +73,10 @@ fun plainTitle(title: String, asked: String): String {
     return withoutAsides(t).trimEnd('.', ',', ';', ':', '-', '—', ' ').ifEmpty { t }
 }
 
-/** The first clause of the user's words, as dibs makes a title: no `<repo>:` prefix, no asides, cut at a word. */
+/**
+ * The first clause of the user's words, as dibs makes a title: no `<repo>:` prefix, no asides.
+ * Never cut: the screens wrap a long one (no "…" anywhere, the user's rule, 2026-10-06).
+ */
 internal fun firstClause(text: String): String {
     var t = text.trim()
     // "tether: build X" → "build X" (a repo name: one word before the colon and a space after;
@@ -88,18 +88,7 @@ internal fun firstClause(text: String): String {
     t = withoutAsides(t.lineSequence().firstOrNull().orEmpty())
     val end = t.indices.firstOrNull { i -> t[i] in ".,;!?:" && t.getOrNull(i + 1) == ' ' } ?: t.length
     val first = t.substring(0, end).trim().trimEnd('.', '!', '?', ',', ';', ':')
-    val out = StringBuilder()
-    for (w in first.split(SPACES).filter { it.isNotEmpty() }) {
-        val next = if (out.isEmpty()) w.length else out.length + 1 + w.length
-        if (next > TITLE_MAX) {
-            if (out.isEmpty()) out.append(w.take(TITLE_MAX - 1))
-            out.append('…')
-            break
-        }
-        if (out.isNotEmpty()) out.append(' ')
-        out.append(w)
-    }
-    return out.toString().replaceFirstChar { it.uppercase() }
+    return first.split(SPACES).filter { it.isNotEmpty() }.joinToString(" ").replaceFirstChar { it.uppercase() }
 }
 
 /** [s] without anything in brackets, and without an opened bracket's tail. */

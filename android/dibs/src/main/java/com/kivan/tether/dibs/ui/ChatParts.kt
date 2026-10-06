@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -94,7 +95,6 @@ import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDirection
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -364,7 +364,7 @@ private fun Line(row: LineRow, look: ChatLook) {
     Bubble(row, outcome, look)
 }
 
-/** "✓ Inside Tether, separate app? · Inside Tether · 17:58"; a tap opens the full bubble. */
+/** "✓ Inside Tether, separate app? · Inside Tether · 17:58", wrapping whole; a tap opens the full bubble. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AnsweredRow(l: TalkLine, outcome: String, look: ChatLook) {
@@ -374,21 +374,26 @@ private fun AnsweredRow(l: TalkLine, outcome: String, look: ChatLook) {
             Modifier.clip(MaterialTheme.shapes.small)
                 .combinedClickable(onClick = { Dibs.open[ASK + l.id] = true }, onLongClick = { menu = true })
                 .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(painterResource(R.drawable.lucide_check), "Answered", Modifier.size(16.dp), tint = Palette.Success)
-            Text(l.text, style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            Text("·", style = AppType.small, color = Palette.Muted)
-            Text(
-                outcome,
-                style = AppType.small.copy(fontWeight = Bold),
-                color = Palette.Text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 150.dp),
-            )
-            Text("· ${time(l.ts)}", style = AppType.mono, color = Palette.Muted, maxLines = 1)
+            // One sentence, so a long question wraps as text does instead of squeezing the answer.
+            val at = time(l.ts)
+            val words = remember(l.text, outcome, at) {
+                buildAnnotatedString {
+                    append(l.text)
+                    append(" · ")
+                    pushStyle(SpanStyle(color = Palette.Text, fontWeight = Bold))
+                    append(outcome)
+                    pop()
+                    append(" · ")
+                    pushStyle(AppType.mono.toSpanStyle())
+                    append(at)
+                    pop()
+                }
+            }
+            Text(words, style = AppType.small, color = Palette.Muted, modifier = Modifier.weight(1f, fill = false))
         }
         LineMenu(menu, l, look) { menu = false }
     }
@@ -420,7 +425,7 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (!l.mine && row.first && look.name != null) {
-                    Text(look.name, style = AppType.label, color = Palette.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(look.name, style = AppType.label, color = Palette.Accent)
                 }
                 for (f in l.files) FileView(f, l.mine)
                 if (l.text.isNotEmpty() || row.last) {
@@ -528,7 +533,7 @@ private fun FileChip(name: String, size: String?, mine: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(painterResource(R.drawable.lucide_file_text), null, Modifier.size(18.dp), tint = Palette.Muted)
-        Text(name, style = AppType.label, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Text(name, style = AppType.label, color = Palette.Text, modifier = Modifier.weight(1f, fill = false))
         if (size != null) Text(size, style = AppType.mono, color = Palette.Muted)
     }
 }
@@ -669,7 +674,7 @@ internal fun Typing(line: String?) {
                 Box(Modifier.size(6.dp).graphicsLayer { alpha = a }.background(Palette.Muted, CircleShape))
             }
         }
-        Text(line?.takeIf { it.isNotBlank() } ?: "dibs is on it", style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(line?.takeIf { it.isNotBlank() } ?: "dibs is on it", Modifier.weight(1f, fill = false), style = AppType.small, color = Palette.Muted)
     }
 }
 
@@ -699,7 +704,7 @@ internal fun InputArea(box: Composer, placeholder: String) {
                 modifier = Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 9.dp),
                 decorationBox = { inner ->
                     Box {
-                        if (draft.isEmpty()) Text(placeholder, style = AppType.body, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (draft.isEmpty()) Text(placeholder, style = AppType.body, color = Palette.Muted)
                         inner()
                     }
                 },
@@ -730,8 +735,8 @@ private fun AboutChip(a: About) {
     ) {
         Icon(painterResource(R.drawable.lucide_book_open), null, Modifier.size(16.dp), tint = Palette.Accent)
         Column(Modifier.weight(1f).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(aboutWords(a), style = AppType.label, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            a.quote?.let { Text("“${it.trim()}”", style = AppType.small, color = Palette.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            Text(aboutWords(a), style = AppType.label, color = Palette.Text)
+            a.quote?.let { Text("“${it.trim()}”", style = AppType.small, color = Palette.Muted) }
         }
         IconButton(onClick = { Dibs.dropAbout() }, modifier = Modifier.size(36.dp)) {
             Icon(painterResource(R.drawable.lucide_x), "Not about the story", Modifier.size(16.dp), tint = Palette.Muted)
@@ -824,12 +829,12 @@ private fun Strip(box: Composer) {
                     }
                 } else {
                     Row(
-                        Modifier.height(54.dp).widthIn(max = 160.dp).background(Palette.SurfaceHigh, MaterialTheme.shapes.small).padding(horizontal = 10.dp),
+                        Modifier.heightIn(min = 54.dp).widthIn(max = 160.dp).background(Palette.SurfaceHigh, MaterialTheme.shapes.small).padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Icon(painterResource(R.drawable.lucide_file_text), null, Modifier.size(18.dp), tint = Palette.Muted)
-                        Text(p.name, style = AppType.small, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(p.name, style = AppType.small, color = Palette.Text)
                     }
                 }
                 Box(

@@ -74,7 +74,7 @@ import java.util.zip.GZIPInputStream
 // muted lines, each run of tool calls as one line that opens to its steps. dibs sends it as a
 // file on its channel when asked (`fetch`); it's never in the view.
 
-/** How long "Getting it…" waits before it offers to ask again. */
+/** How long "Getting it" waits before it offers to ask again. */
 private const val FETCH_WAIT_MS = 90_000L
 
 /**
@@ -126,7 +126,7 @@ internal fun rememberFetch(task: Long, what: String, since: Long, ask: Boolean =
 internal fun readFetched(file: File): String =
     if (file.name.contains(".gz")) GZIPInputStream(file.inputStream()).bufferedReader().use { it.readText() } else file.readText()
 
-/** "Getting it…" while dibs sends it, or why it isn't here, with Try again. */
+/** "Getting it" while dibs sends it, or why it isn't here, with Try again. */
 @Composable
 internal fun Waiting(fetch: Fetch, what: String) {
     val link by Dibs.host.link.collectAsStateWithLifecycle()
@@ -136,9 +136,9 @@ internal fun Waiting(fetch: Fetch, what: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val (title, line) = when {
-            link != Link.CONNECTED -> "Getting it…" to "It comes once the laptop is reachable."
+            link != Link.CONNECTED -> "Getting it" to "It comes once the laptop is reachable."
             fetch.timedOut -> "It hasn't come" to "dibs didn't send the $what."
-            else -> "Getting it…" to "dibs is sending the $what."
+            else -> "Getting it" to "dibs is sending the $what."
         }
         Text(title, style = AppType.heading, color = Palette.Text, textAlign = TextAlign.Center)
         Text(line, style = AppType.body, color = Palette.Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.S))
@@ -192,7 +192,7 @@ private fun AsOf(asOf: Long, fetch: Fetch) {
         Text(if (asOf > 0) "As of ${whenWords(asOf)}" else "A snapshot", style = AppType.small, color = Palette.Muted)
         Text("·", style = AppType.small, color = Palette.Muted)
         if (fetch.waiting && !fetch.timedOut) {
-            Text("Refreshing…", style = AppType.small, color = Palette.Muted)
+            Text("Refreshing", style = AppType.small, color = Palette.Muted)
         } else {
             Row(
                 Modifier.clip(MaterialTheme.shapes.small).clickable { fetch.refresh() }.padding(vertical = 2.dp),
@@ -262,12 +262,12 @@ private fun TranscriptList(rows: List<TRow>) {
     }
 }
 
-/** What the task was asked, folded: it was written for the agent. */
+/** What the task was asked, in full. */
 @Composable
 private fun AskBlock(row: AskRow) {
     Column(Modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(Space.XS)) {
         Eyebrow("You asked")
-        TapFold(row.text, "transcript-ask:${row.key}:${row.text.hashCode()}", 3, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
+        Text(row.text, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
     }
 }
 

@@ -123,7 +123,7 @@ fun laptopWords(l: Laptop): String? {
 fun storyWords(s: Story?, written: String?): String = when {
     s == null -> "A long read: what it tried, what failed, the choices, what's left"
     s.writing && s.have && written != null -> "Written $written · a new one is being written"
-    s.writing -> if (s.by == "agent") "Its agent is writing it…" else "dibs is writing it…"
+    s.writing -> if (s.by == "agent") "Its agent is writing it" else "dibs is writing it"
     s.state == "failed" && !s.have -> "It couldn't be written"
     written == null -> "Written"
     s.stale -> "Written $written · the task moved on since"

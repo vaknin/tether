@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Action
 import com.kivan.tether.dibs.Decision
@@ -132,7 +131,7 @@ internal fun QuestionControls(
             val approval = actions.any { it.id.startsWith("a") }
             val sent = "sent:$id"
             if (approval && Dibs.open[sent] == true) Text("Sent to dibs. It acts on your words, or asks.", style = AppType.small, color = Palette.Muted)
-            AnswerField(field, hint ?: "Answer…", Modifier.fillMaxWidth(), background = background) { text ->
+            AnswerField(field, hint ?: "Answer", Modifier.fillMaxWidth(), background = background) { text ->
                 val value = JSONObject().put("item", id.toString()).put("text", text)
                 if (approval) {
                     Dibs.open[sent] = true
@@ -183,15 +182,14 @@ internal fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifie
     Row(modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(painterResource(R.drawable.lucide_check), null, Modifier.padding(top = 2.dp).size(16.dp), tint = Palette.Success)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                 if (d.project.isNotBlank()) {
-                    Text(d.project, Modifier.weight(1f, fill = false), style = AppType.label, color = Palette.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(d.project, Modifier.weight(1f, fill = false), style = AppType.label, color = Palette.Accent)
                 }
                 Text(
                     listOfNotNull(if (d.plain) null else "in the agent's words", age(now - d.ts)).joinToString(" · "),
                     style = AppType.small,
                     color = Palette.Muted,
-                    maxLines = 1,
                 )
             }
             Text(d.text, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)

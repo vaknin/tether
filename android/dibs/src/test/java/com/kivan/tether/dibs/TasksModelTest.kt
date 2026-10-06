@@ -117,10 +117,9 @@ class TasksModelTest {
     }
 
     @Test
-    fun aLongClauseIsCutAtAWord() {
+    fun aLongClauseIsNeverCut() {
         val t = firstClause("one two three four five six seven eight nine ten eleven twelve thirteen fourteen")
-        assertEquals("One two three four five six seven eight nine ten eleven…", t)
-        assert(t.length <= TITLE_MAX + 1)
+        assertEquals("One two three four five six seven eight nine ten eleven twelve thirteen fourteen", t)
     }
 
     @Test

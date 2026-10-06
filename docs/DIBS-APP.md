@@ -66,6 +66,8 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - The mark: handshake (today's channel icon), hand (raised: "dibs!"), or another Lucide mark.
 - **Chosen (the user, 2026-10-05):** teal 180 and a deadpan face drawn for dibs (`android/dibs/dibs-mark.svg`),
   from five marks based on dibs's personality.
+- **No "…" anywhere (the user's rule, 2026-10-06, app 0.5.9):** no text is cut with an ellipsis and no string of the app's
+  own ends in "…"; text wraps to as many lines as it needs (titles, the header's usage, rows, chips, the top bars).
 
 ## How it's built
 
@@ -193,7 +195,7 @@ them as `value.comment`, which dibs hands to its brain (the tap still answers).
   kept, then dropped after 14 days or 7 days after its task's `ticked` (while the view still lists it). Every dibs
   notification opens the chat (word 221), a task's too.
 - Differently from the plan: a task's page opens at the top (its report) unless its agent replied since the page was
-  last open (then at the chat); ticking off from the page goes back to the list; "Getting it…" offers Try again after
+  last open (then at the chat); ticking off from the page goes back to the list; "Getting it" offers Try again after
   90 s. Icons added through `regen-look.sh`: list-checks, arrow-left, refresh-cw, chevron-right, scroll-text,
   circle-check.
 
@@ -222,7 +224,8 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
   - **Titles** are dibs's, cleaned on the phone (`plainTitle`): an aside in brackets goes, including one cut open
     ("Cut phone notification clutter (the user"), and a title that is only a tag before a colon in the user's
     words ("PLAN ONLY") takes the words after it. dibs's `yours::title_from` still makes those titles; fixing it
-    there is left for the dibs side.
+    there is left for the dibs side. A title the phone takes from the user's words (after a tag) is their whole
+    first clause, never cut (until 0.5.9 it was cut at 60 characters with "…").
   - **The laptop** (word 145): a "Laptop" line at the top, memory, load, builds running and waiting, agents, from
     `state.laptop` when dibs sends it.
 - **dibs's own work** (its background tasks, the live sessions, ships) folds into one line at the bottom,
@@ -242,12 +245,12 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
    - **What it did:** the task's report, in full.
    - **Result:** a "Report" chip when the task wrote a REPORT.md (it opens in a reader on the phone), and "Shipped to
      tether · 3 changes" with their "For you" lines.
-   - **You asked:** folded (it was written for the agent).
+   - **You asked:** in full (until 0.5.9 folded to three lines ending in "…").
    - **Transcript.**
    - The earlier messages with its agent, read-only (below), and **Ask dibs about it**.
    - The top bar has **Tick off ✓** once the task is finished, Stop while it runs, and Open on laptop in the ⋮ menu.
 3. **The transcript** reads like a document from the top, with "↓ End" to jump.
-   - The task's prompt comes first, folded.
+   - The task's prompt comes first, in full.
    - The agent's text is shown in full.
    - The user's own lines (typed at the laptop or sent from the phone) show as their bubbles.
    - dibs's notes and "keep going" pushes show as muted system lines.
@@ -292,7 +295,7 @@ These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Olde
     `{"v":1, "task":31, "rev":"…", "as_of":…, "parts":[{"session","how":"start|handoff|clear|reopen","ts"}],
     "turns":[{"who":"ask|user|agent|note|steps","ts", "text"?, "src":"laptop|phone"?,
     "steps":[{"tool":"Edit","line":"Edit src/recap.rs","in"?,"out"?,"error":true?}]?}]}`.
-  - The phone shows "Getting it…" (the link is up while the app is on screen). It keeps the newest file per task and
+  - The phone shows "Getting it" (the link is up while the app is on screen). It keeps the newest file per task and
     deletes it 7 days after the task is ticked, or after 14 days.
 
 ### Actions (phone → dibs)
@@ -365,6 +368,7 @@ one matters" flag would be the next step.
   sends now get a thumbnail on arrival (`Core`), so they show as pictures, not chips.
 - **Usage** (word 131): the header shows each window, "5h 88% · resets 12:20", amber from 80 %, from
   `state.limits` (`{"ts", "windows": [{"name", "pct", "resets"}]}`, added on the dibs side by task #66).
+  A line too long for its room wraps after its "·" ("7d 93% ·" over "resets Sun 10:00"), never cut (0.5.9).
 
 ## Full story (task #85, 2026-10-06)
 
@@ -383,7 +387,7 @@ the app (0.5.7) asks for it, shows it and lets them talk to dibs about it.
   - From the story, messages to dibs are ordinary `say`s whose value also carries
     `"about": {"story": <task>, "kind": "ask"|"follow", "quote"?}` (`About`, `Composer.about`, sent once then cleared).
 - **Task page:** a "Full story" row after the Result block, before "You asked": "A long read: what it tried, what
-  failed, the choices, what's left" until asked, then "dibs is writing it…" (or "Its agent is writing it…"),
+  failed, the choices, what's left" until asked, then "dibs is writing it" (or "Its agent is writing it"),
   "Written 21:40", "Written 21:40 · the task moved on since" (`storyWords`). A tap opens the story.
 - **The story** (`ui/StoryScreen.kt`, `Page.Story`): fetched like the transcript (`rememberFetch`, once more when
   `story.ts` is newer than the file here), but only when it was never asked for or is `ready`: while one is written,

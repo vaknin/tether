@@ -37,7 +37,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Away
 import com.kivan.tether.dibs.Dibs
@@ -117,7 +116,7 @@ private fun AwayCard(a: Away) {
             for ((i, line) in a.lines.withIndex()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.padding(top = 8.dp).size(5.dp).background(Palette.Muted, CircleShape))
-                    TapFold(line, "away:${a.id}:$i", 3)
+                    Text(line, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
                 }
             }
             ActButton("Got it", "primary", Modifier.padding(top = 2.dp)) { Dibs.answer("w${a.id}", "Got it", "w${a.id}") }
@@ -137,8 +136,7 @@ private fun FeedRow(f: FeedItem, task: Long?) {
     val ctx = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val open = Dibs.open[key] == true
-    var cut by remember(f) { mutableStateOf(false) }
-    val opens = f.opens || cut
+    val opens = f.opens
     val (icon, tint) = kindMark(f.kind)
     val longPress = {
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -167,22 +165,15 @@ private fun FeedRow(f: FeedItem, task: Long?) {
                 f.text,
                 style = MaterialTheme.typography.bodyMedium,
                 color = Palette.Text,
-                maxLines = if (open) Int.MAX_VALUE else 3,
-                overflow = TextOverflow.Ellipsis,
-                onTextLayout = { if (it.hasVisualOverflow) cut = true },
             )
             if (f.why != null) {
                 Text(
                     "You asked: ${f.why}",
                     style = AppType.small,
                     color = Palette.Muted,
-                    maxLines = if (open) Int.MAX_VALUE else 1,
-                    overflow = TextOverflow.Ellipsis,
-                    onTextLayout = { if (it.hasVisualOverflow) cut = true },
                 )
             }
-            // Open: what was done first (the report, the other lines), then all of what you asked,
-            // folded again: it was written for the agent, so it's long.
+            // Open: what was done first (the report, the other lines), then all of what you asked.
             if (open && f.report != null) {
                 Eyebrow("Report", Modifier.padding(top = Space.S))
                 Text(f.report, style = AppType.small, color = Palette.Text)
@@ -198,18 +189,18 @@ private fun FeedRow(f: FeedItem, task: Long?) {
             }
             if (open && f.asked != null) {
                 Eyebrow("What you asked", Modifier.padding(top = Space.S))
-                TapFold(f.asked, "$key:asked", 3, style = AppType.small, color = Palette.Muted)
+                Text(f.asked, style = AppType.small, color = Palette.Muted)
             }
             if (open && f.reopen != null) {
                 val sent = "reopen:${f.reopen}" in Dibs.answered
-                ActButton(if (sent) "Opening on the laptop…" else "Open on laptop", "outline", Modifier.padding(top = Space.S), enabled = !sent) {
+                ActButton(if (sent) "Opening on the laptop" else "Open on laptop", "outline", Modifier.padding(top = Space.S), enabled = !sent) {
                     Dibs.host.act("reopen", JSONObject().put("reopen", f.reopen))
                     Dibs.answered["reopen:${f.reopen}"] = "sent"
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val who = listOfNotNull(f.who.ifBlank { null }, f.repo?.takeIf { it != f.who }).joinToString(" · ")
-                Text(who, Modifier.weight(1f, fill = false), style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(who, Modifier.weight(1f, fill = false), style = AppType.small, color = Palette.Muted)
                 if (task != null) {
                     Text("Open", style = AppType.small, color = Palette.Accent)
                     Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(14.dp), tint = Palette.Accent)

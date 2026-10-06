@@ -92,7 +92,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.ChannelInfo
@@ -198,14 +197,12 @@ private fun EntryRow(
             icon()
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = AppType.heading, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = AppType.heading)
                 if (line.isNotEmpty()) {
                     Text(
                         line,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -360,16 +357,16 @@ private fun ChannelBar(c: ChannelInfo, title: String, subtitle: String) {
     var menu by remember { mutableStateOf(false) }
     Surface(color = Palette.Bg) {
         Row(
-            Modifier.fillMaxWidth().statusBarsPadding().height(68.dp).padding(start = 4.dp, end = 4.dp),
+            Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 68.dp).padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BackButton { Channels.show(null) }
             Glyph(c, 40)
             Spacer(Modifier.width(Space.M))
             Column(Modifier.weight(1f)) {
-                Text(title, style = AppType.heading.auto(title), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
+                Text(title, style = AppType.heading.auto(title), modifier = Modifier.fillMaxWidth())
                 if (subtitle.isNotEmpty()) {
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall.auto(subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall.auto(subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
                 }
             }
             Box {
@@ -568,7 +565,7 @@ private fun ItemReply(block: String, item: String, r: JSONObject) {
     val key = "${ch.name}/$block/$item/reply"
     val pending by Channels.pending.collectAsState()
     val text = Channels.drafts[key].orEmpty()
-    val placeholder = r.optString("placeholder").ifEmpty { "Answer…" }
+    val placeholder = r.optString("placeholder").ifEmpty { "Answer" }
     val submit = {
         val t = text.trim()
         if (t.isNotEmpty()) {
@@ -1074,6 +1071,6 @@ private fun threadBlocks(ctx: android.content.Context, items: List<AppHistoryIte
     }
     return listOf(
         JSONObject().put("type", "list").put("id", "_thread").put("items", list).put("empty", "No posts yet."),
-        JSONObject().put("type", "compose").put("id", "_reply").put("placeholder", "Reply…").put("submit", "Send"),
+        JSONObject().put("type", "compose").put("id", "_reply").put("placeholder", "Reply").put("submit", "Send"),
     )
 }

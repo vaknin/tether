@@ -23,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
@@ -99,8 +98,8 @@ private fun TaskCard(t: Task, peek: Peek?, armed: Armed, modifier: Modifier) {
         modifier.card().clip(MaterialTheme.shapes.medium).clickable { openPeek(key, t.peekWho) }.padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
-            Text(t.name, Modifier.weight(1f), style = AppType.body.copy(fontWeight = Bold), color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+            Text(t.name, Modifier.weight(1f), style = AppType.body.copy(fontWeight = Bold), color = Palette.Text)
             TaskState(t)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
@@ -109,7 +108,7 @@ private fun TaskCard(t: Task, peek: Peek?, armed: Armed, modifier: Modifier) {
         }
         val doing = t.doing ?: t.text
         if (doing.isNotBlank()) {
-            Text(doing, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted, maxLines = if (open) 8 else 2, overflow = TextOverflow.Ellipsis)
+            Text(doing, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
         }
         if (open) {
             PeekBox(peek?.takeIf { it.who == t.peekWho })
@@ -145,7 +144,7 @@ private fun TaskButtons(t: Task, armed: Armed) {
 @Composable
 private fun PeekBox(peek: Peek?) {
     Text(
-        peek?.lines?.joinToString("\n")?.ifBlank { null } ?: if (peek == null) "Reading its last lines…" else "Nothing to show yet.",
+        peek?.lines?.joinToString("\n")?.ifBlank { null } ?: if (peek == null) "Reading its last lines" else "Nothing to show yet.",
         Modifier.fillMaxWidth().background(Palette.SurfaceLow, MaterialTheme.shapes.small).padding(horizontal = 10.dp, vertical = 8.dp),
         style = AppType.mono,
         color = Palette.Muted,
@@ -161,11 +160,11 @@ private fun SessionRow(s: Session, peek: Peek?, modifier: Modifier) {
         modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { openPeek(key, s.name) }.padding(vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
             Column(Modifier.weight(1f)) {
-                Text(s.name, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(s.name, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
                 val where = listOfNotNull(s.repo, s.branch?.takeIf { it != s.name }).joinToString(" · ")
-                if (where.isNotEmpty()) Text(where, style = AppType.mono, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (where.isNotEmpty()) Text(where, style = AppType.mono, color = Palette.Muted)
             }
             for (h in s.holds.take(2)) Chip(holdWords(h), accent = true)
             StateWord(s.status.ifEmpty { "live" }, busy = s.status == "busy")

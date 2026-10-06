@@ -33,7 +33,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
@@ -153,12 +152,10 @@ private fun TaskRow(t: YourTask, view: DibsView, now: Long, modifier: Modifier) 
                 t.label,
                 style = AppType.body.copy(fontWeight = if (unread) FontWeight.W600 else FontWeight.W400),
                 color = Palette.Text,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
             TaskState(t, now)
             if (t.line.isNotBlank()) {
-                Text(t.line, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t.line, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
             }
         }
         TaskMenu(menu, t, view) { menu = false }
@@ -225,12 +222,12 @@ private fun TickedRow(t: YourTask, modifier: Modifier) {
     val zone = ZoneId.systemDefault()
     Row(
         modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { Dibs.open(Page.Task(t.id)) }.padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(painterResource(R.drawable.lucide_check), null, Modifier.size(16.dp), tint = Palette.Success)
+        Icon(painterResource(R.drawable.lucide_check), null, Modifier.padding(top = 2.dp).size(16.dp), tint = Palette.Success)
         Column(Modifier.weight(1f)) {
-            Text(t.label, style = MaterialTheme.typography.bodyMedium, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(t.label, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
             // "ticked today", "ticked Sun 4 Oct"
             val day = t.ticked?.let { dayOf(it, zone, LocalDate.now(zone)) }?.let { if (it == "Today" || it == "Yesterday") it.lowercase() else it }
             Text(listOfNotNull(t.project, day?.let { "ticked $it" }).joinToString(" · "), style = AppType.small, color = Palette.Muted)

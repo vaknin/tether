@@ -92,8 +92,8 @@ class FormatTest {
     @Test
     fun aFullStorysLine() {
         assertEquals("A long read: what it tried, what failed, the choices, what's left", storyWords(null, null))
-        assertEquals("dibs is writing it…", storyWords(Story("writing"), null))
-        assertEquals("Its agent is writing it…", storyWords(Story("writing", by = "agent"), null))
+        assertEquals("dibs is writing it", storyWords(Story("writing"), null))
+        assertEquals("Its agent is writing it", storyWords(Story("writing", by = "agent"), null))
         assertEquals("Written 21:40 · a new one is being written", storyWords(Story("writing", ts = 5, have = true), "21:40"))
         assertEquals("Written 21:40", storyWords(Story("ready", ts = 5, have = true), "21:40"))
         assertEquals("Written 21:40 · the task moved on since", storyWords(Story("ready", ts = 5, stale = true, have = true), "21:40"))

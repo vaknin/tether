@@ -6,10 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.only
@@ -57,7 +60,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Badges
@@ -206,18 +208,18 @@ private fun Header(link: Link, state: State?, typing: Boolean) {
             // The launcher's monochrome layer: its mark fills 46 of 108 dp, so draw it larger than the tile.
             Icon(painterResource(R.drawable.ic_dibs_monochrome), null, Modifier.requiredSize(48.dp), tint = Palette.Text)
         }
-        // The usage steps aside while typing. With it, the state takes at most 45% of the row, so a
-        // long one ("Out of usage until 12:20") wraps instead of squeezing it; without, all of it.
+        // The usage steps aside while typing. With it, the state takes what it needs up to 130 dp (a
+        // longer one, "Waiting for dibs", wraps), and the usage the rest; without, all of it.
         val limits = state?.limits?.takeIf { it.isNotEmpty() && !typing }
         Column(
-            Modifier.weight(if (limits != null) 0.45f else 1f, fill = limits == null).padding(start = 10.dp),
+            (if (limits != null) Modifier.widthIn(max = 130.dp) else Modifier.weight(1f)).padding(start = 10.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Eyebrow(words, color = color)
             Text("dibs", style = AppType.heading, color = Palette.Text)
         }
         if (limits != null) {
-            Box(Modifier.weight(0.55f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) { Usage(limits) }
+            Box(Modifier.weight(1f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) { Usage(limits) }
         }
         Box {
             IconButton(onClick = { menu = true }) {
@@ -237,7 +239,11 @@ private fun Header(link: Link, state: State?, typing: Boolean) {
     }
 }
 
-/** Claude's usage, always in sight: each window's percent and when it resets, amber near the end. */
+/**
+ * Claude's usage, always in sight: each window's percent and when it resets, amber near the end.
+ * Never cut: a line too long for its room breaks only after its "·" ("7d 93% ·" over "resets Sun
+ * 10:00"), as each half is held together.
+ */
 @Composable
 private fun Usage(limits: List<Limit>) {
     val ctx = LocalContext.current
@@ -253,10 +259,17 @@ private fun Usage(limits: List<Limit>) {
     if (lines.isEmpty()) return
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
         for (l in lines) {
-            Text(l.text, style = AppType.small, color = if (l.warn) Palette.Warning else Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                remember(l.text) { l.text.replace(' ', NBSP).replace("$NBSP·$NBSP", "$NBSP· ") },
+                style = AppType.small,
+                color = if (l.warn) Palette.Warning else Palette.Muted,
+                textAlign = TextAlign.End,
+            )
         }
     }
 }
+
+private const val NBSP = '\u00A0'
 
 /** "dibs has your phone": above every tab while dibs has it, Take it back in one tap. */
 @Composable
@@ -281,11 +294,12 @@ private fun LendBar(lend: Lend) {
 @Composable
 private fun LendToggles(lends: Lends) {
     Row(
-        Modifier.padding(horizontal = Space.L).padding(bottom = Space.S).fillMaxWidth(),
+        // Both as tall as the taller one, when one's words wrap.
+        Modifier.padding(horizontal = Space.L).padding(bottom = Space.S).fillMaxWidth().height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(Space.S),
     ) {
-        lends.phone?.let { LendToggleCard(it, "Phone", R.drawable.lucide_smartphone, Modifier.weight(1f)) }
-        lends.laptop?.let { LendToggleCard(it, "Laptop", R.drawable.lucide_laptop, Modifier.weight(1f)) }
+        lends.phone?.let { LendToggleCard(it, "Phone", R.drawable.lucide_smartphone, Modifier.weight(1f).fillMaxHeight()) }
+        lends.laptop?.let { LendToggleCard(it, "Laptop", R.drawable.lucide_laptop, Modifier.weight(1f).fillMaxHeight()) }
     }
 }
 
@@ -301,7 +315,7 @@ private fun LendToggleCard(t: LendToggle, title: String, icon: Int, modifier: Mo
         }
     }
     val sub = when {
-        sent -> if (t.lent) "Taking it back…" else "Lending…"
+        sent -> if (t.lent) "Taking it back" else "Lending"
         t.lent -> t.text.ifBlank { "Lent to dibs" }
         else -> "Yours"
     }
@@ -319,8 +333,8 @@ private fun LendToggleCard(t: LendToggle, title: String, icon: Int, modifier: Mo
     ) {
         Icon(painterResource(icon), null, Modifier.size(18.dp), tint = if (t.lent) Palette.Accent else Palette.Muted)
         Column(Modifier.weight(1f)) {
-            Text(if (t.lent) "$title lent to dibs" else title, style = AppType.label, color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sub, style = AppType.small, color = if (t.lent) Palette.Text else Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (t.lent) "$title lent to dibs" else title, style = AppType.label, color = Palette.Text)
+            Text(sub, style = AppType.small, color = if (t.lent) Palette.Text else Palette.Muted)
         }
     }
 }
@@ -371,7 +385,7 @@ private fun Empty(hasView: Boolean) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(if (hasView) "dibs needs an update to fill these screens" else "Waiting for dibs…", style = AppType.heading, textAlign = TextAlign.Center)
+        Text(if (hasView) "dibs needs an update to fill these screens" else "Waiting for dibs", style = AppType.heading, textAlign = TextAlign.Center)
         if (hasView) {
             Text(
                 "Its questions and chat are in Tether meanwhile.",

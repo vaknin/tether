@@ -36,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
@@ -193,7 +192,7 @@ private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
         item(key = "_asked") {
             Column(verticalArrangement = Arrangement.spacedBy(Space.XS)) {
                 Section("You asked")
-                TapFold(t.asked, "asked:${t.id}", 3, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
+                Text(t.asked, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
             }
         }
     }
@@ -277,7 +276,7 @@ private fun LinkRow(icon: Int, title: String, line: String, modifier: Modifier =
         Icon(painterResource(icon), null, Modifier.size(18.dp), tint = Palette.Muted)
         Column(Modifier.weight(1f)) {
             Text(title, style = AppType.body, color = Palette.Text)
-            Text(line, style = AppType.small, color = Palette.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(line, style = AppType.small, color = Palette.Muted)
         }
         Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(18.dp), tint = Palette.Muted)
     }
