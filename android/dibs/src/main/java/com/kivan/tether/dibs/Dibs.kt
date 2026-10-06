@@ -138,11 +138,8 @@ object Dibs {
 
     /** The dibs chat's box. */
     val chat = Composer(null)
-    private val boxes = HashMap<Long, Composer>()
 
-    /** A task's own box. */
-    fun box(task: Long): Composer = boxes.getOrPut(task) { Composer(task) }
-    /** Typed answers, Tell it… texts and the like, by field, kept across tabs. */
+    /** Typed answers and the like, by field, kept across tabs. */
     val fields = mutableStateMapOf<String, String>()
     /** Lines (by id) opened to their full text, earlier days unfolded, cards opened. */
     val open = mutableStateMapOf<String, Boolean>()

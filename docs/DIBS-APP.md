@@ -183,15 +183,15 @@ them as `value.comment`, which dibs hands to its brain (the tap still answers).
   `src/test/resources/transcript-33.json`, `MarkdownTest`, `PayloadTest`).
 - Screens: `ui/TasksTab.kt` (Work's content is `workItems` in the "dibs's own work" fold), `ui/TaskPage.kt`,
   `ui/TranscriptScreen.kt`, `ui/ReportScreen.kt`. The chat's parts moved to `ui/ChatParts.kt`; each chat has its own
-  `Composer` (draft, picked files, `say` or `task-say`), and echoes carry their task.
+  `Composer` (draft, picked files, `say`); the task page's own box went with word 221.
 - Back stack: `Dibs.pages` (`Page.Task|Transcript|Report`), popped by system back; `DibsActivity.EXTRA_TASK`
   (`com.kivan.tether.dibs.TASK`, a Long) opens a task. The other tabs keep their scroll under a page
   (`SaveableStateHolder`); the Chat tab still opens at its newest line.
 - `:app`: `DibsHost.channelFile(prefix)` reads the core's new `app_files` (ffi) listing, again on each received
   channel file (`Core.channelFiles`); with no node running it reads `state/channels/dibs/`. `send` takes the action
   (`task-say` with the task). Fetched files are pruned at start and on each arrival: the newest per task and kind is
-  kept, then dropped after 14 days or 7 days after its task's `ticked` (while the view still lists it). A dibs
-  notification tagged `task:<id>` opens that task (request code per task).
+  kept, then dropped after 14 days or 7 days after its task's `ticked` (while the view still lists it). Every dibs
+  notification opens the chat (word 221), a task's too.
 - Differently from the plan: a task's page opens at the top (its report) unless its agent replied since the page was
   last open (then at the chat); ticking off from the page goes back to the list; "Getting it…" offers Try again after
   90 s. Icons added through `regen-look.sh`: list-checks, arrow-left, refresh-cw, chevron-right, scroll-text,
