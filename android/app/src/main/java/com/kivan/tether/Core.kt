@@ -224,6 +224,8 @@ object Core {
                     if (event.id == null) Adb.onAsk(app, event.data)
                     return
                 }
+                // The phone's own to tell; nothing comes this way.
+                if (event.channel == Presence.CHANNEL) return
                 Channels.onEvent(n, event)
                 return
             }

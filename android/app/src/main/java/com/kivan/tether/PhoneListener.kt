@@ -16,7 +16,8 @@ import com.kivan.tether.core.PhoneNotif
  * Notification access, used twice: mirroring the active notifications to the laptop, and (through
  * the same grant) reading media sessions for [MediaMirror]. Notifications go out only over a link
  * that is already up; they never start the node. A new link gets a full snapshot, which is what
- * `tether notifications --fresh` waits for after its FCM wake.
+ * `tether notifications --fresh` waits for after its FCM wake. Being bound by the system, it also
+ * hosts [Presence]'s screen and unlock receiver.
  */
 class PhoneListener : NotificationListenerService() {
     private var media: MediaMirror? = null
@@ -26,6 +27,7 @@ class PhoneListener : NotificationListenerService() {
     override fun onListenerConnected() {
         instance = this
         media = MediaMirror(this, ComponentName(this, PhoneListener::class.java), ::label).also { it.start() }
+        Presence.start(this)
         schedule()
     }
 
@@ -34,6 +36,7 @@ class PhoneListener : NotificationListenerService() {
         main.removeCallbacks(sendNotifs)
         media?.stop()
         media = null
+        Presence.stop()
     }
 
     override fun onDestroy() {
