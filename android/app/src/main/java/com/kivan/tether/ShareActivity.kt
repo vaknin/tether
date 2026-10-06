@@ -80,13 +80,15 @@ class ShareActivity : Activity() {
         super.onDestroy()
     }
 
+    // Only other apps' content URIs: Tether reads them with its own rights, so a file: URI or one of
+    // Tether's own providers would let any app have Tether's private files (the paired key) sent off.
     private fun sharedUris(intent: Intent): List<Uri> = when (intent.action) {
         Intent.ACTION_SEND ->
             listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
         Intent.ACTION_SEND_MULTIPLE ->
             IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
         else -> emptyList()
-    }
+    }.filter { it.scheme == "content" && it.authority?.startsWith(packageName) != true }
 
     private companion object {
         const val HOLD = "share"

@@ -64,8 +64,10 @@ class DibsActivity : ComponentActivity() {
             Dibs.chat.draft = listOf(Dibs.chat.draft, text).filter { it.isNotBlank() }.joinToString("\n")
             Dibs.tab = TAB_CHAT
         }
-        val uris = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-            ?: listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+        // Other apps' content URIs only (see ShareActivity): never a file: URI or one of ours.
+        val uris = (IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            ?: listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)))
+            .filter { it.scheme == "content" && it.authority?.startsWith(packageName) != true }
         if (uris.isEmpty()) return
         Dibs.tab = TAB_CHAT
         Dibs.pages.clear()
