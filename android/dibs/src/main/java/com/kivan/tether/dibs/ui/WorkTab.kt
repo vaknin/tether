@@ -129,22 +129,14 @@ private fun TaskState(t: Task) {
     }
 }
 
+/** Stop it (a second press, within 4 s). No "Tell it…": the user talks only to dibs (word 221). */
 @Composable
 private fun TaskButtons(t: Task, armed: Armed) {
-    val tellKey = "tell:${t.id}"
-    val telling = Dibs.open[tellKey] == true
-    Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        ActButton("Tell it…", "") { Dibs.toggle(tellKey) }
+    Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
         val stopKey = "stop${t.id}"
         ActButton(if (armed.key == stopKey) "Stop it?" else "Stop", "danger") {
             armed.press(stopKey) { Dibs.host.act("stop", JSONObject().put("task", t.id)) }
-        }
-    }
-    if (telling) {
-        AnswerField("tell/${t.id}", "Tell ${t.name}…", Modifier.fillMaxWidth()) { text ->
-            Dibs.host.act("tell", JSONObject().put("task", t.id).put("text", text))
-            Dibs.open.remove(tellKey)
         }
     }
 }

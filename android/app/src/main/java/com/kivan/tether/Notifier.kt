@@ -403,7 +403,7 @@ object Notifier {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setColor(c.accent ?: Palette.Accent.toArgb())
             .setShortcutId(Shortcuts.channelId(c.name))
-            .setContentIntent(if (dibs) openDibs(context, tag) else openChannel(context, c.name))
+            .setContentIntent(if (dibs) openDibs(context) else openChannel(context, c.name))
             .setAutoCancel(true)
             // A tagged post updated in place doesn't alert again; a new untagged post (it replaces
             // the channel's one) does, as before.
@@ -508,15 +508,10 @@ object Notifier {
         )
 
     /**
-     * dibs's own screen: one of the user's tasks (tag `task:<id>`: its done card, its questions, its
-     * agent's replies) opens that task's page; anything else the chat, a question too (a numeric tag,
-     * its id): it shows there with its buttons, the one place the user wants questions (word 217).
+     * dibs's own screen, always the chat: everything for the user is a line there, a question with its
+     * buttons, a task's report too (the user, words 217 and 221: they talk only to dibs).
      */
-    private fun openDibs(context: Context, tag: String?): PendingIntent {
-        tag?.removePrefix("task:")?.takeIf { it != tag }?.toLongOrNull()?.let { task ->
-            // One request code per task: the extras aren't part of a PendingIntent's identity.
-            return PendingIntent.getActivity(context, "dibs:task:$task".hashCode(), DibsActivity.task(context, task), PendingIntent.FLAG_IMMUTABLE)
-        }
+    private fun openDibs(context: Context): PendingIntent {
         val tab = DibsActivity.TAB_CHAT
         // One request code per tab: the extras aren't part of a PendingIntent's identity.
         return PendingIntent.getActivity(context, "dibs:$tab".hashCode(), DibsActivity.intent(context, tab), PendingIntent.FLAG_IMMUTABLE)

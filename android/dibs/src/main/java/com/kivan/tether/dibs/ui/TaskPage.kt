@@ -5,13 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
+import com.kivan.tether.dibs.DibsActivity
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.EchoRow
 import com.kivan.tether.dibs.LineRow
@@ -58,10 +56,10 @@ import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.flow.first
 
 // A task's page (docs/DIBS-APP.md, "Your tasks"): its state and times, its open questions, what it
-// did, its result, what was asked, the transcript, and the chat with its own agent. The chat goes
-// straight to that agent's session (`task-say`), not to dibs's brain; it reuses the dibs chat's parts.
+// did, its result, what was asked, the transcript, and the earlier messages with its agent, read-only.
+// The user talks only to dibs (word 221): no box here; "Ask dibs about it" opens the dibs chat with the
+// task named, and dibs passes on what's for the agent.
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TaskPage(id: Long, view: DibsView) {
     val t = view.task(id) ?: return Gone()
@@ -97,12 +95,6 @@ internal fun TaskPage(id: Long, view: DibsView) {
     }
     val newestNow by rememberUpdatedState(newest)
     DisposableEffect(id) { onDispose { newestNow?.let { Dibs.chatSeen[id] = it } } }
-    // Typing to it: the newest lines stay in sight above the keyboard.
-    val typing = WindowInsets.isImeVisible
-    LaunchedEffect(typing) {
-        val total = state.layoutInfo.totalItemsCount
-        if (typing && total > 0) state.animateScrollToItem(total - 1)
-    }
 
     Column(Modifier.fillMaxSize()) {
         PageBar(t.label, t.project) { TaskActions(t, view, armed) }
@@ -112,22 +104,29 @@ internal fun TaskPage(id: Long, view: DibsView) {
             contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.S),
         ) {
             summary(t, view, now)
-            item(key = "_chat") {
-                Column(verticalArrangement = Arrangement.spacedBy(Space.XS)) {
-                    Section("Chat")
-                    if (rows.isEmpty()) {
-                        Text(
-                            "Ask ${t.label} about what it did and why, or point it somewhere new. Photos and files can go along too.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Palette.Muted,
-                        )
-                    }
-                }
-            }
+            if (rows.isNotEmpty()) item(key = "_chat") { Section("Earlier messages") }
             chatItems(rows, echoes, look)
             if (t.busy) item(key = "_busy") { Typing("${t.label} is on it") }
         }
-        InputArea(Dibs.box(id), "Message ${t.label}…")
+        AskDibs(t)
+    }
+}
+
+/** The way to say something about this task: to dibs, in its chat, with the task named. */
+@Composable
+private fun AskDibs(t: YourTask) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.S),
+    ) {
+        Text("Questions or changes go through dibs.", Modifier.weight(1f), style = AppType.small, color = Palette.Muted)
+        ActButton("Ask dibs about it", "primary") {
+            val about = "About ${t.label}: "
+            if (!Dibs.chat.draft.startsWith(about)) Dibs.chat.draft = about + Dibs.chat.draft
+            Dibs.pages.clear()
+            Dibs.tab = DibsActivity.TAB_CHAT
+        }
     }
 }
 
