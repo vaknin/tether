@@ -2,9 +2,11 @@ package com.kivan.tether
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.ImageDecoder
 import android.net.Uri
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsHost
 import com.kivan.tether.dibs.Link
@@ -20,10 +22,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * dibs's screens (the `:dibs` module, docs/DIBS-APP.md) over Tether's link: the dibs channel's
@@ -99,6 +104,22 @@ class DibsBridge(context: Context) : DibsHost {
     }
 
     override fun thumb(fileId: String): ImageBitmap? = Thumbs.byId(app, fileId)
+
+    /** A file dibs sent is kept in its channel folder: decode that. The user's own copies are gone once sent. */
+    override fun image(fileId: String, maxPx: Int): ImageBitmap? {
+        val path = runBlocking {
+            Core.withNode { n -> runCatching { n.appFiles(Channels.DIBS, 500u) }.getOrNull() }
+                ?.firstOrNull { it.id == fileId && !it.fromMe }?.path
+        }
+        val f = path?.let(::File)?.takeIf { it.isFile } ?: return thumb(fileId)
+        return runCatching {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(f)) { d, info, _ ->
+                val s = info.size
+                val scale = min(1f, maxPx.toFloat() / max(s.width, s.height))
+                d.setTargetSize(max(1, (s.width * scale).toInt()), max(1, (s.height * scale).toInt()))
+            }.asImageBitmap()
+        }.getOrNull() ?: thumb(fileId)
+    }
 
     /**
      * The newest received dibs file named [prefix]…, looked up again whenever a channel file

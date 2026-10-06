@@ -61,4 +61,19 @@ class FormatTest {
         assertEquals("Out of usage", stateWords(Link.CONNECTED, idle.copy(usage = "Out until 18:00")))
         assertEquals("Ready", stateWords(Link.CONNECTED, idle))
     }
+
+    @Test
+    fun usageSaysEachWindowAndItsReset() {
+        val now = 1_000_000L
+        val clock: (Long) -> String = { "t${it - now}" }
+        val day: (Long) -> String = { "Thu" }
+        val lines = limitWords(
+            listOf(Limit("five_hour", 87.6, now + 3600), Limit("seven_day", 63.0, now + 3 * 86400), Limit("spend_limit", 10.0, now - 1)),
+            now, clock, day,
+        )
+        assertEquals(
+            listOf(LimitLine("5h 88% · resets t3600", true), LimitLine("7d 63% · resets Thu t259200", false)),
+            lines,
+        )
+    }
 }

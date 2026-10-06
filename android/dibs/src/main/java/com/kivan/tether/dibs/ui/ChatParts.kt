@@ -459,13 +459,18 @@ private fun ColumnScope.EchoText(text: String, meta: @Composable () -> Unit) {
     }
 }
 
-/** A file in a line: an image as a thumbnail when there is one, else a chip with its name and size. */
+/**
+ * A file in a line: an image as a thumbnail when there is one (a tap opens it full screen), else
+ * a chip with its name and size.
+ */
 @Composable
 private fun FileView(f: FileRef, mine: Boolean) {
     if (f.image) {
         val thumb = rememberThumb(f.id)
         if (thumb != null) {
-            Thumbnail(thumb, f.name)
+            var full by remember { mutableStateOf(false) }
+            Thumbnail(thumb, f.name) { full = true }
+            if (full) ImageViewer(thumb, rememberFullImage(f.id), f.name) { full = false }
             return
         }
     }
@@ -477,22 +482,24 @@ private fun PickedView(p: Picked) {
     if (p.image) {
         val bmp = rememberPicked(p.uri)
         if (bmp != null) {
-            Thumbnail(bmp, p.name)
+            var full by remember { mutableStateOf(false) }
+            Thumbnail(bmp, p.name) { full = true }
+            if (full) ImageViewer(bmp, rememberPicked(p.uri, FULL_PX), p.name) { full = false }
             return
         }
     }
     FileChip(p.name, null, mine = true)
 }
 
-/** An image at its own aspect, never cropped, inside 220 dp. */
+/** An image at its own aspect, never cropped, inside 220 dp; a tap calls [onOpen]. */
 @Composable
-private fun Thumbnail(bmp: ImageBitmap, name: String) {
+private fun Thumbnail(bmp: ImageBitmap, name: String, onOpen: () -> Unit) {
     val ratio = bmp.width.toFloat() / max(1, bmp.height)
     val w = if (ratio >= 1f) 220.dp else 220.dp * ratio
     Image(
         bmp,
         name,
-        Modifier.width(w).aspectRatio(ratio).clip(RoundedCornerShape(10.dp)),
+        Modifier.width(w).aspectRatio(ratio).clip(RoundedCornerShape(10.dp)).clickable(onClickLabel = "Open full screen", onClick = onOpen),
         contentScale = ContentScale.Fit,
     )
 }

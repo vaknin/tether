@@ -1,6 +1,7 @@
 package com.kivan.tether.dibs.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,11 +41,13 @@ import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.dayOf
+import com.kivan.tether.dibs.forYouWords
 import com.kivan.tether.dibs.taskWords
 import com.kivan.tether.dibs.tasksList
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
+import com.kivan.tether.dibs.ui.theme.Pill
 import com.kivan.tether.dibs.ui.theme.Space
 import java.time.LocalDate
 import java.time.ZoneId
@@ -69,7 +72,13 @@ internal fun TasksTab(view: DibsView) {
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
         verticalArrangement = Arrangement.spacedBy(Space.S),
     ) {
-        item(key = "_hero") { Hero("Yours", "${list.open}", "open") }
+        // What the tab's badge counts, said plainly (nothing when nothing wants you).
+        val open = list.groups.flatMap { it.tasks }
+        val read = open.count { it.state != "needs" && Dibs.unread(it) }
+        val asking = open.count { it.state == "needs" }
+        forYouWords(read, asking)?.let { words ->
+            item(key = "_for_you") { Eyebrow(words, Modifier.padding(top = Space.M, bottom = Space.XS), dot = true, color = Palette.Accent) }
+        }
         for (g in list.groups) {
             item(key = "g-${g.project}") { Section(g.project) }
             items(g.tasks, key = { "y${it.id}" }) { t -> TaskRow(t, view, now, Modifier.animateItem()) }
@@ -183,6 +192,11 @@ internal fun TaskState(t: YourTask, now: Long) {
     }
     when (t.state) {
         "needs" -> Eyebrow(words, dot = true, color = Palette.Accent)
+        // Finished and not opened yet: one of what the badge counts.
+        "done" if Dibs.unread(t) -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Box(Modifier.size(7.dp).background(Palette.Accent, Pill))
+            Text("$words · new", style = AppType.small, color = Palette.Accent)
+        }
         "working", "paused" -> StateWord(words, busy = t.busy)
         "failed" -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Icon(painterResource(R.drawable.lucide_triangle_alert), null, Modifier.size(13.dp), tint = Palette.Warning)

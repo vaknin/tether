@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -67,11 +68,19 @@ import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.State
 import com.kivan.tether.dibs.stateWords
+import com.kivan.tether.dibs.Limit
+import com.kivan.tether.dibs.limitWords
+import com.kivan.tether.dibs.wantsYou
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.TextStyle
+import java.util.Date
+import java.util.Locale
 
 /**
  * The four tabs, by the key an intent names them with. The third is Tasks (the user's tasks), or
@@ -126,7 +135,13 @@ fun DibsApp() {
         containerColor = Palette.Bg,
         contentColor = Palette.Text,
         topBar = { Header(link, view?.state) },
-        bottomBar = { if (view != null && !typing) NavBar(tab, view.badges, view.yours != null) { tab = it } },
+        bottomBar = {
+            if (view != null && !typing) {
+                // The Tasks badge counts what the tab says it does, and drops as soon as one is opened here.
+                val forYou = view.yours?.count { wantsYou(it, Dibs.ticked(it), Dibs.unread(it)) } ?: view.badges.work
+                NavBar(tab, view.badges, forYou, view.yours != null) { tab = it }
+            }
+        },
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).consumeWindowInsets(pad).imePadding()) {
             if (view == null) {
@@ -179,6 +194,7 @@ private fun Header(link: Link, state: State?) {
             Eyebrow(words, color = color)
             Text("dibs", style = AppType.heading, color = Palette.Text)
         }
+        state?.limits?.takeIf { it.isNotEmpty() }?.let { Usage(it) }
         Box {
             IconButton(onClick = { menu = true }) {
                 Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More", tint = Palette.Muted)
@@ -194,6 +210,25 @@ private fun Header(link: Link, state: State?) {
                 )
             }
         }
+    }
+}
+
+/** Claude's usage, always in sight: each window's percent and when it resets, amber near the end. */
+@Composable
+private fun Usage(limits: List<Limit>) {
+    val ctx = LocalContext.current
+    val now by rememberNow()
+    val lines = remember(limits, now / 60) {
+        val zone = ZoneId.systemDefault()
+        limitWords(
+            limits, now,
+            clock = { android.text.format.DateFormat.getTimeFormat(ctx).format(Date(it * 1000)) },
+            day = { Instant.ofEpochSecond(it).atZone(zone).dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()) },
+        )
+    }
+    if (lines.isEmpty()) return
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        for (l in lines) Text(l.text, style = AppType.mono, color = if (l.warn) Palette.Warning else Palette.Muted, maxLines = 1)
     }
 }
 
@@ -265,12 +300,12 @@ private fun LendToggleCard(t: LendToggle, title: String, icon: Int, modifier: Mo
 }
 
 @Composable
-private fun NavBar(tab: Tab, badges: Badges, yours: Boolean, onTab: (Tab) -> Unit) {
+private fun NavBar(tab: Tab, badges: Badges, tasks: Int, yours: Boolean, onTab: (Tab) -> Unit) {
     NavigationBar(containerColor = Palette.SurfaceLow, tonalElevation = 0.dp) {
         for (t in Tab.entries) {
             val count = when (t) {
                 Tab.WAITING -> badges.waiting
-                Tab.TASKS -> if (yours) badges.tasks else badges.work
+                Tab.TASKS -> tasks
                 else -> 0
             }
             // An older dibs: the old Work tab.

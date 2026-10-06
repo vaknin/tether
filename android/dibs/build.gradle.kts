@@ -26,7 +26,14 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric (the screen tests) needs the merged resources.
+        unitTests.isIncludeAndroidResources = true
     }
+}
+
+// The screen tests write PNGs to dibs/build/outputs/roborazzi only when asked: -Pscreenshots
+tasks.withType<Test>().configureEach {
+    systemProperty("roborazzi.test.record", providers.gradleProperty("screenshots").isPresent.toString())
 }
 
 dependencies {
@@ -43,4 +50,10 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

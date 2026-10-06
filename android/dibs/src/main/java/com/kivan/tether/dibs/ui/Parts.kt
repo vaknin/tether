@@ -221,6 +221,18 @@ internal fun rememberThumb(fileId: String): ImageBitmap? {
     return bmp
 }
 
+/** The sharpest copy of an image in a line, by Tether's file id, for the full-screen view; null while it loads. */
+@Composable
+internal fun rememberFullImage(fileId: String): ImageBitmap? {
+    val bmp by produceState<ImageBitmap?>(null, fileId) {
+        value = withContext(Dispatchers.IO) { runCatching { Dibs.host.image(fileId, FULL_PX) }.getOrNull() }
+    }
+    return bmp
+}
+
+/** How big (longest side, px) a picture is decoded for the full-screen view. */
+internal const val FULL_PX = 2560
+
 /** A picked image, decoded small off the main thread (it isn't sent yet, so there is no thumbnail). */
 @Composable
 internal fun rememberPicked(uri: Uri, maxPx: Int = 480): ImageBitmap? {

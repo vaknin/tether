@@ -56,6 +56,12 @@ interface DibsHost {
     /** The thumbnail of an image sent from here, by Tether's file id; null if there is none. Blocking. */
     fun thumb(fileId: String): ImageBitmap?
 
+    /**
+     * The image itself for the full-screen view, at most [maxPx] on its longest side, when the
+     * phone still has it (a file dibs sent); else its thumbnail. Blocking.
+     */
+    fun image(fileId: String, maxPx: Int): ImageBitmap? = thumb(fileId)
+
     /** A dibs screen is on screen (true) or gone: keep the link up and clear dibs's notifications. */
     fun visible(on: Boolean)
 

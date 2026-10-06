@@ -94,4 +94,40 @@ class TasksModelTest {
             stepsSummary(listOf(Step("WebSearch", "Searched the web for a"), Step("WebSearch", "Searched the web for b"))),
         )
     }
+
+    @Test
+    fun titlesLoseTheirAsides() {
+        // As dibs cut them on 2026-10-06: the first clause, ending inside a bracket.
+        assertEquals("When the user adds a new Capture note", plainTitle("When the user adds a new Capture note (their ideas app", "When the user adds a new Capture note (their ideas app, …)"))
+        assertEquals("Cut phone notification clutter", plainTitle("Cut phone notification clutter (the user", ""))
+        assertEquals("Fix the link now", plainTitle("Fix the link (word 12) now", ""))
+        assertEquals("A brain-set title stays", "Typed answers go only to the brain", plainTitle("Typed answers go only to the brain", "typed answers: go only to the brain"))
+    }
+
+    @Test
+    fun aTagTitleTakesTheWordsAfterIt() {
+        assertEquals(
+            "Plan how dibs spends less usage",
+            plainTitle("PLAN ONLY", "PLAN ONLY: plan how dibs spends less usage (the user, word 90), then report"),
+        )
+        assertEquals("Build the Ideas tab", plainTitle("RESEARCH and plan", "RESEARCH and plan: dibs: build the Ideas tab. Then ask."))
+        assertEquals("a bare tag stays", "PLAN", plainTitle("PLAN", "PLAN"))
+    }
+
+    @Test
+    fun aLongClauseIsCutAtAWord() {
+        val t = firstClause("one two three four five six seven eight nine ten eleven twelve thirteen fourteen")
+        assertEquals("One two three four five six seven eight nine ten eleven…", t)
+        assert(t.length <= TITLE_MAX + 1)
+    }
+
+    @Test
+    fun theBadgeSaysWhatItCounts() {
+        assertEquals(null, forYouWords(0, 0))
+        assertEquals("1 for you: 1 asking you", forYouWords(0, 1))
+        assertEquals("3 for you: 2 finished to read, 1 asking you", forYouWords(2, 1))
+        assertEquals(true, wantsYou(task(1, "x", "done", 1, unread = true), ticked = false, unread = true))
+        assertEquals("a running one doesn't", false, wantsYou(task(2, "x", "working", 1), ticked = false, unread = false))
+        assertEquals("a ticked one doesn't", false, wantsYou(task(3, "x", "needs", 1), ticked = true, unread = false))
+    }
 }

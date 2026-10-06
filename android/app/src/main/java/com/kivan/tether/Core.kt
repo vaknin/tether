@@ -253,6 +253,8 @@ object Core {
         // A file sent to an app channel is that app's (dibs reads it): not Downloads, not the chat.
         if (m.channel != null) {
             _channelFiles.update { it + 1 }
+            // An image dibs sends shows as a thumbnail in its chat, as the user's own do.
+            if (m.channel == Channels.DIBS) m.path?.let { p -> scope.launch(Dispatchers.IO) { Thumbs.save(app, m.id, File(p)) } }
             return
         }
         when (m.kind) {

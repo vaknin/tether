@@ -127,7 +127,11 @@ data class LendToggle(val lent: Boolean, val text: String, val action: String)
 /** The phone's and the laptop's toggles; null in a payload from a dibs without them. */
 data class Lends(val phone: LendToggle?, val laptop: LendToggle?)
 
-data class State(val brain: String?, val busy: Boolean, val line: String?, val usage: String?)
+/** One Claude usage window as dibs last read it: five_hour, seven_day or spend_limit, its percent, when it resets. */
+data class Limit(val name: String, val pct: Double, val resets: Long)
+
+/** [usage]: the line while dibs is out of usage. [limits]: the plan's windows (a dibs that sends them). */
+data class State(val brain: String?, val busy: Boolean, val line: String?, val usage: String?, val limits: List<Limit> = emptyList())
 
 data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
 
@@ -179,7 +183,7 @@ data class YourTask(
     val talk: List<TalkLine> = emptyList(),
 ) {
     /** Its name as the screens show it. */
-    val label: String get() = title.ifBlank { name }.ifBlank { "Task $id" }
+    val label: String get() = plainTitle(title, asked).ifBlank { name }.ifBlank { "Task $id" }
 
     /** It has ended one way or another: done, stopped or failed. */
     val finishedState: Boolean get() = state == "done" || state == "stopped" || state == "failed"
@@ -216,7 +220,10 @@ data class DibsView(
             val b = o.optJSONObject("badges") ?: JSONObject()
             return DibsView(
                 now = o.optLong("now"),
-                state = State(st.str("brain"), st.optBoolean("busy"), st.str("line"), st.str("usage")),
+                state = State(
+                    st.str("brain"), st.optBoolean("busy"), st.str("line"), st.str("usage"),
+                    st.optJSONObject("limits")?.optJSONArray("windows").objects().map { Limit(it.optString("name"), it.optDouble("pct", 0.0), it.optLong("resets")) },
+                ),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
                 decided = o.optJSONArray("decided").objects().map {

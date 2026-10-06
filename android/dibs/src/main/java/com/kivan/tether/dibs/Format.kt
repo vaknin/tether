@@ -70,3 +70,28 @@ fun stateWords(link: Link, state: State?): String = when {
     !state.usage.isNullOrBlank() -> "Out of usage"
     else -> "Ready"
 }
+
+/** A usage window's short name: "5h", "7d", "spend". */
+fun limitName(name: String): String = when (name) {
+    "five_hour" -> "5h"
+    "seven_day" -> "7d"
+    "spend_limit" -> "spend"
+    else -> name
+}
+
+/** At this percent a window's line turns amber. */
+const val LIMIT_WARN = 80.0
+
+/** One line of the header's usage: its words, and whether it's near the end ([LIMIT_WARN]). */
+data class LimitLine(val text: String, val warn: Boolean)
+
+/**
+ * The header's usage lines, one per window still running at [now]: "5h 87% · resets 12:20",
+ * "7d 63% · resets Thu 09:00" (the day when it's more than 20 hours off). [clock] says a time as
+ * the phone does; [day] its weekday.
+ */
+fun limitWords(limits: List<Limit>, now: Long, clock: (Long) -> String, day: (Long) -> String): List<LimitLine> =
+    limits.filter { it.resets > now }.map { l ->
+        val at = if (l.resets - now > 20 * 3600) "${day(l.resets)} ${clock(l.resets)}" else clock(l.resets)
+        LimitLine("${limitName(l.name)} ${kotlin.math.round(l.pct).toInt()}% · resets $at", l.pct >= LIMIT_WARN)
+    }
