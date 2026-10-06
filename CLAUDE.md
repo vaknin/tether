@@ -43,6 +43,17 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   only looks up the port when it's granted). **An APK without these manifest lines drops both grants.** The app
   holds a multicast lock for 20 s per ask so adb's own mDNS sees the phone meanwhile. `tether connect` now wakes
   the phone first (it used to only dial, which timed out against an idle phone).
+- Phone presence for dibs (`Presence.kt`, `crates/daemon/src/presence.rs`, app 0.5.6, 2026-10-06): the phone tells
+  the laptop when the user unlocks or uses it, so dibs knows they're on the phone even away from home. Live `App`
+  frames on the reserved channel `_presence` (never queued): `{"op":"present","why":"unlock"|"use","ts":<phone ms>}`
+  and `{"op":"off","ts":…}`. `PhoneListener` (bound by the system, so no service of ours) registers the receiver
+  for USER_PRESENT, SCREEN_ON (counts as an unlock when the keyguard isn't locked) and SCREEN_OFF. Battery: an
+  unlock dials at most once a minute; while the screen stays on and unlocked a `use` renewal dials every 5 min;
+  `off` goes only over a link already up (`Core.sendLive`), never dials; nothing while refused or unpaired. The
+  daemon keeps the newest (by the phone's ts) in memory: `tether watch` gets
+  `{"type":"presence","op","why"|null,"ts_ms","got_ms"}` per frame, `tether status --json` `phone_presence`
+  (the same without `type`, null until the first frame since the daemon started). `_presence` and `_adb` are
+  refused for sending (`check_channel`, as any `_…`) and for `app_subscribe`.
 - dibs's own app (`android/dibs`, Gradle module `:dibs`, plan in `docs/DIBS-APP.md`, version 0.5.5): `DibsActivity`
   (own launcher icon and Recents card) with four tabs (Chat, Waiting, Tasks, Recap) drawn from the `dibs` payload in
   the dibs channel's view (`Payload.kt`; chat folding in `ChatModel.kt`, task order in `TasksModel.kt`, unit-tested).

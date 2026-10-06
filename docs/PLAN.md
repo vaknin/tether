@@ -342,6 +342,27 @@ request, a CLI group, an arm in `apps::run`).
   visible area. A stale view: with no app instance running, `tether channels` showed the last
   published view, not the app's current state.
 
+## Phone presence for dibs (`_presence`, 2026-10-06; app 0.5.6)
+dibs's presence knows the user is at the laptop; this tells it when they're on the phone instead, at
+home or away. The phone sends live `App` frames (never queued, dropped when the laptop can't be reached)
+on the reserved channel `_presence`:
+- `{"op":"present","why":"unlock","ts":<phone epoch ms>}` on ACTION_USER_PRESENT, or on SCREEN_ON while the
+  keyguard isn't locked (no lock screen, Smart Lock); at most one a minute.
+- `{"op":"present","why":"use","ts":…}` every 5 min while the screen stays on and unlocked (checked at each tick).
+- `{"op":"off","ts":…}` on SCREEN_OFF, only over a link that is already up.
+
+**Battery:** `PhoneListener`, which the system keeps bound for notification access, registers the receiver,
+so there's no service of ours. Each `present` holds the node (`presence:<n>`), dials, sends and lets go, so
+it costs at most one dial per unlock a minute and one per 5 min of screen-on use (the link then closes after
+the usual 60 s idle); `off` never dials. Nothing is sent while the pairing is refused or unpaired.
+
+**Laptop:** `presence.rs` keeps the newest frame (by the phone's ts) in memory; malformed data and unknown
+ops are ignored. `tether watch` streams one line per frame,
+`{"type":"presence","op":"present"|"off","why":"unlock"|"use"|null,"ts_ms":<phone ts>,"got_ms":<laptop ms>}`,
+and `tether status --json` has `"phone_presence"`: the newest one without `type`, or null if none came since
+the daemon started. Like `_adb`, `_presence` is refused for `app_send`/`app_action` (any `_…` name) and for
+`app_subscribe`, and never listed as a channel.
+
 ## Tether's role next to dibs and Capture (decided 2026-10-04)
 Research write-up: https://claude.ai/artifact/KEF8NckdLpSGJagxA14wWC. The plan is recorded in full in dibs's `docs/PLAN.md`.
 
