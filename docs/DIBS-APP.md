@@ -25,7 +25,11 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
      "…" and nothing behind a tap): a short plain line of what changed for them, "You asked: …" (why), whose
      it was; a tap opens it whole (the task's report, its other lines, then all of what they asked, folded
      again since it was written for the agent), a long press copies it. dibs folds the lines (`src/recap.rs`): a task's `dibs did`s, shipped "For you" lines, its
-     report and dibs's closing line are one entry, as are a handoff chain's sessions.
+     report and dibs's closing line are one entry, as are a handoff chain's sessions. Below it, **Decided for
+     you** (word 127), each readable at a glance (word 155): the project, what was decided as one full plain
+     sentence, "Why: …", and Undo. dibs's writer (a cheap Claude call in `dibs watch`) writes these from the
+     agent's text; until it has, the agent's words show, marked so. The agent's whole text folds behind
+     "Agent's words". Bookkeeping ("Started task X") is left out.
 - Above the tabs, two lend toggles, **Phone** and **Laptop** (task #29, the user's word 48): each says "Yours" or
   "lent to dibs" with dibs's line (until when, who is on it), and one tap lends it or takes it back. A dibs
   without `lends` gets the older bar, **"dibs has your phone · Take it back"** (task #19).
@@ -113,7 +117,8 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
                       "repo": "…"?, "why": "first sentence of the ask"?, "asked": "the whole ask"?,
                       "more": ["its other lines, whole"]?, "report": "the task's report, whole"?,
                       "reopen": "<claude session id>"?}],
-            "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …, "undo": true}]?},
+            "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …, "undo": true,
+                         "project": "Tether", "plain": true, "raw": "the agent's whole text"}]?},
   "badges": {"waiting": 3, "work": 1, "recap": 1}
 }
 ```

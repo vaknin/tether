@@ -34,7 +34,7 @@ class PayloadTest {
           "peek": {"who": "build-it", "at": 1791213400, "lines": ["one", "two"]},
           "recap": {"away": {"id": 4, "title": "While you were away (3h 7m)", "lines": ["Shipped"], "since": 1791200000, "until": 1791211220},
                     "feed": [{"ts": 1791213000, "kind": "did", "who": "a", "text": "Shipped the fix"}],
-                    "decided": [{"id": 251, "text": "Picked blue", "why": "", "from": "a", "ts": 1791213200, "undo": true, "ack": "k251"},
+                    "decided": [{"id": 251, "text": "Your app is blue now.", "why": "It matches the icon.", "from": "a", "ts": 1791213200, "undo": true, "ack": "k251", "project": "Rami", "plain": true, "raw": "Picked blue"},
                                 {"id": 250, "text": "Shipped", "why": "2 commits", "from": "dibs", "ts": 1791213100, "undo": true, "ack": "k250"}]},
           "badges": {"waiting": 2, "work": 1, "recap": 1}
         }}
@@ -73,6 +73,8 @@ class PayloadTest {
 
         assertEquals(Decision(250, "Shipped", "2 commits", "dibs", 1791213100, true, "k250"), d.decided.single())
         assertEquals("Recap's own list, read ones too", listOf(251L, 250L), d.recapDecided.map { it.id })
+        assertEquals(Triple("Rami", true, "Picked blue"), d.recapDecided[0].let { Triple(it.project, it.plain, it.raw) })
+        assertEquals("not written yet: the agent's words", Triple("", false, ""), d.recapDecided[1].let { Triple(it.project, it.plain, it.raw) })
         assertEquals("busy", d.tasks.single().status)
         assertEquals(112, d.tasks.single().minutes)
         assertNull(d.sessions.single().task)

@@ -56,7 +56,22 @@ data class Question(
     val task: Long? = null,
 )
 
-data class Decision(val id: Long, val text: String, val why: String, val from: String, val ts: Long, val undo: Boolean, val ack: String)
+/**
+ * Something decided for the user. Once dibs's writer has run ([plain]), [text] and [why] are full plain sentences and
+ * [project] names what it is about; before that they are the agent's own words. [raw] is always the agent's whole text.
+ */
+data class Decision(
+    val id: Long,
+    val text: String,
+    val why: String,
+    val from: String,
+    val ts: Long,
+    val undo: Boolean,
+    val ack: String,
+    val project: String = "",
+    val plain: Boolean = false,
+    val raw: String = "",
+)
 
 data class Task(
     val id: Long,
@@ -326,7 +341,10 @@ data class DibsView(
         }
 
         private fun decision(o: JSONObject) =
-            Decision(o.optLong("id"), o.optString("text"), o.optString("why"), o.optString("from"), o.optLong("ts"), o.optBoolean("undo"), o.optString("ack"))
+            Decision(
+                o.optLong("id"), o.optString("text"), o.optString("why"), o.optString("from"), o.optLong("ts"), o.optBoolean("undo"), o.optString("ack"),
+                o.optString("project"), o.optBoolean("plain"), o.optString("raw"),
+            )
 
         private fun files(a: JSONArray?) = a.objects().map { FileRef(it.optString("id"), it.optString("name"), it.optLong("size"), it.optBoolean("image")) }
 

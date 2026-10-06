@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Action
 import com.kivan.tether.dibs.Decision
@@ -177,12 +178,26 @@ private fun Details(id: Long, details: String) {
 /** Something decided for the user, in Recap: Undo asks dibs to undo it (a second press, within 4 s). Nothing to clear. */
 @Composable
 internal fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifier) {
-    Row(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Icon(painterResource(R.drawable.lucide_check), null, Modifier.size(16.dp), tint = Palette.Success)
-        Column(Modifier.weight(1f)) {
-            TapFold(d.text, "dec:${d.id}", 2)
-            val meta = listOfNotNull(d.why.ifBlank { null }, d.from.ifBlank { null }, age(now - d.ts)).joinToString(" · ")
-            TapFold(meta, "dec:${d.id}", 1, style = AppType.small, color = Palette.Muted)
+    // At a glance: which project, what was decided and why, in full (the user, 2026-10-06, word 155). The agent's own
+    // words fold behind a tap; until dibs has rewritten them, they are what shows, marked as theirs.
+    Row(modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(painterResource(R.drawable.lucide_check), null, Modifier.padding(top = 2.dp).size(16.dp), tint = Palette.Success)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (d.project.isNotBlank()) {
+                    Text(d.project, Modifier.weight(1f, fill = false), style = AppType.label, color = Palette.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text(
+                    listOfNotNull(if (d.plain) null else "in the agent's words", age(now - d.ts)).joinToString(" · "),
+                    style = AppType.small,
+                    color = Palette.Muted,
+                    maxLines = 1,
+                )
+            }
+            Text(d.text, style = MaterialTheme.typography.bodyMedium, color = Palette.Text)
+            if (d.why.isNotBlank()) Text("Why: ${d.why}", style = AppType.small, color = Palette.Muted)
+            // Not rewritten yet, the lines above are the agent's: the fold only when it holds more (its details).
+            if (d.raw.isNotBlank() && (d.plain || d.raw.length > d.text.length + d.why.length + 4)) RawWords(d)
         }
         if (d.undo && Dibs.answered[d.ack] == "Undo") {
             Text("Undo asked", style = AppType.small, color = Palette.Muted)
@@ -191,6 +206,31 @@ internal fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifie
             ActButton(if (armed.key == k) "Undo it?" else "Undo", if (armed.key == k) "" else "plain") {
                 armed.press(k) { Dibs.answer(d.ack, "Undo", "undo", JSONObject().put("item", d.id)) }
             }
+        }
+    }
+}
+
+/** The agent's whole text behind "Agent's words", signed with its session's name; selectable. */
+@Composable
+private fun RawWords(d: Decision) {
+    val k = "dec:${d.id}"
+    val open = Dibs.open[k] == true
+    Row(
+        Modifier.clip(MaterialTheme.shapes.small).clickable { Dibs.toggle(k) }.padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text("Agent's words", style = AppType.small, color = Palette.Muted)
+        Icon(painterResource(if (open) R.drawable.lucide_chevron_up else R.drawable.lucide_chevron_down), null, Modifier.size(14.dp), tint = Palette.Muted)
+    }
+    if (open) {
+        SelectionContainer {
+            Text(
+                if (d.from.isBlank()) d.raw else "${d.raw}\n\n— ${d.from}",
+                Modifier.fillMaxWidth().background(Palette.SurfaceLow, MaterialTheme.shapes.small).padding(10.dp),
+                style = AppType.small,
+                color = Palette.Text,
+            )
         }
     }
 }
