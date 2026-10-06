@@ -53,6 +53,8 @@ class DibsBridge(context: Context) : DibsHost {
         .map { p -> p.mapValues { (_, v) -> if (v.second > 0) v.first.toFloat() / v.second else 0f } }
         .stateIn(Core.scope, SharingStarted.Eagerly, emptyMap())
 
+    override fun live(data: JSONObject): Boolean = Core.sendLive { it.sendAppLive(Channels.DIBS, data.toString()) }
+
     override fun act(action: String, value: JSONObject?, uid: String?): String {
         val obj = JSONObject().put("action", action)
         if (value != null) obj.put("value", value)

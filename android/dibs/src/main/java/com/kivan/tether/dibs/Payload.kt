@@ -164,10 +164,17 @@ data class Laptop(
 )
 
 /**
+ * The chat's Wait/Stop chip (task #69), as dibs words it: [kind] `wait` (the user's lines wait for
+ * dibs), `stop` (dibs is answering them) or `held` (it waits until they go on); [note] beside the
+ * button; [action] sent on a tap; [tapped] the chip to show at once after it.
+ */
+data class Hold(val kind: String, val note: String?, val button: String, val action: String, val style: String, val tapped: Hold?)
+
+/**
  * [usage]: the line while dibs is out of usage. [doing] and [words]: what the brain is doing
  * ("working|idle|out|starting|off"; "Out of usage until 12:20"), from a dibs that sends them (older
  * ones don't: [stateWords] falls back to [busy] and [usage]). [limits]: the plan's windows, and [laptop] the
- * laptop's state (a dibs that sends them).
+ * laptop's state (a dibs that sends them). [hold]: the chat's chip; null for none.
  */
 data class State(
     val brain: String?,
@@ -178,6 +185,7 @@ data class State(
     val laptop: Laptop? = null,
     val doing: String? = null,
     val words: String? = null,
+    val hold: Hold? = null,
 )
 
 data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
@@ -328,6 +336,7 @@ data class DibsView(
                         Laptop(l.long("mem_used"), l.long("mem_total"), l.double("load"), l.long("cores")?.toInt(), l.long("builds")?.toInt(), l.long("waiting")?.toInt(), l.long("agents")?.toInt())
                     },
                     st.str("doing"), st.str("words"),
+                    st.optJSONObject("hold")?.let(::hold),
                 ),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
@@ -440,6 +449,12 @@ data class DibsView(
 
         private fun lendToggle(o: JSONObject): LendToggle? =
             o.optString("action").takeIf { it.isNotBlank() }?.let { LendToggle(o.optBoolean("lent"), o.optString("text"), it) }
+
+        private fun hold(o: JSONObject): Hold? {
+            val kind = o.str("kind") ?: return null
+            val button = o.str("button") ?: return null
+            return Hold(kind, o.str("note"), button, o.optString("action"), o.optString("style"), o.optJSONObject("tapped")?.let(::hold))
+        }
 
         private fun talkLine(o: JSONObject) = TalkLine(
             id = o.optString("id"),

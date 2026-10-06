@@ -36,6 +36,12 @@ interface DibsHost {
     /** Files being sent: Tether's file id → fraction done. */
     val uploads: StateFlow<Map<String, Float>>
 
+    /**
+     * A live message on the dibs channel (`{"typing": true}`): never stored or queued, dropped
+     * when there is no link. True when it went.
+     */
+    fun live(data: JSONObject): Boolean = false
+
     /** Queues an action on the dibs channel (`{"action", "value"}`), with [uid] if given; returns the uid. */
     fun act(action: String, value: JSONObject? = null, uid: String? = null): String
 
@@ -101,6 +107,15 @@ data class About(val story: Long, val kind: String, val title: String, val quote
 class Composer(val task: Long?) {
     /** The text in the box. */
     var draft by mutableStateOf("")
+
+    /**
+     * The user typed in the box: the dibs chat's tells dibs they're typing ([Typing]). Text put
+     * there by the app (a share, the follow-up prefix) doesn't.
+     */
+    fun typed(v: String) {
+        draft = v
+        if (task == null) Dibs.typing.edited(v, System.currentTimeMillis())
+    }
     /** Files picked for the next message. */
     val picked = mutableStateListOf<Picked>()
     /** What the next message is about (a full story), shown as a chip over the box; the dibs chat's only. */
@@ -122,7 +137,11 @@ class Composer(val task: Long?) {
         if (text.isEmpty() && files.isEmpty()) return
         val uid = UUID.randomUUID().toString()
         Dibs.addPending(Pending(uid, text, files, task = task))
+        // A line ends a Wait (dibs's side does the same).
+        if (task == null) Dibs.holdTap?.shown?.let { Dibs.holdTap = HoldTap(null, it.kind, System.currentTimeMillis()) }
+        // The line itself tells dibs the box is empty again.
         draft = ""
+        if (task == null) Dibs.typing.sent()
         picked.clear()
         val on = about?.takeIf { task == null }?.json()
         about = null
@@ -144,7 +163,45 @@ class Composer(val task: Long?) {
     }
 }
 
+/**
+ * The dibs chat box's typing pings (task #69): while the user types, dibs holds its answer to the
+ * lines they already sent. A ping at most every [EVERY_MS] while the text changes, and one "not
+ * typing" when the box is emptied or the screen left with a ping out. [send] puts one on the link.
+ */
+class Typing(private val send: (Boolean) -> Unit) {
+    /** When the last ping went; null while none is out. */
+    private var last: Long? = null
+
+    fun edited(text: String, nowMs: Long) {
+        if (text.isBlank()) return stopped()
+        if (last.let { it == null || nowMs - it >= EVERY_MS }) {
+            last = nowMs
+            send(true)
+        }
+    }
+
+    /** The box was sent: dibs knows from the line itself. */
+    fun sent() {
+        last = null
+    }
+
+    /** The box emptied, or the screen left. */
+    fun stopped() {
+        if (last == null) return
+        last = null
+        send(false)
+    }
+
+    companion object {
+        /** dibs holds for 15 s after a ping (`hold::TYPING`): a ping every 5 s keeps it held. */
+        const val EVERY_MS = 5_000L
+    }
+}
+
 /** A screen over the tabs (docs/DIBS-APP.md, "Your tasks"): a task's page, its transcript, its report, its full story. */
+/** A tap on the chat's chip at [at]: [shown] instead of dibs's chip, else the chip of kind [gone] hidden. */
+data class HoldTap(val shown: Hold?, val gone: String, val at: Long)
+
 sealed interface Page {
     data class Task(val id: Long) : Page
     data class Transcript(val id: Long) : Page
@@ -154,6 +211,9 @@ sealed interface Page {
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
 object Dibs {
+    /** A Wait/Go ahead tap shows at once for this long, unless a view agrees first. */
+    const val TAP_MS = 15_000L
+
     @Volatile lateinit var host: DibsHost
 
     private val _pending = MutableStateFlow<List<Pending>>(emptyList())
@@ -161,6 +221,27 @@ object Dibs {
 
     /** Sent files' ids by their picked uri, for the thumbnail of an echo once it's in the view. */
     val sentIds = mutableStateMapOf<Uri, String>()
+
+    /** The dibs chat box's typing pings. */
+    val typing = Typing { on -> runCatching { host.live(JSONObject().put("typing", on).put("ts", System.currentTimeMillis())) } }
+
+    /** The chat's chip tapped here: it shows at once, until a view agrees or [TAP_MS] passed. */
+    var holdTap by mutableStateOf<HoldTap?>(null)
+
+    /** The chip as shown: dibs's `state.hold`, or what was just tapped here. */
+    fun hold(view: DibsView, nowMs: Long = System.currentTimeMillis()): Hold? {
+        val tap = holdTap?.takeIf { nowMs - it.at < TAP_MS } ?: return view.state.hold
+        return tap.shown ?: view.state.hold?.takeIf { it.kind != tap.gone }
+    }
+
+    /**
+     * A tap on the chip: Wait / Stop (dibs holds its answer, and stops a reply in progress, until the
+     * next line or Go ahead), or Go ahead (dibs answers what was written).
+     */
+    fun tapHold(chip: Hold) {
+        holdTap = HoldTap(chip.tapped, chip.kind, System.currentTimeMillis())
+        host.act(chip.action)
+    }
 
     /** The dibs chat's box. */
     val chat = Composer(null)
@@ -294,6 +375,8 @@ object Dibs {
      */
     fun seen(view: DibsView?) {
         val ids = view?.talk?.mapTo(HashSet()) { it.id } ?: return
+        // The view agrees with the chip tapped here.
+        holdTap?.let { tap -> if (tap.shown?.let { view.state.hold?.kind == it.kind } ?: (view.state.hold?.kind != tap.gone)) holdTap = null }
         val listed = HashSet(ids)
         view.yours?.forEach { t -> t.talk.forEach { listed += it.id } }
         _pending.update { list -> list.filter { it.uid !in listed } }

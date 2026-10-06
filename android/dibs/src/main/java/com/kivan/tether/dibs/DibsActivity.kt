@@ -43,6 +43,7 @@ class DibsActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        Dibs.typing.stopped()
         Dibs.host.visible(false)
         super.onStop()
     }

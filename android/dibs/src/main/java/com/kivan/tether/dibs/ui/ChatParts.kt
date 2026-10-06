@@ -696,7 +696,7 @@ internal fun InputArea(box: Composer, placeholder: String) {
             Attach(box)
             BasicTextField(
                 value = draft,
-                onValueChange = { box.draft = it },
+                onValueChange = { box.typed(it) },
                 textStyle = bodyStyle.merge(TextStyle(color = Palette.Text)),
                 cursorBrush = SolidColor(Palette.Accent),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),

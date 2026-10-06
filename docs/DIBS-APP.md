@@ -98,7 +98,8 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
 "dibs": {
   "v": 1, "now": 1791213484,
   "state": {"brain": "running|idle|off", "busy": true, "line": "dibs is on it", "usage": "…"?,
-            "doing": "working|idle|out|starting|off"?, "words": "Out of usage until 12:20"?},
+            "doing": "working|idle|out|starting|off"?, "words": "Out of usage until 12:20"?,
+            "hold": {"kind": "wait|stop|held", "button": "…", …}?},
   "lend": {"until": 1791215000, "holder": "rami-0f", "waiting": 2, "text": "Until 15:40 · …"}?,
   "lends": {"phone": {"lent": false, "text": "", "until": null, "action": "phone-lend"},
             "laptop": {"lent": true, "text": "Until you take it back · rami-0f is on it", "until": 1791240000, "action": "laptop-back"}}?,
@@ -144,6 +145,26 @@ question", "Never offer it") comes only where it differs from the second one, so
 three. Every question but the weekly retro's has `reply` and a `hint` (its box's placeholder): the
 words sent alone are `r<id>` as before; typed and then a button tapped (not `x`), the tap carries
 them as `value.comment`, which dibs hands to its brain (the tap still answers).
+`hold` and `go-ahead` (task #69, below).
+
+### Hold dibs's answer while the user is still writing (task #69, 2026-10-06)
+The user asked (word 145) to add, clarify or correct before dibs answers; each line used to wake dibs's brain at
+once. dibs now waits ~4 s after each chat line (a burst makes one answer, a single urgent line still goes within
+seconds) and while the app says the user is typing; lines that reach it mid-reply are folded into that reply.
+- **Typing:** the chat box sends a *live* message on the dibs channel, `{"typing": true, "ts": <phone ms>}`, at most every 5 s while the
+  user types in it (not for text the app puts there, a share or the follow-up prefix), and `{"typing": false}` once
+  when it's emptied or the screen leaves (`Typing` in `Dibs.kt`).
+  Live messages are never stored or queued (`DibsHost.live`, ffi `send_app_live`); dibs reads them as the
+  channel's subscribed client. dibs holds its wake for 15 s after a ping. A sent line clears the pings sent before it (by `ts`), so a ping for the next
+  line, which can arrive before the queued line itself, still holds.
+- **The chip** over the box is `state.hold`, words and all (the app only draws it): `{"kind": "wait|stop|held",
+  "note": "…"?, "button": "…", "action": "hold|go-ahead", "style": "outline|danger|primary", "tapped": {…}?}`.
+  `wait`: the user's lines wait for dibs ("Wait, I'm not done"); `stop`: dibs is answering them ("Stop, I'm not
+  done"); both send `hold`, and `tapped` is the chip to show at once after the tap. `held`: "dibs waits for your
+  next message" and Go ahead (`go-ahead`). A tap shows at once, until a view agrees (15 s at most).
+- **dibs's side** (`src/hold.rs`): `hold` holds every wake of the brain and refuses its `dibs say` until the user's
+  next line, Go ahead, or 10 min without a sign of them. If the brain's turn is answering them, Stop interrupts it
+  (Escape in its tab) and types a short note telling it to wait.
 
 ### Files to dibs (Tether's core and daemon)
 - New body `Body::ChannelFile { channel, name, size, sha256 }`, appended to the enum (an older peer

@@ -81,6 +81,7 @@ class ScreensTest {
         Dibs.open.clear()
         Dibs.chat.draft = ""
         Dibs.chat.about = null
+        Dibs.holdTap = null
     }
 
     private fun show(view: JSONObject) {
@@ -119,6 +120,28 @@ class ScreensTest {
         show(view(talk = longTalk() + ask(300, "Lend the phone for 30 min?", yesNo(300))))
         compose.onNodeWithText("Message dibs").assertIsDisplayed()
         shot("chat-small")
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun theHoldChipDrawsDibssWordsAndATapShowsAtOnce() {
+        val held = JSONObject().put("kind", "held").put("note", "dibs waits for your next message")
+            .put("button", "Go ahead").put("action", "go-ahead").put("style", "primary")
+        val stop = JSONObject().put("kind", "stop").put("note", JSONObject.NULL).put("button", "Stop, I'm not done")
+            .put("action", "hold").put("style", "danger").put("tapped", held)
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").getJSONObject("state").put("busy", true).put("hold", stop)
+        show(v)
+        compose.onNodeWithText("Stop, I'm not done").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        assertTrue(host.acts.any { it.first == "hold" })
+        compose.onNodeWithText("dibs waits for your next message").assertIsDisplayed()
+        compose.onNodeWithText("Go ahead").assertIsDisplayed()
+        compose.onNodeWithText("Message dibs").assertIsDisplayed()
+        shot("chat-hold-small")
+        compose.onNodeWithText("Go ahead").performClick()
+        compose.waitForIdle()
+        assertTrue(host.acts.any { it.first == "go-ahead" })
     }
 
     @Test
