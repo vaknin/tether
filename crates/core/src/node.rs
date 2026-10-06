@@ -1003,8 +1003,10 @@ impl Inner {
             return;
         };
         if let Err(e) = res {
-            // The link may still be fine (e.g. a duplicate stream lost the race); ask again. The
-            // wait also lets a cancel arrive, which can trail the sender's stream reset.
+            // The link may still be fine (e.g. a duplicate stream lost the race), or a new one may
+            // have replaced it after the sender's resend came in while this part still counted as
+            // receiving: ask again, on the current link. The wait also lets a cancel arrive, which
+            // can trail the sender's stream reset.
             tokio::time::sleep(Duration::from_secs(1)).await;
             if self.still(id, State::Cancelled).unwrap_or(false) {
                 debug!("file {id} cancelled by the sender");
@@ -1017,10 +1019,9 @@ impl Inner {
                 .ok()
                 .flatten()
                 .is_some_and(|m| m.state == State::Incoming);
-            let current = self.current().is_some_and(|l| l.serial == link.serial);
-            if still_incoming && current && !self.receiving.lock().unwrap().contains(&id) {
+            if still_incoming && !self.receiving.lock().unwrap().contains(&id) {
                 let offset = self.part_len(id).await;
-                let _ = link.tx.send(Frame::FileWant { id, offset });
+                self.send_live(Frame::FileWant { id, offset });
             }
         }
     }
