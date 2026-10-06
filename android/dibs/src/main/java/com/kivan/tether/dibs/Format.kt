@@ -95,3 +95,23 @@ fun limitWords(limits: List<Limit>, now: Long, clock: (Long) -> String, day: (Lo
         val at = if (l.resets - now > 20 * 3600) "${day(l.resets)} ${clock(l.resets)}" else clock(l.resets)
         LimitLine("${limitName(l.name)} ${kotlin.math.round(l.pct).toInt()}% · resets $at", l.pct >= LIMIT_WARN)
     }
+
+/**
+ * The laptop in one line: "11.2 of 15.6 GB used · load 6.2 on 16 cores · 2 building, 11 waiting
+ * · 14 agents". Parts dibs didn't send are left out; null when it sent none.
+ */
+fun laptopWords(l: Laptop): String? {
+    fun gb(b: Long) = String.format(Locale.ROOT, "%.1f", b / 1_073_741_824.0)
+    val parts = listOfNotNull(
+        l.memUsed?.let { u -> l.memTotal?.let { "${gb(u)} of ${gb(it)} GB used" } ?: "${gb(u)} GB used" },
+        l.load?.let { ld -> String.format(Locale.ROOT, "load %.1f", ld) + (l.cores?.let { " on $it cores" } ?: "") },
+        when {
+            l.builds != null && (l.waiting ?: 0) > 0 -> "${l.builds} building, ${l.waiting} waiting"
+            l.builds != null -> "${l.builds} building"
+            (l.waiting ?: 0) > 0 -> "${l.waiting} builds waiting"
+            else -> null
+        },
+        l.agents?.let { if (it == 1) "1 agent" else "$it agents" },
+    )
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}

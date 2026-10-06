@@ -76,4 +76,16 @@ class FormatTest {
             lines,
         )
     }
+
+    @Test
+    fun theLaptopInOneLine() {
+        val gb = 1_073_741_824L
+        assertEquals(
+            "11.0 of 16.0 GB used · load 6.2 on 16 cores · 2 building, 11 waiting · 14 agents",
+            laptopWords(Laptop(11 * gb, 16 * gb, 6.2, 16, 2, 11, 14)),
+        )
+        assertEquals("1 agent", laptopWords(Laptop(null, null, null, null, null, null, 1)))
+        assertEquals("0 building", laptopWords(Laptop(null, null, null, null, 0, 0, null)))
+        assertNull(laptopWords(Laptop(null, null, null, null, null, null, null)))
+    }
 }

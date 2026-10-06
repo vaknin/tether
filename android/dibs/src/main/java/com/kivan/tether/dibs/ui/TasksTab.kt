@@ -42,6 +42,7 @@ import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.dayOf
 import com.kivan.tether.dibs.forYouWords
+import com.kivan.tether.dibs.laptopWords
 import com.kivan.tether.dibs.taskWords
 import com.kivan.tether.dibs.tasksList
 import com.kivan.tether.dibs.ui.theme.AppType
@@ -72,6 +73,15 @@ internal fun TasksTab(view: DibsView) {
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
         verticalArrangement = Arrangement.spacedBy(Space.S),
     ) {
+        // The laptop's state, where the running work is (a dibs that sends it).
+        view.state.laptop?.let(::laptopWords)?.let { words ->
+            item(key = "_laptop") {
+                Column(Modifier.padding(top = Space.M), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Eyebrow("Laptop")
+                    Text(words, style = AppType.small, color = Palette.Muted)
+                }
+            }
+        }
         // What the tab's badge counts, said plainly (nothing when nothing wants you).
         val open = list.groups.flatMap { it.tasks }
         val read = open.count { it.state != "needs" && Dibs.unread(it) }

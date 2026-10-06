@@ -77,7 +77,8 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused). Never uninstall: `adb install -r`.
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks). Never uninstall:
+  `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
 The view stays a v1 view (`badge`, `open_tags`, `pin`, `notify` keep working), plus a top-level `dibs`
@@ -197,7 +198,16 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
     (what changed, or what it's doing now). A done task the user hasn't opened yet is bold.
   - **Order:** a group with something that needs the user comes first, then the others by newest activity. Inside
     a group: needs you, done and unread, working, done and read, stopped or failed.
-  - **The big number:** "N open" with the eyebrow "Yours".
+  - **No big number** (task #64, the user's word 122: they never used "Yours · 40 open"). Instead, a line in the
+    accent says what the tab's badge counts: "2 for you: 1 finished to read, 1 asking you" (none when nothing
+    does), and a done task not opened yet says "Done 07:54 · new". The phone counts the badge itself from `yours`
+    (the same rule as `badges.tasks`), so it drops as soon as a task is opened here.
+  - **Titles** are dibs's, cleaned on the phone (`plainTitle`): an aside in brackets goes, including one cut open
+    ("Cut phone notification clutter (the user"), and a title that is only a tag before a colon in the user's
+    words ("PLAN ONLY") takes the words after it. dibs's `yours::title_from` still makes those titles; fixing it
+    there is left for the dibs side.
+  - **The laptop** (word 145): a "Laptop" line at the top, memory, load, builds running and waiting, agents, from
+    `state.laptop` when dibs sends it.
 - **dibs's own work** (its background tasks, the live sessions, ships) folds into one line at the bottom,
   "dibs's own work · 3", which opens on a tap. It holds today's Work tab content, and nothing in it pings.
 - **One ping per task** when it finishes, when it asks the user something, or when its agent replies to the user. A
@@ -321,3 +331,19 @@ These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Olde
 **Not planned:** per-project dibs chats, and an urgency meter. Two things already cover what the note asked for:
 only the user's own tasks ping, and "Needs you" sorts first. If the list is still too long after real use, a "this
 one matters" flag would be the next step.
+
+## Task #64 (2026-10-06): the Chat box, pictures, usage
+
+- **The Chat box went missing** (the user's word 117: they had to write through the Tasks tab). Cause, found with
+  the JVM screen tests (`ScreensTest`, Robolectric and Roborazzi): with the keyboard open on a small screen the
+  header and the lend toggles left the chat no room, and the box was squeezed out of the layout (at a 45 %
+  keyboard on 320×568 dp it wasn't laid out at all). Now the toggles step aside while typing, as the tab bar
+  already did, and `ScreensTest` checks the box at 30, 45 and 55 % keyboards. PNGs:
+  `./gradlew :dibs:testDebugUnitTest -Pscreenshots --tests '*ScreensTest*'` → `dibs/build/outputs/roborazzi/`.
+- **Typed answers on every question card** are task #66's (dibs-tether-questions), on both sides.
+- **Pictures full screen** (word 125): a tap on a thumbnail opens `ImageViewer` (pinch or double tap to zoom, drag
+  while zoomed, back or ✕ closes). `DibsHost.image(id, maxPx)` gives the sharpest copy: a file dibs sent is kept
+  in its channel folder; the user's own sent copies are gone, so theirs show the 720 px thumbnail. Images dibs
+  sends now get a thumbnail on arrival (`Core`), so they show as pictures, not chips.
+- **Usage** (word 131): the header shows each window, "5h 88% · resets 12:20", amber from 80 %, from
+  `state.limits` (`{"ts", "windows": [{"name", "pct", "resets"}]}`, added on the dibs side by task #66).

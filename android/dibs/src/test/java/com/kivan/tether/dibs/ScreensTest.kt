@@ -122,15 +122,39 @@ class ScreensTest {
 
     @Test
     @Config(qualifiers = "w320dp-h568dp-280dpi")
-    fun probe() {
+    fun theBoxStaysWhateverTheKeyboardsHeight() {
         show(view(talk = longTalk() + ask(300, "Lend the phone for 30 min?", yesNo(300))))
-        for (k in listOf(0f, 0.0001f, 0.3f, 0.45f)) {
-            val h = compose.activity.window.decorView.height
-            insets(keyboard = (h * k).toInt())
-            fun b(t: String) = compose.onNodeWithText(t).fetchSemanticsNode().boundsInRoot
-            println("PROBE k=$k h=$h dibs=${b("dibs")} phone=${b("Phone")} box=${b("Message dibs")}")
+        shot("chat-small-bars")
+        for (k in listOf(0.3f, 0.45f, 0.55f)) {
+            insets(keyboard = (compose.activity.window.decorView.height * k).toInt())
+            compose.onNodeWithText("Message dibs").assertIsDisplayed()
         }
+        shot("chat-small-keyboard-55")
     }
+
+    @Test
+    fun theTasksTabSaysWhatItsBadgeCounts() {
+        val gb = 1_073_741_824L
+        val v = view(talk = longTalk())
+        val d = v.getJSONObject("dibs")
+        d.getJSONObject("state").put("laptop", JSONObject().put("mem_used", 11 * gb).put("mem_total", 16 * gb).put("load", 6.2)
+            .put("cores", 16).put("builds", 2).put("waiting", 11).put("agents", 14))
+        d.put("yours", JSONArray()
+            .put(yours(1, "Cut phone notification clutter (the user", "working"))
+            .put(yours(2, "PLAN ONLY", "done", asked = "PLAN ONLY: plan how dibs spends less usage", unread = true))
+            .put(yours(3, "Lend the phone?", "needs")))
+        show(v)
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText("2 FOR YOU: 1 FINISHED TO READ, 1 ASKING YOU").assertIsDisplayed()
+        compose.onNodeWithText("Cut phone notification clutter").assertIsDisplayed()
+        compose.onNodeWithText("Plan how dibs spends less usage").assertIsDisplayed()
+        shot("tasks")
+    }
+
+    private fun yours(id: Long, title: String, state: String, asked: String = title, unread: Boolean = false) = JSONObject()
+        .put("id", id).put("title", title).put("name", "t$id").put("project", "tether").put("state", state)
+        .put("ts", NOW - id * 60).put("started", NOW - 3600).put("asked", asked).put("unread", unread).put("line", "What it did last")
 
     private fun yesNo(q: Long) = JSONArray()
         .put(JSONObject().put("id", "a$q").put("label", "Approve").put("style", "primary"))

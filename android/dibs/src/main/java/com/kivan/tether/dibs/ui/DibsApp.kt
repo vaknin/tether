@@ -134,7 +134,10 @@ fun DibsApp() {
     Scaffold(
         containerColor = Palette.Bg,
         contentColor = Palette.Text,
-        topBar = { Header(link, view?.state) },
+        // The header (in the column, not the Scaffold's topBar), the tab bar and imePadding pad for
+        // the bars and the keyboard themselves; the Scaffold's topBar slot left a status bar's
+        // height of gap under the header, room the chat needs with the keyboard open.
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (view != null && !typing) {
                 // The Tasks badge counts what the tab says it does, and drops as soon as one is opened here.
@@ -144,6 +147,7 @@ fun DibsApp() {
         },
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).consumeWindowInsets(pad).imePadding()) {
+            Header(link, view?.state, typing)
             if (view == null) {
                 Empty(hasView = json != null)
                 return@Column
@@ -176,7 +180,7 @@ fun DibsApp() {
 
 /** The mark on dibs's tile, the state in an eyebrow above the name, and ⋮. */
 @Composable
-private fun Header(link: Link, state: State?) {
+private fun Header(link: Link, state: State?, typing: Boolean) {
     var menu by remember { mutableStateOf(false) }
     val words = stateWords(link, state)
     // Red only with words: the link is lost. Muted while it can't do anything for you.
@@ -194,11 +198,16 @@ private fun Header(link: Link, state: State?) {
             // The launcher's monochrome layer: its mark fills 46 of 108 dp, so draw it larger than the tile.
             Icon(painterResource(R.drawable.ic_dibs_monochrome), null, Modifier.requiredSize(48.dp), tint = Palette.Text)
         }
-        Column(Modifier.weight(1f).padding(start = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // At most 45% of the row, so a long state ("Out of usage until 12:20") wraps instead of
+        // pushing ⋮ off; it takes only what it needs.
+        Column(Modifier.weight(0.45f, fill = false).padding(start = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Eyebrow(words, color = color)
             Text("dibs", style = AppType.heading, color = Palette.Text)
         }
-        state?.limits?.takeIf { it.isNotEmpty() }?.let { Usage(it) }
+        // The usage takes the room that's left (never the title's), and steps aside while typing.
+        Box(Modifier.weight(0.55f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) {
+            if (!typing) state?.limits?.takeIf { it.isNotEmpty() }?.let { Usage(it) }
+        }
         Box {
             IconButton(onClick = { menu = true }) {
                 Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More", tint = Palette.Muted)
@@ -232,7 +241,9 @@ private fun Usage(limits: List<Limit>) {
     }
     if (lines.isEmpty()) return
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        for (l in lines) Text(l.text, style = AppType.mono, color = if (l.warn) Palette.Warning else Palette.Muted, maxLines = 1)
+        for (l in lines) {
+            Text(l.text, style = AppType.small, color = if (l.warn) Palette.Warning else Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 

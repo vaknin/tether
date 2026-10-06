@@ -130,8 +130,29 @@ data class Lends(val phone: LendToggle?, val laptop: LendToggle?)
 /** One Claude usage window as dibs last read it: five_hour, seven_day or spend_limit, its percent, when it resets. */
 data class Limit(val name: String, val pct: Double, val resets: Long)
 
-/** [usage]: the line while dibs is out of usage. [limits]: the plan's windows (a dibs that sends them). */
-data class State(val brain: String?, val busy: Boolean, val line: String?, val usage: String?, val limits: List<Limit> = emptyList())
+/** The laptop as dibs last saw it; any part may be missing. Memory in bytes, [load] the 1-minute load average. */
+data class Laptop(
+    val memUsed: Long?,
+    val memTotal: Long?,
+    val load: Double?,
+    val cores: Int?,
+    val builds: Int?,
+    val waiting: Int?,
+    val agents: Int?,
+)
+
+/**
+ * [usage]: the line while dibs is out of usage. [limits]: the plan's windows, and [laptop] the
+ * laptop's state (a dibs that sends them).
+ */
+data class State(
+    val brain: String?,
+    val busy: Boolean,
+    val line: String?,
+    val usage: String?,
+    val limits: List<Limit> = emptyList(),
+    val laptop: Laptop? = null,
+)
 
 data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
 
@@ -223,6 +244,9 @@ data class DibsView(
                 state = State(
                     st.str("brain"), st.optBoolean("busy"), st.str("line"), st.str("usage"),
                     st.optJSONObject("limits")?.optJSONArray("windows").objects().map { Limit(it.optString("name"), it.optDouble("pct", 0.0), it.optLong("resets")) },
+                    st.optJSONObject("laptop")?.let { l ->
+                        Laptop(l.long("mem_used"), l.long("mem_total"), l.double("load"), l.long("cores")?.toInt(), l.long("builds")?.toInt(), l.long("waiting")?.toInt(), l.long("agents")?.toInt())
+                    },
                 ),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
@@ -343,6 +367,8 @@ private fun JSONObject.str(k: String): String? = if (isNull(k)) null else optStr
 
 /** A number field, or null when it's missing or null. */
 private fun JSONObject.long(k: String): Long? = if (!has(k) || isNull(k)) null else optLong(k)
+
+private fun JSONObject.double(k: String): Double? = if (!has(k) || isNull(k)) null else optDouble(k).takeIf { !it.isNaN() }
 
 private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
 
