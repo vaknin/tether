@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.dayWords
@@ -215,8 +216,11 @@ internal fun rememberNow(): State<Long> = produceState(System.currentTimeMillis(
 /** The thumbnail of a file sent from here, by Tether's file id, loaded off the main thread. */
 @Composable
 internal fun rememberThumb(fileId: String): ImageBitmap? {
-    val bmp by produceState<ImageBitmap?>(null, fileId) {
-        value = withContext(Dispatchers.IO) { runCatching { Dibs.host.thumb(fileId) }.getOrNull() }
+    // A file dibs sent gets its thumbnail just after it arrives: look again when one is written.
+    val written by Dibs.host.thumbs.collectAsStateWithLifecycle()
+    val bmp by produceState<ImageBitmap?>(null, fileId, written) {
+        val got = withContext(Dispatchers.IO) { runCatching { Dibs.host.thumb(fileId) }.getOrNull() }
+        if (got != null || value == null) value = got
     }
     return bmp
 }

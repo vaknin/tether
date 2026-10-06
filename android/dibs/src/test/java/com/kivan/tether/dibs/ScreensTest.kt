@@ -45,6 +45,7 @@ class FakeHost(view: JSONObject?) : DibsHost {
     override fun send(uid: String, text: String, files: List<Uri>, action: String, extra: JSONObject?, onFile: (Uri, String) -> Unit) {}
     override fun channelFile(prefix: String): Flow<File?> = flowOf(null)
     override fun thumb(fileId: String): ImageBitmap? = null
+    override val thumbs: StateFlow<Int> = MutableStateFlow(0)
     override fun visible(on: Boolean) {}
     override fun openTether(classic: Boolean) {}
 }
@@ -146,7 +147,7 @@ class ScreensTest {
         show(v)
         Dibs.tab = "tasks"
         compose.waitForIdle()
-        compose.onNodeWithText("2 FOR YOU: 1 FINISHED TO READ, 1 ASKING YOU").assertIsDisplayed()
+        compose.onNodeWithText("2 FOR YOU: 1 TO READ, 1 ASKING YOU").assertIsDisplayed()
         compose.onNodeWithText("Cut phone notification clutter").assertIsDisplayed()
         compose.onNodeWithText("Plan how dibs spends less usage").assertIsDisplayed()
         shot("tasks")

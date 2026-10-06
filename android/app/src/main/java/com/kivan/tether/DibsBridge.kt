@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -105,14 +104,14 @@ class DibsBridge(context: Context) : DibsHost {
 
     override fun thumb(fileId: String): ImageBitmap? = Thumbs.byId(app, fileId)
 
+    override val thumbs: StateFlow<Int> = Thumbs.version
+
     /** A file dibs sent is kept in its channel folder: decode that. The user's own copies are gone once sent. */
-    override fun image(fileId: String, maxPx: Int): ImageBitmap? {
-        val path = runBlocking {
-            Core.withNode { n -> runCatching { n.appFiles(Channels.DIBS, 500u) }.getOrNull() }
-                ?.firstOrNull { it.id == fileId && !it.fromMe }?.path
-        }
-        val f = path?.let(::File)?.takeIf { it.isFile } ?: return thumb(fileId)
-        return runCatching {
+    override suspend fun image(fileId: String, maxPx: Int): ImageBitmap? = withContext(Dispatchers.IO) {
+        val path = Core.withNode { n -> runCatching { n.appFiles(Channels.DIBS, 500u) }.getOrNull() }
+            ?.firstOrNull { it.id == fileId && !it.fromMe }?.path
+        val f = path?.let(::File)?.takeIf { it.isFile } ?: return@withContext thumb(fileId)
+        runCatching {
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(f)) { d, info, _ ->
                 val s = info.size
                 val scale = min(1f, maxPx.toFloat() / max(s.width, s.height))

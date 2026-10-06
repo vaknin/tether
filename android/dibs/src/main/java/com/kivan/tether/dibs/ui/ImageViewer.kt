@@ -56,10 +56,14 @@ internal fun ImageViewer(thumb: ImageBitmap, full: ImageBitmap?, name: String, o
         var scale by remember { mutableFloatStateOf(1f) }
         var offset by remember { mutableStateOf(Offset.Zero) }
         var box by remember { mutableStateOf(IntSize.Zero) }
-        // Keeps the zoomed picture over the screen: no dragging it off past its edges.
+        // Keeps the zoomed picture over the screen: no dragging its edges in past the screen's.
+        // The picture fits inside the screen at its own aspect, so its own size sets the limit.
+        val ratio = thumb.width.toFloat() / maxOf(1, thumb.height)
         fun clamp(o: Offset, s: Float): Offset {
-            val mx = box.width * (s - 1) / 2
-            val my = box.height * (s - 1) / 2
+            val fw = minOf(box.width.toFloat(), box.height * ratio)
+            val fh = minOf(box.height.toFloat(), box.width / ratio)
+            val mx = maxOf(0f, (fw * s - box.width) / 2)
+            val my = maxOf(0f, (fh * s - box.height) / 2)
             return Offset(o.x.coerceIn(-mx, mx), o.y.coerceIn(-my, my))
         }
         Box(

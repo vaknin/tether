@@ -112,6 +112,8 @@ class TasksModelTest {
         )
         assertEquals("Build the Ideas tab", plainTitle("RESEARCH and plan", "RESEARCH and plan: dibs: build the Ideas tab. Then ask."))
         assertEquals("a bare tag stays", "PLAN", plainTitle("PLAN", "PLAN"))
+        assertEquals("a link isn't a repo", "Https://x.io/y fix it", plainTitle("PLAN ONLY", "PLAN ONLY: https://x.io/y fix it"))
+        assertEquals("nor a time", "12:30 call", plainTitle("PLAN ONLY", "PLAN ONLY: 12:30 call"))
     }
 
     @Test
@@ -125,7 +127,7 @@ class TasksModelTest {
     fun theBadgeSaysWhatItCounts() {
         assertEquals(null, forYouWords(0, 0))
         assertEquals("1 for you: 1 asking you", forYouWords(0, 1))
-        assertEquals("3 for you: 2 finished to read, 1 asking you", forYouWords(2, 1))
+        assertEquals("3 for you: 2 to read, 1 asking you", forYouWords(2, 1))
         assertEquals(true, wantsYou(task(1, "x", "done", 1, unread = true), ticked = false, unread = true))
         assertEquals("a running one doesn't", false, wantsYou(task(2, "x", "working", 1), ticked = false, unread = false))
         assertEquals("a ticked one doesn't", false, wantsYou(task(3, "x", "needs", 1), ticked = true, unread = false))

@@ -200,13 +200,16 @@ internal fun TaskState(t: YourTask, now: Long) {
     val words = remember(t, now / 60) {
         taskWords(t, now, ZoneId.systemDefault()) { android.text.format.DateFormat.getTimeFormat(ctx).format(java.util.Date(it * 1000)) }
     }
-    when (t.state) {
-        "needs" -> Eyebrow(words, dot = true, color = Palette.Accent)
-        // Finished and not opened yet: one of what the badge counts.
-        "done" if Dibs.unread(t) -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+    // Not opened since it finished, stopped or its agent answered: one of what the badge counts.
+    if (t.state != "needs" && Dibs.unread(t)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Box(Modifier.size(7.dp).background(Palette.Accent, Pill))
             Text("$words · new", style = AppType.small, color = Palette.Accent)
         }
+        return
+    }
+    when (t.state) {
+        "needs" -> Eyebrow(words, dot = true, color = Palette.Accent)
         "working", "paused" -> StateWord(words, busy = t.busy)
         "failed" -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Icon(painterResource(R.drawable.lucide_triangle_alert), null, Modifier.size(13.dp), tint = Palette.Warning)

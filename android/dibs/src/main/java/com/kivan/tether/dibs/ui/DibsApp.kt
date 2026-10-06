@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -146,7 +149,11 @@ fun DibsApp() {
             }
         },
     ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).consumeWindowInsets(pad).imePadding()) {
+        Column(
+            Modifier.fillMaxSize().padding(pad).consumeWindowInsets(pad)
+                // Sideways (landscape: a cutout or a side navigation bar), then the keyboard.
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).imePadding(),
+        ) {
             Header(link, view?.state, typing)
             if (view == null) {
                 Empty(hasView = json != null)
@@ -198,15 +205,18 @@ private fun Header(link: Link, state: State?, typing: Boolean) {
             // The launcher's monochrome layer: its mark fills 46 of 108 dp, so draw it larger than the tile.
             Icon(painterResource(R.drawable.ic_dibs_monochrome), null, Modifier.requiredSize(48.dp), tint = Palette.Text)
         }
-        // At most 45% of the row, so a long state ("Out of usage until 12:20") wraps instead of
-        // pushing ⋮ off; it takes only what it needs.
-        Column(Modifier.weight(0.45f, fill = false).padding(start = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // The usage steps aside while typing. With it, the state takes at most 45% of the row, so a
+        // long one ("Out of usage until 12:20") wraps instead of squeezing it; without, all of it.
+        val limits = state?.limits?.takeIf { it.isNotEmpty() && !typing }
+        Column(
+            Modifier.weight(if (limits != null) 0.45f else 1f, fill = limits == null).padding(start = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Eyebrow(words, color = color)
             Text("dibs", style = AppType.heading, color = Palette.Text)
         }
-        // The usage takes the room that's left (never the title's), and steps aside while typing.
-        Box(Modifier.weight(0.55f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) {
-            if (!typing) state?.limits?.takeIf { it.isNotEmpty() }?.let { Usage(it) }
+        if (limits != null) {
+            Box(Modifier.weight(0.55f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) { Usage(limits) }
         }
         Box {
             IconButton(onClick = { menu = true }) {

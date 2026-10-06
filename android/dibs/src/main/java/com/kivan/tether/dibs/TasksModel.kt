@@ -47,13 +47,13 @@ fun tasksList(yours: List<YourTask>, ticked: (YourTask) -> Boolean = { it.ticked
 fun wantsYou(t: YourTask, ticked: Boolean, unread: Boolean): Boolean = !ticked && (unread || t.state == "needs")
 
 /**
- * What the Tasks badge counts, in words: "2 for you: 1 finished to read, 1 asking you"; null when
- * nothing wants the user.
+ * What the Tasks badge counts, in words: "2 for you: 1 to read, 1 asking you" (to read: finished,
+ * stopped, or its agent answered, and not opened since); null when nothing wants the user.
  */
 fun forYouWords(read: Int, asking: Int): String? {
     if (read + asking == 0) return null
     val parts = listOfNotNull(
-        read.takeIf { it > 0 }?.let { "$it finished to read" },
+        read.takeIf { it > 0 }?.let { "$it to read" },
         asking.takeIf { it > 0 }?.let { "$it asking you" },
     )
     return "${read + asking} for you: ${parts.joinToString(", ")}"
@@ -70,7 +70,7 @@ const val TITLE_MAX = 60
 fun plainTitle(title: String, asked: String): String {
     val t = title.trim()
     val a = asked.trim()
-    if (t.isNotEmpty() && a.length > t.length + 1 && a.startsWith(t) && a[t.length] == ':') {
+    if (t.isNotEmpty() && a.length > t.length + 1 && a.startsWith(t) && a[t.length] == ':' && a[t.length + 1].isWhitespace()) {
         firstClause(a.substring(t.length + 1)).takeIf { it.isNotEmpty() }?.let { return it }
     }
     return withoutAsides(t).trimEnd('.', ',', ';', ':', '-', '—', ' ').ifEmpty { t }
@@ -79,14 +79,17 @@ fun plainTitle(title: String, asked: String): String {
 /** The first clause of the user's words, as dibs makes a title: no `<repo>:` prefix, no asides, cut at a word. */
 internal fun firstClause(text: String): String {
     var t = text.trim()
-    // "tether: build X" → "build X" (a repo name: one word before the colon).
+    // "tether: build X" → "build X" (a repo name: one word before the colon and a space after;
+    // not a link's "https:" or a time's "12:30").
     val colon = t.indexOf(':')
-    if (colon > 0 && t.substring(0, colon).none { it.isWhitespace() } && t.substring(colon + 1).isNotBlank()) t = t.substring(colon + 1).trim()
+    if (colon > 0 && t.substring(0, colon).none { it.isWhitespace() } && t.getOrNull(colon + 1)?.isWhitespace() == true && t.substring(colon + 1).isNotBlank()) {
+        t = t.substring(colon + 1).trim()
+    }
     t = withoutAsides(t.lineSequence().firstOrNull().orEmpty())
     val end = t.indices.firstOrNull { i -> t[i] in ".,;!?:" && t.getOrNull(i + 1) == ' ' } ?: t.length
     val first = t.substring(0, end).trim().trimEnd('.', '!', '?', ',', ';', ':')
     val out = StringBuilder()
-    for (w in first.split(Regex("\\s+")).filter { it.isNotEmpty() }) {
+    for (w in first.split(SPACES).filter { it.isNotEmpty() }) {
         val next = if (out.isEmpty()) w.length else out.length + 1 + w.length
         if (next > TITLE_MAX) {
             if (out.isEmpty()) out.append(w.take(TITLE_MAX - 1))
@@ -110,8 +113,10 @@ internal fun withoutAsides(s: String): String {
             depth == 0 -> out.append(c)
         }
     }
-    return out.toString().replace(Regex(" {2,}"), " ").replace(" ,", ",").trim()
+    return out.toString().replace(SPACES, " ").replace(" ,", ",").trim()
 }
+
+private val SPACES = Regex("\\s+")
 
 /**
  * A task's state in words: "Needs you", "Working · 40 min", "Paused", "Done 21:36" (a day when it
