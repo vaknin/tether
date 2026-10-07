@@ -109,7 +109,7 @@ time, which the relay makes almost always.
    pair, chat, queue offline, resume files. Unit tests: outbox resend after reconnect, pair rejects
    unknown key, file resume at offset.
 2. **Android app.** Pair, chat, Direct Share tile, receive files. Install over adb
-   (`Android_FBR2HM5L.local:5555`, `-s` explicit; check focus before any `adb input`). Keep the
+   (paired Wireless debugging only, never `adb tcpip`; `-s` explicit; check focus before any `adb input`). Keep the
    release keystore safe (lesson from babah).
 3. **Parity with KDE Connect** (done 2026-10-02, live-checked): MPRIS/media, ring, notifications mirror, ping. Switch
    phonemedia `busPrefix`, dictation grep, voxtype ignore list, scheduled-jobs `notify`,
