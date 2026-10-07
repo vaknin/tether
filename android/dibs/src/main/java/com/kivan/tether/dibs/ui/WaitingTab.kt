@@ -69,6 +69,9 @@ internal fun WaitingTab(view: DibsView) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long? = null) {
+    // A root step opens its own page to approve; setting up the key is the phone's own button.
+    if (q.kind == "root" && q.root != null) return RootCard(q, q.root, now, modifier)
+    if (q.kind == "rootkey") return RootKeyCard(q, now, modifier)
     Column(modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (q.kind == "phone") Icon(painterResource(R.drawable.lucide_smartphone), "Phone request", Modifier.size(14.dp), tint = Palette.Muted)

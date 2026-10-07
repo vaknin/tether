@@ -37,8 +37,12 @@ internal fun ChatTab(view: DibsView) {
     val talk = remember(view.talk, hidden) { view.talk.filter { it.id !in hidden } }
     // A note that a task's full story is ready opens it ("Read it") while the task is listed.
     // A line standing for an Ask about conversation draws that conversation's row.
-    val look = remember(view.yours, view.asks) {
-        ChatLook(stories = view.yours?.mapTo(HashSet()) { it.id }.orEmpty(), asks = view.asks.associateBy { it.about })
+    val look = remember(view.yours, view.asks, view.questions) {
+        ChatLook(
+            stories = view.yours?.mapTo(HashSet()) { it.id }.orEmpty(),
+            asks = view.asks.associateBy { it.about },
+            roots = view.questions.filter { (it.kind == "root" && it.root != null) || it.kind == "rootkey" }.associateBy { it.id },
+        )
     }
     val rows = rememberChatRows(talk, pending, look)
     val echoes = remember(pending) { pending.associateBy { it.uid } }

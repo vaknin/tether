@@ -367,4 +367,59 @@ class PayloadTest {
     fun anOlderDibsSendsNoBoard() {
         assertNull(DibsView.ofView(view)!!.board)
     }
+
+    @Test
+    fun aRootStepCarriesItsRequest() {
+        val d = DibsView.parse(
+            JSONObject(
+                """
+                {"questions": [
+                  {"id": 700, "title": "Restart Bluetooth", "why": "w", "from": "fix-bt", "ts": 1, "kind": "root",
+                   "actions": [{"id": "d700", "label": "Deny", "style": "plain"}],
+                   "root": {"request": 12, "machine": "0123456789abcdef0123456789abcdef", "nonce": "00112233445566778899aabbccddeeff",
+                            "expires": 1760000000, "network": true, "home": "ro", "timeout": 900,
+                            "script": "#!/bin/bash\nsystemctl restart bluetooth.service\n",
+                            "files": [{"name": "x.service", "text": ""}, {"name": "app.apk", "size": 31457280, "sha256": "ab"}],
+                            "why": "Bluetooth is stuck", "note": "Fine, a restart.", "pick": "accept",
+                            "allow_list": [{"name": "Restart Bluetooth", "action": "cd"}]}},
+                  {"id": 701, "title": "Not yet checked", "kind": "root",
+                   "root": {"request": 13, "script": "true\n", "note": null, "pick": null}},
+                  {"id": 702, "title": "Set up root steps", "why": "Once", "kind": "rootkey", "actions": [{"id": "y702", "label": "Set up"}]}
+                ]}
+                """,
+            ),
+        )
+        val q = d.questions[0]
+        assertEquals("root", q.kind)
+        val r = q.root!!
+        assertEquals(12L, r.request)
+        assertEquals("0123456789abcdef0123456789abcdef", r.machine)
+        assertEquals(1760000000L, r.expires)
+        assertTrue(r.network)
+        assertEquals("ro", r.home)
+        assertEquals(900L, r.timeout)
+        assertEquals("#!/bin/bash\nsystemctl restart bluetooth.service\n", r.script)
+        assertEquals("an empty text file is still text", "", r.files[0].text)
+        assertFalse(r.files[0].binary)
+        assertTrue(r.files[1].binary)
+        assertEquals(31457280L, r.files[1].size)
+        assertEquals("ab", r.files[1].sha256)
+        assertEquals("Bluetooth is stuck", r.why)
+        assertEquals("Fine, a restart.", r.note)
+        assertEquals("accept", r.pick)
+        assertEquals(listOf(RootAllowed("Restart Bluetooth", "cd")), r.allowList)
+
+        val unchecked = d.questions[1].root!!
+        assertNull("a null note: dibs hasn't checked it", unchecked.note)
+        assertNull(unchecked.pick)
+        assertEquals("the defaults", 600L, unchecked.timeout)
+        assertEquals("no", unchecked.home)
+        assertFalse(unchecked.network)
+        assertTrue(unchecked.files.isEmpty())
+        assertTrue("no machine: the phone won't sign it", RootMessage.problem(unchecked) != null)
+
+        assertEquals("rootkey", d.questions[2].kind)
+        assertNull(d.questions[2].root)
+        assertNull("an ordinary question has no root", DibsView.ofView(view)!!.questions[0].root)
+    }
 }

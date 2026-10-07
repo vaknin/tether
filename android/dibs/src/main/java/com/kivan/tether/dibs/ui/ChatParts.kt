@@ -115,6 +115,7 @@ import com.kivan.tether.dibs.LineRow
 import com.kivan.tether.dibs.NoteRow
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.Pending
+import com.kivan.tether.dibs.Question
 import com.kivan.tether.dibs.Picked
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.TalkLine
@@ -162,6 +163,8 @@ internal data class ChatLook(
     val stories: Set<Long> = emptySet(),
     /** The Ask about conversations by `about`: a line naming one draws its row ([AskRow]). */
     val asks: Map<String, Asking> = emptyMap(),
+    /** Root steps and the key's setup by question id: their line offers Review or Set up ([RootActions]), never a plain Approve. */
+    val roots: Map<Long, Question> = emptyMap(),
 )
 
 /** The chat's rows from [talk] and the echoes still waiting, regrouped as the clock moves on. */
@@ -495,7 +498,7 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                         Icon(painterResource(R.drawable.lucide_check), null, Modifier.size(16.dp), tint = Palette.Success)
                         Text(outcomeWords(outcome), style = AppType.small, color = Palette.Muted)
                     }
-                    ask != null -> AskButtons(ask)
+                    ask != null -> AskButtons(ask, look)
                 }
             }
             LineMenu(menu, l, look) { menu = false }
@@ -505,7 +508,8 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
 
 /** An open question's buttons (the first is the main one) and its box for words, as on its Waiting card. */
 @Composable
-private fun AskButtons(ask: Ask) {
+private fun AskButtons(ask: Ask, look: ChatLook) {
+    look.roots[ask.q]?.let { return RootActions(it, Modifier.padding(top = 3.dp)) }
     QuestionControls(ask.q, "ask/${ask.q}", ask.actions, ask.reply, ask.hint, Modifier.padding(top = 3.dp))
 }
 

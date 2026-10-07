@@ -231,6 +231,10 @@ sealed interface Page {
     data class Idea(val id: String) : Page
     /** An Ask about conversation, by its subject (`task:85`, `note:41`): it opens before dibs lists it. */
     data class Ask(val about: String) : Page
+    /** A root step's request, by its question's id: the script word for word, and Approve with a fingerprint. */
+    data class Root(val id: Long) : Page
+    /** Setting up the phone's key for root steps: its code, sent to the laptop. */
+    data object RootKey : Page
 }
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
@@ -572,6 +576,24 @@ object Dibs {
     fun answer(key: String, label: String, action: String, value: JSONObject? = null) {
         answered[key] = label
         host.act(action, value)
+    }
+
+    /**
+     * A root step approved: the signature (of the message built with [remember]) goes to dibs, which
+     * hands it to the root helper; the card shows as answered until the view drops it.
+     */
+    fun approveRoot(q: Question, request: Long, sig: ByteArray, remember: Boolean) {
+        answer(
+            "q${q.id}", "Approved", "root-approve",
+            JSONObject().put("item", q.id).put("request", request)
+                .put("sig", java.util.Base64.getEncoder().encodeToString(sig)).put("remember", remember),
+        )
+    }
+
+    /** Deny: the card's own `d<id>` (dibs then cancels the request). */
+    fun denyRoot(q: Question) {
+        val deny = q.actions.firstOrNull { it.id.startsWith("d") } ?: Action("d${q.id}", "Deny")
+        answer("q${q.id}", deny.label, deny.id)
     }
 
     fun toggle(key: String) {

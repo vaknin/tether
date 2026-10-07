@@ -145,6 +145,8 @@ fun DibsApp() {
                     is Page.Story -> StoryScreen(page.id, view)
                     is Page.Idea -> IdeaPage(page.id, view)
                     is Page.Ask -> AskPage(page.about, view)
+                    is Page.Root -> RootPage(page.id, view)
+                    Page.RootKey -> RootKeyPage()
                 }
             }
         }

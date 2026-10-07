@@ -101,7 +101,7 @@ data class Question(
     val repo: String?,
     val ts: Long,
     val blocking: Boolean,
-    /** question | phone | update | permission | idea | task */
+    /** question | phone | update | permission | idea | task | root | rootkey */
     val kind: String,
     val actions: List<Action>,
     /** The typed answer's action id (`r<id>`), when it takes one. */
@@ -112,6 +112,8 @@ data class Question(
     val phoneUnlock: Boolean,
     /** Asked by one of the user's tasks ([YourTask.id]). */
     val task: Long? = null,
+    /** A root step's request (kind `root`): what the page shows and the phone signs. */
+    val root: RootRequest? = null,
 )
 
 /**
@@ -618,6 +620,7 @@ data class DibsView(
                 phoneSecs = phone?.optLong("secs"),
                 phoneUnlock = phone?.optBoolean("unlock") == true,
                 task = o.long("task"),
+                root = o.optJSONObject("root")?.let(RootRequest::parse),
             )
         }
 
