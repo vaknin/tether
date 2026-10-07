@@ -178,12 +178,14 @@ private fun askItems(about: String, a: Asking?, pending: List<Pending>, ending: 
     if (beforeOverview) out += AskItem.Reading(a?.reading ?: askReading(about))
     a?.overview?.let { o ->
         out += AskItem.Overview(o.text)
-        if (o.chips.isNotEmpty() && a.lines.none { it.who == "dibs" && it.chips.isNotEmpty() }) {
+        if (o.chips.isNotEmpty() && !a.ending && !a.isEnded && !ending && a.lines.none { it.who == "dibs" && it.chips.isNotEmpty() }) {
             out += AskItem.Chips("overview", o.chips, "Suggested questions")
         }
     }
     val lines = a?.lines.orEmpty()
-    val newestDibs = lines.lastOrNull { it.who == "dibs" }
+    // Ending or ended: nothing more can be asked, so no suggestions.
+    val open = a == null || (!a.ending && !a.isEnded && !ending)
+    val newestDibs = lines.lastOrNull { it.who == "dibs" }.takeIf { open }
     for (l in lines) {
         out += AskItem.Line(l)
         if (l === newestDibs && l.chips.isNotEmpty()) out += AskItem.Chips(l.id, l.chips, null)
@@ -204,8 +206,8 @@ private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: B
     val items = remember(about, a, pending, ending) { askItems(about, a, pending, ending) }
     val reversed = remember(items) { items.asReversed() }
     val state = rememberLazyListState()
-    // The conversation reads from the top until it has lines, then sits at its newest.
-    val talking = items.any { it is AskItem.Line || it is AskItem.Echo }
+    // The conversation reads from the top until dibs lists a line, then sits at its newest.
+    val talking = items.any { it is AskItem.Line }
     val newest = items.lastOrNull()?.key
     val newestMine = when (val i = items.lastOrNull()) {
         is AskItem.Echo -> true
