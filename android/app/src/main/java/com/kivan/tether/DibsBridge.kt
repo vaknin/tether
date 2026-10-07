@@ -11,6 +11,7 @@ import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsHost
 import com.kivan.tether.dibs.Link
 import com.kivan.tether.dibs.fetchedOf
+import com.kivan.tether.dibs.ideaFileOf
 import com.kivan.tether.core.MsgState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -60,6 +61,12 @@ class DibsBridge(context: Context) : DibsHost {
         if (value != null) obj.put("value", value)
         if (uid != null) obj.put("uid", uid)
         return Channels.act(Channels.DIBS, obj)
+    }
+
+    override suspend fun actStored(action: String, value: JSONObject?): String {
+        val obj = JSONObject().put("action", action)
+        if (value != null) obj.put("value", value)
+        return Channels.actStored(Channels.DIBS, obj)
     }
 
     /**
@@ -143,7 +150,8 @@ class DibsBridge(context: Context) : DibsHost {
 
     /**
      * Keeps the newest transcript, report and full story per task and drops the rest; the newest goes too
-     * after 14 days, or 7 days after its task was ticked off (while the view still lists it).
+     * after 14 days, or 7 days after its task was ticked off (while the view still lists it). A
+     * note's loaded transcript the same: the newest per note, for 14 days.
      */
     private fun prune() {
         val files = dibsDir().listFiles()?.filter { it.isFile } ?: return
@@ -161,6 +169,14 @@ class DibsBridge(context: Context) : DibsHost {
             val newest = sorted.first()
             val tick = ticked[key.second]
             val stale = now - newest.lastModified() > KEEP_MS || (tick != null && now / 1000 - tick > TICKED_KEEP_S)
+            for (f in if (stale) sorted else sorted.drop(1)) {
+                if (!f.delete()) Log.w("Tether", "couldn't prune ${f.name}")
+            }
+        }
+        for ((note, list) in files.groupBy { ideaFileOf(it.name) }) {
+            if (note == null) continue
+            val sorted = list.sortedByDescending { it.lastModified() }
+            val stale = now - sorted.first().lastModified() > KEEP_MS
             for (f in if (stale) sorted else sorted.drop(1)) {
                 if (!f.delete()) Log.w("Tether", "couldn't prune ${f.name}")
             }

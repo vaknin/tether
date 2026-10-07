@@ -106,4 +106,7 @@ fun fetchedOf(name: String): Pair<String, Long>? {
     return m.groupValues[1] to m.groupValues[2].toLong()
 }
 
+/** The note a loaded idea transcript is for: "idea-<32 hex>-ab12.md" → its id. */
+fun ideaFileOf(name: String): String? = Regex("""^idea-([0-9a-f]{32})-""").find(name)?.groupValues?.get(1)
+
 private fun JSONArray?.objs(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }

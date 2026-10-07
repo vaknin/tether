@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -280,23 +282,41 @@ object Channels {
      * A thread's reply is the same item without `action`.
      */
     fun act(name: String, obj: JSONObject): String {
-        val uid = obj.optString("uid").ifEmpty { UUID.randomUUID().toString() }
-        obj.put("from", "phone").put("uid", uid).put("ts", System.currentTimeMillis())
-        val data = obj.toString()
+        val uid = stamp(obj)
         Core.scope.launch {
-            val hold = "act:$uid"
             try {
-                val n = Core.acquire(hold)
-                n.sendApp(name, data, false)
-                if (info(name)?.thread != false) _threads.value = _threads.value + (name to n.appHistory(name, HISTORY))
+                store(name, obj, uid)
             } catch (e: Exception) {
                 Log.w(TAG, "action on $name failed", e)
-            } finally {
-                Core.release(hold)
             }
         }
         Shortcuts.usedChannel(app, name)
         return uid
+    }
+
+    /** As [act], returning once the action is in the node's queue; throws when it couldn't be put there. */
+    suspend fun actStored(name: String, obj: JSONObject): String {
+        val uid = stamp(obj)
+        store(name, obj, uid)
+        Shortcuts.usedChannel(app, name)
+        return uid
+    }
+
+    private fun stamp(obj: JSONObject): String {
+        val uid = obj.optString("uid").ifEmpty { UUID.randomUUID().toString() }
+        obj.put("from", "phone").put("uid", uid).put("ts", System.currentTimeMillis())
+        return uid
+    }
+
+    private suspend fun store(name: String, obj: JSONObject, uid: String): Unit = withContext(Dispatchers.Default) {
+        val hold = "act:$uid"
+        try {
+            val n = Core.acquire(hold)
+            n.sendApp(name, obj.toString(), false)
+            if (info(name)?.thread != false) _threads.value = _threads.value + (name to n.appHistory(name, HISTORY))
+        } finally {
+            Core.release(hold)
+        }
     }
 
     /** Sends a compose block's text and shows it as pending until a view lists its uid. */

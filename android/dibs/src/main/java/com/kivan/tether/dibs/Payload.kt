@@ -316,6 +316,8 @@ data class DibsView(
     val yours: List<YourTask>? = null,
     /** dibs's board; null from a dibs that doesn't send one (the Tasks tab groups [yours] itself then). */
     val board: Board? = null,
+    /** The Ideas tab; null from a dibs that doesn't send it (the tab shows only what's made here). */
+    val ideas: com.kivan.tether.dibs.ideas.Ideas? = null,
 ) {
     fun task(id: Long): YourTask? = yours?.firstOrNull { it.id == id }
 
@@ -370,6 +372,7 @@ data class DibsView(
                 badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap"), b.optInt("tasks")),
                 yours = if (o.has("yours")) o.optJSONArray("yours").objects().map(::yourTask) else null,
                 board = o.optJSONObject("board")?.let(::board),
+                ideas = o.optJSONObject("ideas")?.let(com.kivan.tether.dibs.ideas.Ideas::parse),
             )
         }
 

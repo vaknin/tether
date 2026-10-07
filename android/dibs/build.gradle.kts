@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
 }
+
+// The Ideas tab's Gemini key (Capture's), from the git-ignored local.properties as `gemini.apiKey`,
+// baked into BuildConfig. Without it the build works and every Gemini call fails at once, saying so.
+val localProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.isFile) f.inputStream().use(::load)
+}
+val geminiApiKey = localProperties.getProperty("gemini.apiKey", "").trim()
 
 // dibs's own screens (docs/DIBS-APP.md). It knows nothing of Tether's core: the app hands it a
 // `DibsHost` (the dibs channel's view, actions, files), so it could become its own APK later.
@@ -13,6 +23,7 @@ android {
 
     defaultConfig {
         minSdk = 34
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
     }
 
     compileOptions {
@@ -22,6 +33,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {
@@ -47,7 +59,9 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.work.runtime.ktx)
 
+    testImplementation(libs.androidx.work.testing)
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
     testImplementation(libs.robolectric)
