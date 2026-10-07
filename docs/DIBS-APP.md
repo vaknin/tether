@@ -512,8 +512,9 @@ mockups are its p1–p9. The user never sees the word "thread": it is **Ask abou
   kept_title, kept, foot}`, `placeholder`, `done`, `more`, `ts`, `last_ts` (`Asking` in `Payload.kt`; every field
   optional). A main chat line carries `thread: <about>` (drawn as that conversation's row) and a line passed on to
   dibs carries `under` ("From your conversation about …"). Every subject that can be asked about carries
-  `ask {about, label}`: `yours[i]`, task cards of `board`, `ideas.notes[i]`. Sample: `dibs/src/test/resources/threads.json`
-  (written from DESIGN.md until dibs's `tests/samples/threads.json` replaces it).
+  `ask {about, label}`: `yours[i]`, task cards of `board`, `ideas.notes[i]`. Sample: dibs's `tests/samples/threads.json` (written by
+  its real builder, with the actions it takes), copied to `dibs/src/test/resources/threads.json`. A conversation's
+  notification carries tag `ask:<thread id>`; its tap opens that conversation's page (`DibsActivity.EXTRA_ASK`).
 - **Actions** (all through `act`): `thread-open {about}` (open, or bring an ended one back), `thread-say {about,
   text}` with the line's uid (its echo clears when a `lines[].uid` matches), `thread-done {about}`, `thread-seen
   {about, n}` (the page is on screen showing `n` lines; sent once per count, and again when the overview arrives).

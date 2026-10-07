@@ -54,6 +54,13 @@ class DibsActivity : ComponentActivity() {
             Dibs.tab = it
             Dibs.pages.clear()
         }
+        // A conversation's notification (`ask:<id>`): its page, found by the thread's id in the view.
+        val ask = intent.getLongExtra(EXTRA_ASK, -1)
+        if (ask >= 0) {
+            Dibs.pages.clear()
+            Dibs.tab = TAB_CHAT
+            runCatching { DibsView.ofView(Dibs.host.view.value) }.getOrNull()?.asks?.firstOrNull { it.id == ask }?.let { Dibs.open(Page.Ask(it.about)) }
+        }
         val task = intent.getLongExtra(EXTRA_TASK, -1)
         if (task >= 0) {
             Dibs.tab = TAB_TASKS
@@ -84,6 +91,8 @@ class DibsActivity : ComponentActivity() {
         const val EXTRA_TAB = "com.kivan.tether.dibs.TAB"
         /** One of the user's tasks (a Long): its page opens over the Tasks tab. */
         const val EXTRA_TASK = "com.kivan.tether.dibs.TASK"
+        /** An Ask about conversation, by its thread id (a Long): its page opens over the chat. */
+        const val EXTRA_ASK = "com.kivan.tether.dibs.ASK"
         const val TAB_CHAT = "chat"
         const val TAB_IDEAS = "ideas"
         const val TAB_WAITING = "waiting"
@@ -94,6 +103,10 @@ class DibsActivity : ComponentActivity() {
             Intent(Intent.ACTION_VIEW, null, context, DibsActivity::class.java).apply {
                 if (tab != null) putExtra(EXTRA_TAB, tab)
             }
+
+        /** Opens dibs on an Ask about conversation, by its thread id. */
+        fun ask(context: Context, id: Long): Intent =
+            Intent(Intent.ACTION_VIEW, null, context, DibsActivity::class.java).putExtra(EXTRA_ASK, id)
 
         /** Opens dibs on one of the user's tasks. */
         fun task(context: Context, id: Long): Intent =

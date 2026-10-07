@@ -84,7 +84,7 @@ class AskScreensTest {
     // p2: the tap opens the page at once, before dibs lists the conversation.
     private fun readingRightAfterTheTap() {
         show(view())
-        compose.runOnUiThread { Dibs.askAbout(null, "note:41", "Home server") }
+        compose.runOnUiThread { Dibs.askAbout(null, NOTE, "Home server") }
         compose.waitForIdle()
         assertEquals("thread-open", host.acts.single().first)
         compose.onNodeWithText("OPENING").assertIsDisplayed()
@@ -97,7 +97,7 @@ class AskScreensTest {
         compose.waitForIdle()
         val (action, value) = host.acts.last()
         assertEquals("thread-say", action)
-        assertEquals("note:41", value!!.getString("about"))
+        assertEquals(NOTE, value!!.getString("about"))
         compose.onNodeWithText("how loud is it under a build?").assertIsDisplayed()
         compose.onNodeWithText("Waiting for the overview").assertIsDisplayed()
         noEllipsis()
@@ -121,13 +121,13 @@ class AskScreensTest {
         val t = open41().put("state", "open").put("lines", JSONArray()).put("asked", JSONArray()).put("status", JSONObject.NULL)
             .put("row", JSONObject().put("title", "Asking about: Home server").put("words", "New answer").put("tone", "new"))
         show(view(JSONArray().put(t)))
-        compose.runOnUiThread { Dibs.open(Page.Ask("note:41")) }
+        compose.runOnUiThread { Dibs.open(Page.Ask(NOTE)) }
         compose.waitForIdle()
         compose.onNodeWithText("ASKING ABOUT A NOTE").assertIsDisplayed()
         compose.onNodeWithText("Done").assertIsDisplayed()
         compose.onNodeWithText("OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("16 GB is too little", substring = true).assertExists()
-        for (c in listOf("Why 32 GB and not 16?", "Used or new: what's the risk with a used one?", "What moves off the laptop first?")) {
+        for (c in listOf("Why 32 GB and not 16?", "Used or new: what's the risk?", "What moves off the laptop first?")) {
             scrollTo(c)
             compose.onNodeWithText(c).assertIsDisplayed()
         }
@@ -155,16 +155,18 @@ class AskScreensTest {
     @Test
     fun aConversationInFullAndDone() {
         show(view(threads()))
-        compose.runOnUiThread { Dibs.open(Page.Ask("note:41")) }
+        compose.runOnUiThread { Dibs.open(Page.Ask(NOTE)) }
         compose.waitForIdle()
         compose.onNodeWithText("and is it quiet?").assertIsDisplayed()
         compose.onNodeWithText("Answered together with the line above").assertIsDisplayed()
-        compose.onNodeWithText("Answering 2 questions · reading the research").assertIsDisplayed()
+        compose.onNodeWithText("why not the Dell at 900?").assertIsDisplayed()
+        compose.onNodeWithText("Answering 2 questions · reading the note").assertIsDisplayed()
         compose.onNodeWithText("Passed to dibs as your words", substring = true).assertIsDisplayed()
+        scrollTo("Can it build the phone apps too?")
         compose.onNodeWithText("Can it build the phone apps too?").assertIsDisplayed()
         // The overview's suggestions went once an answer had its own.
-        compose.onAllNodesWithText("Used or new: what's the risk with a used one?").assertCountEquals(0)
-        assertTrue(host.acts.any { it.first == "thread-seen" && it.second!!.getInt("n") == 7 })
+        compose.onAllNodesWithText("Used or new: what's the risk?").assertCountEquals(0)
+        assertTrue(host.acts.any { it.first == "thread-seen" && it.second!!.getInt("n") == 6 })
         noEllipsis()
         shot("ask-asking")
         compose.onNodeWithText("Done").performClick()
@@ -182,7 +184,7 @@ class AskScreensTest {
         val t = open41().put("state", "ending").put("done", JSONObject.NULL).put("placeholder", "Ending")
             .put("status", JSONObject().put("busy", true).put("words", "Ending · writing down what you learned for dibs's notes"))
         show(view(JSONArray().put(t)))
-        compose.runOnUiThread { Dibs.open(Page.Ask("note:41")) }
+        compose.runOnUiThread { Dibs.open(Page.Ask(NOTE)) }
         compose.waitForIdle()
         compose.onNodeWithText("Ending · writing down what you learned for dibs's notes").assertIsDisplayed()
         compose.onNodeWithText("Ending").assertIsDisplayed()
@@ -195,13 +197,14 @@ class AskScreensTest {
     // p8: the ended card and Ask more in place of the box.
     private fun theEndedCard() {
         show(view(threads()))
-        compose.runOnUiThread { Dibs.open(Page.Ask("task:85")) }
+        compose.runOnUiThread { Dibs.open(Page.Ask("task:1")) }
         compose.waitForIdle()
         compose.onNodeWithText("ENDED · ASKED ABOUT A TASK").assertIsDisplayed()
-        compose.onNodeWithText("ENDED 13:40 · YOU TAPPED DONE").assertIsDisplayed()
-        compose.onNodeWithText("Kept in dibs's notes on #85:").assertIsDisplayed()
-        compose.onNodeWithText("The story is written by dibs's writer, not the task's agent.").assertIsDisplayed()
-        compose.onNodeWithText("Your task itself is not changed", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("ENDED 13:43 · 30 MINUTES WITHOUT A QUESTION").assertIsDisplayed()
+        compose.onNodeWithText("Kept in dibs's notes on The Full story of a task, on your phone:").assertIsDisplayed()
+        compose.onNodeWithText("The story is written only when you ask.").assertIsDisplayed()
+        compose.onNodeWithText("It never enters the dibs chat.").assertIsDisplayed()
+        compose.onNodeWithText("The task itself is not changed", substring = true).assertIsDisplayed()
         compose.onAllNodesWithText("Ask a question").assertCountEquals(0)
         noEllipsis()
         shot(if (compose.activity.resources.configuration.screenWidthDp < 400) "ask-ended-small" else "ask-ended")
@@ -209,7 +212,7 @@ class AskScreensTest {
         compose.waitForIdle()
         val (action, value) = host.acts.last()
         assertEquals("thread-open", action)
-        assertEquals("task:85", value!!.getString("about"))
+        assertEquals("task:1", value!!.getString("about"))
     }
 
     @Test
@@ -222,7 +225,7 @@ class AskScreensTest {
     @Test
     fun aConversationGoneFromTheViewClosesItsPage() {
         show(view(threads()))
-        compose.runOnUiThread { Dibs.open(Page.Ask("task:85")) }
+        compose.runOnUiThread { Dibs.open(Page.Ask("task:1")) }
         compose.waitForIdle()
         host.view.value = view()
         compose.waitForIdle()
@@ -233,16 +236,16 @@ class AskScreensTest {
     private fun theMainChatRow() {
         val talk = JSONArray()
             .put(JSONObject().put("id", "s1").put("n", 1).put("who", "dibs").put("text", "Started #102: the “Ask about” conversations, as you said.").put("ts", NOW - 600))
-            .put(JSONObject().put("id", "s2").put("n", 2).put("who", "dibs").put("note", true).put("text", "Asking about: Home server").put("ts", NOW - 500).put("thread", "note:41"))
+            .put(JSONObject().put("id", "s2").put("n", 2).put("who", "dibs").put("note", true).put("text", "Asking about: Home server").put("ts", NOW - 500).put("thread", NOTE))
             .put(JSONObject().put("id", "u-3").put("n", 3).put("who", "user").put("text", "ok add the price to the note").put("ts", NOW - 300)
                 .put("under", "From your conversation about the home server"))
             .put(JSONObject().put("id", "s4").put("n", 4).put("who", "dibs").put("note", true).put("text", "Asking about: Old thing").put("ts", NOW - 200).put("thread", "note:9"))
-            .put(JSONObject().put("id", "s5").put("n", 5).put("who", "dibs").put("note", true).put("text", "Asking about: #85").put("ts", NOW - 100).put("thread", "task:85"))
+            .put(JSONObject().put("id", "s5").put("n", 5).put("who", "dibs").put("note", true).put("text", "Asking about: #1").put("ts", NOW - 100).put("thread", "task:1"))
         val t = open41().put("row", JSONObject().put("title", "Asking about: Home server").put("words", "New answer · 4 questions").put("tone", "new"))
         show(view(JSONArray().put(t).put(threads().getJSONObject(1)), talk))
         compose.onNodeWithText("Asking about: Home server").assertIsDisplayed()
         compose.onNodeWithText("New answer · 4 questions").assertIsDisplayed()
-        compose.onNodeWithText("Asking about: #85, the Full story of a task, on your phone").assertIsDisplayed()
+        compose.onNodeWithText("Asking about: The Full story of a task, on your phone").assertIsDisplayed()
         compose.onNodeWithText("From your conversation about the home server").assertIsDisplayed()
         // Not listed any more: its line reads as a note.
         compose.onNodeWithText("Asking about: Old thing").assertIsDisplayed()
@@ -250,7 +253,7 @@ class AskScreensTest {
         shot(if (compose.activity.resources.configuration.screenWidthDp < 400) "ask-mainchat-small" else "ask-mainchat")
         compose.onNodeWithText("Asking about: Home server").performClick()
         compose.waitForIdle()
-        assertEquals(Page.Ask("note:41"), Dibs.pages.last())
+        assertEquals(Page.Ask(NOTE), Dibs.pages.last())
     }
 
     @Test
@@ -266,7 +269,7 @@ class AskScreensTest {
         val t = open41().put("title", LONG_TITLE).put("state", "open").put("lines", JSONArray()).put("asked", JSONArray()).put("status", JSONObject.NULL)
         t.getJSONObject("overview").put("chips", JSONArray().put(LONG_CHIP).put("Short?"))
         show(view(JSONArray().put(t)))
-        compose.runOnUiThread { Dibs.open(Page.Ask("note:41")) }
+        compose.runOnUiThread { Dibs.open(Page.Ask(NOTE)) }
         compose.waitForIdle()
         compose.onNodeWithText(LONG_TITLE).assertIsDisplayed()
         scrollTo(LONG_CHIP)
@@ -325,6 +328,8 @@ class AskScreensTest {
 
     private companion object {
         val NOW = System.currentTimeMillis() / 1000
+        /** The sample's open conversation (dibs's tests/samples/threads.json). */
+        const val NOTE = "note:aaaaaaaaaaaaaaaa0000000000000041"
         const val LONG_TITLE = "The home server that would run dibs, the builds and every agent so the laptop stays light and can sleep at night"
         const val LONG_CHIP = "If I buy the used one now, what do I have to check before paying so it doesn't fail in a month?"
     }
