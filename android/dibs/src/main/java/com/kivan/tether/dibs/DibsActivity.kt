@@ -80,11 +80,12 @@ class DibsActivity : ComponentActivity() {
     }
 
     companion object {
-        /** "chat" | "waiting" | "tasks" (or "work") | "recap". */
+        /** "chat" | "ideas" | "waiting" | "tasks" (or "work") | "recap". */
         const val EXTRA_TAB = "com.kivan.tether.dibs.TAB"
         /** One of the user's tasks (a Long): its page opens over the Tasks tab. */
         const val EXTRA_TASK = "com.kivan.tether.dibs.TASK"
         const val TAB_CHAT = "chat"
+        const val TAB_IDEAS = "ideas"
         const val TAB_WAITING = "waiting"
         const val TAB_TASKS = "tasks"
 

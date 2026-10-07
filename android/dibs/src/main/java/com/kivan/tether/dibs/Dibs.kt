@@ -46,6 +46,12 @@ interface DibsHost {
     fun act(action: String, value: JSONObject? = null, uid: String? = null): String
 
     /**
+     * As [act], but returns only once the action is stored in Tether's queue (so a worker or a
+     * screen about to close knows it won't be lost); throws when it couldn't be.
+     */
+    suspend fun actStored(action: String, value: JSONObject? = null): String = act(action, value)
+
+    /**
      * Sends a message with files: copies each, sends it to the dibs channel, then [action] (`say`,
      * or `task-say` with [extra] naming the task) with [uid], the text and the files' ids.
      * [onFile] tells each file's id as it is queued (for its thumbnail).
@@ -207,6 +213,8 @@ sealed interface Page {
     data class Transcript(val id: Long) : Page
     data class Report(val id: Long) : Page
     data class Story(val id: Long) : Page
+    /** A note of the Ideas tab, by its id. */
+    data class Idea(val id: String) : Page
 }
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */

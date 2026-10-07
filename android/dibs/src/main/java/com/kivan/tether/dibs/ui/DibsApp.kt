@@ -74,6 +74,7 @@ import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.State
 import com.kivan.tether.dibs.stateWords
 import com.kivan.tether.dibs.Limit
+import com.kivan.tether.dibs.ideas.Drafts
 import com.kivan.tether.dibs.limitWords
 import com.kivan.tether.dibs.wantsYou
 import com.kivan.tether.dibs.ui.theme.AppType
@@ -88,11 +89,12 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * The four tabs, by the key an intent names them with. The third is Tasks (the user's tasks), or
+ * The five tabs, by the key an intent names them with. The fourth is Tasks (the user's tasks), or
  * Work for a dibs that doesn't send them yet.
  */
 internal enum class Tab(val key: String, val label: String, val icon: Int) {
     CHAT("chat", "Chat", R.drawable.lucide_message_circle),
+    IDEAS("ideas", "Ideas", R.drawable.lucide_lightbulb),
     WAITING("waiting", "Waiting", R.drawable.lucide_inbox),
     TASKS("tasks", "Tasks", R.drawable.lucide_list_checks),
     RECAP("recap", "Recap", R.drawable.lucide_history),
@@ -106,7 +108,11 @@ fun DibsApp() {
     val json by host.view.collectAsStateWithLifecycle()
     val link by host.link.collectAsStateWithLifecycle()
     val view = remember(json) { runCatching { DibsView.ofView(json) }.getOrNull() }
-    LaunchedEffect(view) { Dibs.seen(view) }
+    val context = LocalContext.current
+    LaunchedEffect(view) {
+        Dibs.seen(view)
+        Drafts.seen(context, view?.ideas)
+    }
 
     var tab by rememberSaveable { mutableStateOf(Tab.CHAT) }
     val tabs = rememberSaveableStateHolder()
@@ -132,6 +138,7 @@ fun DibsApp() {
                 is Page.Transcript -> TranscriptScreen(page.id, view)
                 is Page.Report -> ReportScreen(page.id, view)
                 is Page.Story -> StoryScreen(page.id, view)
+                is Page.Idea -> IdeaPage(page.id, view)
             }
         }
         return
@@ -177,6 +184,7 @@ fun DibsApp() {
                 } else {
                     tabs.SaveableStateProvider(tab.key) {
                         when (tab) {
+                            Tab.IDEAS -> IdeasTab(view)
                             Tab.WAITING -> WaitingTab(view)
                             Tab.TASKS -> if (view.yours != null) TasksTab(view) else WorkTab(view)
                             else -> RecapTab(view)
