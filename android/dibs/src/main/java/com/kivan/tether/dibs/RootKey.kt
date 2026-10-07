@@ -193,15 +193,20 @@ object KeystoreRootKey : RootKey {
                 main,
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        val s = result.cryptoObject?.signature ?: sig
+                        // Only the signature the prompt hands back, unlocked by this fingerprint or face, ever signs.
+                        val s = result.cryptoObject?.signature
                         done(
-                            try {
-                                s.update(message)
-                                SignResult.Signed(s.sign())
-                            } catch (_: KeyPermanentlyInvalidatedException) {
-                                SignResult.Invalidated
-                            } catch (e: Exception) {
-                                SignResult.Failed("The phone couldn't sign (${e.javaClass.simpleName}).")
+                            if (s == null) {
+                                SignResult.Failed("The fingerprint prompt gave the phone nothing to sign with.")
+                            } else {
+                                try {
+                                    s.update(message)
+                                    SignResult.Signed(s.sign())
+                                } catch (_: KeyPermanentlyInvalidatedException) {
+                                    SignResult.Invalidated
+                                } catch (e: Exception) {
+                                    SignResult.Failed("The phone couldn't sign (${e.javaClass.simpleName}).")
+                                }
                             },
                         )
                     }
