@@ -458,3 +458,39 @@ the app (0.5.7) asks for it, shows it and lets them talk to dibs about it.
 - `:app` prunes fetched stories like transcripts and reports (`fetchedOf`): the newest per task is kept.
 - Tests: `PayloadTest.fullStories`, `FormatTest` (`storyWords`, `aboutWords`), `DibsTest` (what the `say` carries),
   `ScreensTest` (the row, the story at 412 and 320 dp, writing, Read it and the chip).
+
+## Ideas (task #68, Capture moves into dibs, 2026-10-07; app 0.6.0)
+
+The user's call (2026-10-06, word 126): Capture's notes move into dibs; the phone keeps a quick way to record or
+type an idea, in the dibs design. dibs holds the notes (`notes.rs`, `ideasapp.rs`); the phone records, has
+Gemini (free tier, key in `local.properties`) transcribe and title, and sends the result. dibs's PLAN.md
+"Capture moves into dibs" has the whole plan.
+
+- **Contract.** The payload's `ideas` (dibs ≥ the step 2 ship; `ideasapp::APP` = 0.6.0 gates it): `notes` newest
+  first (`id`, `num`, `label` "#45", `title`, `summary`, `meta`, `status {text, tone}`, `task`, `actions` while its
+  question is open, `page` buttons, `transcript` or a `fetch` button, `adds`: its additions' ids), `total`,
+  `empty`, `trash {title, note, items}`. Shared sample: dibs's `tests/samples/ideas.json`, copied to
+  `dibs/src/test/resources/ideas.json`. Actions: `idea-new {id, created, title, summary, transcript, duration_ms?}`,
+  `idea-add {note, id, created, text, title, summary}` (a blank title keeps the note's), `idea-answer`, `idea-done`,
+  `idea-restore`, and `fetch {what: "idea", note, hash}`, which brings `idea-<id>-<hash>.md`; the page and the
+  worker take only the file whose hash the view names (`IdeaNote.loadPrefix`). `:app` prunes them as transcripts.
+- **Drafts** (`ideas/Drafts.kt`): what was made here and isn't listed yet, one JSON file each under
+  `files/dibs-ideas`. A recording's draft is written when it starts, so a crash or a restart keeps what it got;
+  only an empty one goes. A whole draft goes to Tether's queue (`DibsHost.actStored`, which returns once it is
+  stored) and is dropped when a view lists it (an addition: when its note's `adds` has it). An addition whose note
+  is in Trash, or gone, fails and keeps its words (Retry, Delete). One not listed 10 min after it went goes again,
+  only while the link is up. The last view's `ideas` is kept on disk for a cold worker.
+- **Gemini** (`ideas/IdeaWorker.kt`, Capture's rules): one unique work per draft, through one rate gate; a 429
+  holds every draft without using an attempt; 8 attempts; the same failed status twice is for good. An addition
+  goes up with its note's text so far (the view's, else the loaded file, else the phone's own draft, plus this
+  phone's unlisted additions). Without that text, it is only transcribed and the note keeps its title. A typed
+  note Gemini can't title goes as typed; a recording in which nothing was heard is dropped, with a toast.
+- **Screens:** Ideas is the second tab (`ui/IdeasTab.kt`): Record, a box to type, "On this phone" drafts, the
+  notes with their question's buttons, Trash folded. A note's page (`ui/IdeaPage.kt`, `Page.Idea`): Summary |
+  Transcript, Copy, add by typing or recording, Done. A tap shows at once (`IdeaTaps`) until a view shows it
+  applied (Done: off the list; Restore: back; an answer: its buttons or state changed); while the link is up it
+  gives way after 5 min.
+- **Quick capture:** the Idea tile (`IdeaTileService`) opens `IdeaActivity` over the lock screen: a dark sheet,
+  Voice or Text, then a calm record screen (time, level line, one Stop) or a box and Save. The dibs icon's
+  shortcuts "Record an idea" and "Type an idea" go straight in.
+- Tests: `IdeasTest` (the sample, drafts, recovery, the worker's paths with a fake Gemini), `IdeasScreensTest`.
