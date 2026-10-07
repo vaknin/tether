@@ -39,7 +39,7 @@ import java.io.File
 /** What the screens asked of the host, and a view to show. */
 class FakeHost(view: JSONObject?) : DibsHost {
     override val view = MutableStateFlow(view)
-    override val link: StateFlow<Link> = MutableStateFlow(Link.CONNECTED)
+    override val link = MutableStateFlow(Link.CONNECTED)
     override val pickDir = File(System.getProperty("java.io.tmpdir"), "dibs-pick")
     override val uploads: StateFlow<Map<String, Float>> = MutableStateFlow(emptyMap())
     val acts = mutableListOf<Pair<String, JSONObject?>>()
