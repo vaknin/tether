@@ -36,14 +36,17 @@ val uniffiBindgen = tasks.register<UniffiBindgenTask>("uniffiBindgen") {
 // Release signing. The keystore and its passwords are kept out of the repository, in
 // ~/.config/tether/keystore.properties (storeFile, storePassword, keyAlias, keyPassword; storeFile
 // relative to that directory). Keep a copy of both files somewhere safe: an update installs only
-// over a build signed with the same key. Without them `assembleRelease` still builds, unsigned.
+// over a build signed with the same key. Without them `assembleRelease` still builds, unsigned
+// (`app-release-unsigned.apk`, zipaligned), and scripts/install-phone.sh has it signed by a root step
+// the user approves on the phone (the key then lives in /var/lib/dibs-root/keys, dibs task #145).
 val keystoreDir = File(System.getProperty("user.home"), ".config/tether")
 val keystoreProperties = Properties().apply {
     val f = keystoreDir.resolve("keystore.properties")
     if (f.isFile) f.inputStream().use(::load)
 }
+// `-Punsigned` builds unsigned even with the key there (to check the root-step path).
 val releaseStoreFile = keystoreProperties.getProperty("storeFile")
-    ?.let { keystoreDir.resolve(it) }?.takeIf { it.isFile }
+    ?.let { keystoreDir.resolve(it) }?.takeIf { it.isFile && !providers.gradleProperty("unsigned").isPresent }
 
 // FCM wake (CLAUDE.md "Battery"). The Firebase project's Android app values go into the
 // git-ignored local.properties as fcm.apiKey, fcm.appId, fcm.projectId and fcm.senderId. Without
@@ -66,8 +69,8 @@ android {
         applicationId = "com.kivan.tether"
         minSdk = 34
         targetSdk = 37
-        versionCode = 32
-        versionName = "0.7.0"
+        versionCode = 33
+        versionName = "0.8.0"
         ndk {
             // The Pixel 8 is arm64-v8a; nothing else is built or shipped.
             abiFilters += "arm64-v8a"
