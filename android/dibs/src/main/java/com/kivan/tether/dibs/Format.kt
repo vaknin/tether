@@ -167,14 +167,14 @@ fun askQuote(paragraph: String): String {
     return "About “$quote”: "
 }
 
-// The word before a dot is an abbreviation: single letters between dots ("e.g", "i.e"), one letter,
-// or a common short one. A file name ("PLAN.md") or a number ending a sentence isn't.
+// The word before a dot is an abbreviation: single letters between dots ("e.g", "i.e") or a common
+// short one. A file name ("PLAN.md"), a number or a lone letter ("plan B") ending a sentence isn't.
 private fun abbreviation(word: String): Boolean {
     val w = word.trimStart('(', '“', '"', '\'').lowercase()
     return DOTTED.matches(w) || w in ABBREVIATIONS
 }
 
-private val DOTTED = Regex("([a-z]\\.)*[a-z]")
+private val DOTTED = Regex("([a-z]\\.)+[a-z]")
 private val ABBREVIATIONS = setOf("etc", "vs", "cf", "approx", "incl", "mr", "mrs", "ms", "dr")
 
 /** What the reading card says before dibs words it ("Reading the note"). */

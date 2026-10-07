@@ -44,6 +44,7 @@ class DibsActivity : ComponentActivity() {
 
     override fun onStop() {
         Dibs.typing.stopped()
+        Dibs.forgetAsk()
         Dibs.host.visible(false)
         super.onStop()
     }
@@ -62,7 +63,7 @@ class DibsActivity : ComponentActivity() {
         // carried; else by the thread's id, in the view now or once one lists it (a cold start).
         val ask = intent.getLongExtra(EXTRA_ASK, -1)
         if (ask >= 0) {
-            Dibs.openAsk(ask, intent.getStringExtra(EXTRA_ASK_ABOUT), runCatching { DibsView.ofView(Dibs.host.view.value) }.getOrNull())
+            Dibs.openAsk(ask, Dibs.askSubjectKey(intent.getStringExtra(EXTRA_ASK_ABOUT)), runCatching { DibsView.ofView(Dibs.host.view.value) }.getOrNull())
         }
         val task = intent.getLongExtra(EXTRA_TASK, -1)
         if (task >= 0) {

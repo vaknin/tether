@@ -162,7 +162,11 @@ fun DibsApp() {
             if (view != null && !typing) {
                 // The Tasks badge counts what the tab says it does, and drops as soon as one is opened here.
                 val forYou = view.yours?.count { wantsYou(it, Dibs.ticked(it), Dibs.unread(it)) } ?: view.badges.work
-                NavBar(tab, view.badges, forYou, view.yours != null) { tab = it }
+                NavBar(tab, view.badges, forYou, view.yours != null) {
+                    tab = it
+                    // Gone elsewhere: a notification's conversation not listed yet no longer opens.
+                    Dibs.forgetAsk()
+                }
             }
         },
     ) { pad ->

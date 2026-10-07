@@ -185,6 +185,7 @@ class AskTest {
         assertEquals("About “Small things, e.g. the clock, moved”: ", askQuote("Small things, e.g. the clock, moved. Then more."))
         assertEquals("About “It keeps lists, notes etc. in one place”: ", askQuote("It keeps lists, notes etc. in one place. Then more."))
         assertEquals("About “It changed PLAN.md”: ", askQuote("It changed PLAN.md. Then it went on to the rest of the files one by one."))
+        assertEquals("About “It went with plan B”: ", askQuote("It went with plan B. Then it went on to the rest of the files one by one."))
     }
 
     @Test
@@ -285,6 +286,33 @@ class AskTest {
         Dibs.forgetAsk()
         Dibs.resolveAsk(v)
         assertTrue(Dibs.pages.isEmpty())
+    }
+
+    @Test
+    fun aNotificationsConversationOpensOnlySoon() {
+        var t = 1_000L
+        Dibs.clock = { t }
+        val v = DibsView.parse(payload())
+        Dibs.openAsk(1, null, null)
+        t += Dibs.ASK_OPEN_MS + 1
+        Dibs.resolveAsk(v)
+        assertTrue(Dibs.pages.isEmpty())
+        // And it's gone: a later view doesn't open it either.
+        t = 0
+        Dibs.resolveAsk(v)
+        assertTrue(Dibs.pages.isEmpty())
+    }
+
+    @Test
+    fun anIntentNamesOnlyASubject() {
+        assertEquals(NOTE, Dibs.askSubjectKey(NOTE))
+        assertEquals("task:85", Dibs.askSubjectKey("task:85"))
+        assertEquals("project:tether", Dibs.askSubjectKey("project:tether"))
+        assertEquals("file:/home/k/PLAN.md", Dibs.askSubjectKey("file:/home/k/PLAN.md"))
+        assertNull(Dibs.askSubjectKey("task:"))
+        assertNull(Dibs.askSubjectKey("brain-start"))
+        assertNull(Dibs.askSubjectKey(""))
+        assertNull(Dibs.askSubjectKey(null))
     }
 
     @Test

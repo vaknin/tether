@@ -16,7 +16,9 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.core.view.WindowCompat
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.kivan.tether.dibs.ui.COULD_NOT_OPEN
 import com.kivan.tether.dibs.ui.DibsApp
+import com.kivan.tether.dibs.ui.NOT_TAKEN
 import com.kivan.tether.dibs.ui.theme.AppTheme
 import org.json.JSONArray
 import org.json.JSONObject
@@ -325,6 +327,127 @@ class AskScreensTest {
         compose.waitForIdle()
         assertEquals(Page.Ask("note:41"), Dibs.pages.last())
         assertEquals("thread-open", host.acts.last().first)
+    }
+
+    // The page's waits on the test clock: it moves only when told.
+    private fun stopTheClock() {
+        compose.mainClock.autoAdvance = false
+        Dibs.clock = { compose.mainClock.currentTime }
+    }
+
+    // What changed outside the screen (a tap, a page opened) is taken in first, then the time passes.
+    private fun tick(ms: Long) {
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(ms)
+        compose.waitForIdle()
+    }
+
+    private fun link(l: Link) {
+        host.link.value = l
+        tick(100)
+    }
+
+    @Test
+    fun anOpenDibsNeverListsSaysSoOnlyOnceTheLinkWasUpAWhile() {
+        show(view())
+        stopTheClock()
+        link(Link.OFFLINE)
+        compose.runOnUiThread { Dibs.askAbout(null, NOTE, "Home server") }
+        tick(100)
+        // Offline: it waits as long as it takes.
+        tick(5 * Dibs.ASK_WAIT_MS)
+        compose.onAllNodesWithText(COULD_NOT_OPEN).assertCountEquals(0)
+        compose.onNodeWithText("OPENING").assertIsDisplayed()
+        // Up: 20 s from then.
+        link(Link.CONNECTED)
+        tick(Dibs.ASK_WAIT_MS - 1_000)
+        compose.onAllNodesWithText(COULD_NOT_OPEN).assertCountEquals(0)
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(1)
+        tick(2_000)
+        compose.onNodeWithText(COULD_NOT_OPEN).assertIsDisplayed()
+        compose.onAllNodesWithText("OPENING").assertCountEquals(0)
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        compose.onNodeWithText("Back").assertIsDisplayed()
+        noEllipsis()
+        // Try again asks anew, and waits again.
+        val asked = host.acts.size
+        compose.onNodeWithText("Try again").performClick()
+        tick(100)
+        assertEquals("thread-open", host.acts.drop(asked).single().first)
+        compose.onNodeWithText("OPENING").assertIsDisplayed()
+        tick(Dibs.ASK_WAIT_MS + 1_000)
+        compose.onNodeWithText(COULD_NOT_OPEN).assertIsDisplayed()
+        compose.onNodeWithText("Back").performClick()
+        tick(100)
+        assertTrue(Dibs.pages.isEmpty())
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun theFailedCardOnASmallScreen() {
+        show(view())
+        stopTheClock()
+        compose.runOnUiThread { Dibs.askAbout(null, NOTE, "Home server") }
+        tick(Dibs.ASK_WAIT_MS + 1_000)
+        compose.onNodeWithText(COULD_NOT_OPEN).assertIsDisplayed()
+        compose.onNodeWithText("Try again").assertIsDisplayed()
+        compose.onNodeWithText("Back").assertIsDisplayed()
+        shot("ask-failed-small")
+    }
+
+    @Test
+    fun aLineDibsDoesntListSaysSo() {
+        show(view(threads()))
+        stopTheClock()
+        compose.runOnUiThread { Dibs.open(Page.Ask(NOTE)) }
+        tick(100)
+        compose.runOnUiThread { Dibs.askSay(NOTE, "is it loud?") }
+        tick(Dibs.ASK_WAIT_MS - 1_000)
+        compose.onAllNodesWithText(NOT_TAKEN).assertCountEquals(0)
+        tick(2_000)
+        scrollTo(NOT_TAKEN)
+        compose.onNodeWithText(NOT_TAKEN).assertIsDisplayed()
+        compose.onNodeWithText("is it loud?").assertIsDisplayed()
+    }
+
+    @Test
+    fun doneComesBackOnlyOnceTheLinkWasUpAWhile() {
+        show(view(threads()))
+        stopTheClock()
+        compose.runOnUiThread { Dibs.open(Page.Ask(NOTE)) }
+        tick(100)
+        link(Link.OFFLINE)
+        compose.onNodeWithText("Done").performClick()
+        tick(100)
+        assertEquals("thread-done", host.acts.last().first)
+        compose.onAllNodesWithText("Done").assertCountEquals(0)
+        tick(5 * Dibs.TAP_MS)
+        compose.onAllNodesWithText("Done").assertCountEquals(0)
+        link(Link.CONNECTED)
+        tick(Dibs.TAP_MS - 1_000)
+        compose.onAllNodesWithText("Done").assertCountEquals(0)
+        tick(2_000)
+        compose.onNodeWithText("Done").assertIsDisplayed()
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(1)
+    }
+
+    @Test
+    fun aTabChangedBeforeTheViewListsItKeepsTheNotificationsPageAway() {
+        show(view())
+        compose.runOnUiThread { Dibs.openAsk(1, null, null) }
+        compose.waitForIdle()
+        compose.onNodeWithText("Tasks").performClick()
+        compose.waitForIdle()
+        host.view.value = view(threads())
+        compose.waitForIdle()
+        assertTrue(Dibs.pages.isEmpty())
+        // Without one, it opens when listed.
+        host.view.value = view()
+        compose.runOnUiThread { Dibs.openAsk(1, null, null) }
+        compose.waitForIdle()
+        host.view.value = view(threads())
+        compose.waitForIdle()
+        assertEquals(listOf<Page>(Page.Ask(NOTE)), Dibs.pages.toList())
     }
 
     private companion object {

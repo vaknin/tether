@@ -117,40 +117,40 @@ internal fun AskPage(about: String, view: DibsView) {
     LaunchedEffect(about, a != null, newest, hasOverview) {
         if (a != null) Dibs.seenAsk(about, n, newest, hasOverview)
     }
-    // Done and Ask more show at once, until dibs's view agrees (ending or ended; back from ended), or
-    // a tap dibs refused frees them again after a while.
-    var doneTapped by rememberSaveable(about) { mutableStateOf(false) }
-    var moreTapped by rememberSaveable(about) { mutableStateOf(false) }
+    // Done and Ask more (when each was tapped) show at once, until dibs's view agrees (ending or
+    // ended; back from ended), or a tap dibs refused frees them again ([Dibs.TAP_MS] on the clock below).
+    var doneAt by rememberSaveable(about) { mutableStateOf<Long?>(null) }
+    var moreAt by rememberSaveable(about) { mutableStateOf<Long?>(null) }
     val state = a?.state
     LaunchedEffect(state) {
-        if (state == "ending" || state == "ended") doneTapped = false
-        if (state != null && state != "ended") moreTapped = false
-    }
-    LaunchedEffect(doneTapped, moreTapped) {
-        if (doneTapped || moreTapped) {
-            delay(Dibs.TAP_MS)
-            doneTapped = false
-            moreTapped = false
-        }
+        if (state == "ending" || state == "ended") doneAt = null
+        if (state != null && state != "ended") moreAt = null
     }
 
     // dibs lists an open and a line at once over a live link: one it still doesn't, well after the
-    // link came up, wasn't taken (dibs refused it, or couldn't find the subject).
+    // link came up, wasn't taken (dibs refused it, or couldn't find the subject). The clock runs only
+    // while the link is up.
     val link by Dibs.host.link.collectAsStateWithLifecycle()
     var upSince by remember { mutableStateOf<Long?>(null) }
-    LaunchedEffect(link) { upSince = if (link == Link.CONNECTED) System.currentTimeMillis() else null }
-    val opened = remember(about) { System.currentTimeMillis() }
-    val starts = remember(a != null, pending) { (if (a == null) listOf(opened) else emptyList()) + pending.map { it.tsMs } }
-    val now by produceState(System.currentTimeMillis(), upSince, starts) {
+    LaunchedEffect(link) { upSince = if (link == Link.CONNECTED) Dibs.now() else null }
+    // When the page asked dibs to open it (Try again asks anew).
+    var opened by remember(about) { mutableStateOf(Dibs.now()) }
+    val waits = remember(a != null, pending, opened, doneAt, moreAt) {
+        (if (a == null) listOf(opened to Dibs.ASK_WAIT_MS) else emptyList()) + pending.map { it.tsMs to Dibs.ASK_WAIT_MS } +
+            listOfNotNull(doneAt, moreAt).map { it to Dibs.TAP_MS }
+    }
+    val now by produceState(Dibs.now(), upSince, waits) {
         val up = upSince ?: return@produceState
-        for (at in starts.map { maxOf(it, up) + Dibs.ASK_WAIT_MS }.sorted()) {
-            val wait = at - System.currentTimeMillis()
-            if (wait > 0) delay(wait)
-            value = System.currentTimeMillis()
+        for (at in waits.map { (since, wait) -> maxOf(since, up) + wait }.sorted()) {
+            val left = at - Dibs.now()
+            if (left > 0) delay(left)
+            value = Dibs.now()
         }
     }
     val failed = a == null && Dibs.unheard(opened, upSince, now)
     val unheard = remember(pending, upSince, now) { pending.filter { Dibs.unheard(it.tsMs, upSince, now) }.mapTo(HashSet()) { it.uid } }
+    val doneTapped = doneAt?.let { !Dibs.unheard(it, upSince, now, Dibs.TAP_MS) } == true
+    val moreTapped = moreAt?.let { !Dibs.unheard(it, upSince, now, Dibs.TAP_MS) } == true
 
     val title = a?.title?.takeIf { it.isNotBlank() } ?: Dibs.askTitles[about] ?: askSubject(about)
     val eyebrow = a?.eyebrow?.takeIf { it.isNotBlank() } ?: "Opening".takeIf { !failed }
@@ -159,12 +159,18 @@ internal fun AskPage(about: String, view: DibsView) {
             val done = a?.done
             if (done != null && !doneTapped) {
                 ActButton(done, "", Modifier.padding(end = Space.S)) {
-                    doneTapped = true
+                    doneAt = Dibs.now()
                     Dibs.askDone(about)
                 }
             }
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) { AskBody(about, a, pending, ending = doneTapped, failed = failed, unheard = unheard) }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            AskBody(about, a, pending, ending = doneTapped, failed = failed, unheard = unheard) {
+                // Try again: dibs is asked to open it anew, and the wait starts over.
+                opened = Dibs.now()
+                Dibs.askMore(about)
+            }
+        }
         val more = a?.more
         when {
             // Nothing to type into: dibs didn't open it (its card has the way back).
@@ -172,7 +178,7 @@ internal fun AskPage(about: String, view: DibsView) {
             a != null && a.isEnded && !moreTapped -> if (more != null) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 10.dp)) {
                     ActButton(more, "primary", icon = R.drawable.lucide_message_circle_question) {
-                        moreTapped = true
+                        moreAt = Dibs.now()
                         Dibs.askMore(about)
                     }
                 }
@@ -255,7 +261,15 @@ private fun askItems(about: String, a: Asking?, pending: List<Pending>, ending: 
 }
 
 @Composable
-private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: Boolean, failed: Boolean, unheard: Set<String>) {
+private fun AskBody(
+    about: String,
+    a: Asking?,
+    pending: List<Pending>,
+    ending: Boolean,
+    failed: Boolean,
+    unheard: Set<String>,
+    retry: () -> Unit,
+) {
     val items = remember(about, a, pending, ending, failed, unheard) { askItems(about, a, pending, ending, failed, unheard) }
     val reversed = remember(items) { items.asReversed() }
     val state = rememberLazyListState()
@@ -304,7 +318,7 @@ private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: B
                 )
                 is AskItem.Status -> StatusRow(item.words, item.card)
                 is AskItem.Ended -> EndedCard(item.ended)
-                AskItem.Failed -> FailedCard()
+                AskItem.Failed -> FailedCard(retry)
             }
         }
     }
@@ -413,15 +427,19 @@ private fun ReadingCard(words: String) {
     }
 }
 
-/** dibs never listed the conversation: say so calmly, and the way back. */
+/** dibs never listed the conversation: say so calmly, a way to ask again ([retry]) and the way back. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FailedCard() {
+private fun FailedCard(retry: () -> Unit) {
     Column(
         Modifier.card().padding(14.dp).semantics { liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(Space.M),
     ) {
         Text(COULD_NOT_OPEN, style = AppType.body, color = Palette.Text)
-        ActButton("Back", "") { Dibs.back() }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.S), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+            ActButton("Try again", "primary", onClick = retry)
+            ActButton("Back", "") { Dibs.back() }
+        }
     }
 }
 

@@ -516,8 +516,9 @@ mockups are its p1–p9. The user never sees the word "thread": it is **Ask abou
   its real builder, with the actions it takes), copied to `dibs/src/test/resources/threads.json`. A conversation's
   notification carries tag `ask:<thread id>`; its tap opens that conversation's page (`DibsActivity.EXTRA_ASK`, with
   `EXTRA_ASK_ABOUT` the subject `Notifier.app` found in the loaded view, so a cold start opens it before the screen
-  has a view; without one, it opens once a view lists the id). Reopened from Recents, `DibsActivity` ignores the
-  intent that first opened it.
+  has a view; without one, it opens once a view lists the id, within 30 s and unless the user changed tab or left).
+  The screen is exported, so the extra counts only as a `task:`/`note:`/`project:`/`file:` subject. Reopened from
+  Recents, `DibsActivity` ignores the intent that first opened it.
 - **Actions** (all through `act`): `thread-open {about}` (open, or bring an ended one back), `thread-say {about,
   text}` with the line's uid (its echo clears when a `lines[].uid` matches), `thread-done {about}`, `thread-seen
   {about, n}` (the page is on screen showing `n` lines; sent once per newest line, not per count, since dibs sends
@@ -531,8 +532,10 @@ mockups are its p1–p9. The user never sees the word "thread": it is **Ask abou
   Done in the header (no confirm; the box greys at once); once ended, Ask more replaces the box. A conversation
   that leaves the payload closes its page. No attachments here. dibs lists an open or a line at once over a live
   link: one still unlisted 20 s after the link came up (`Dibs.unheard`; dibs refused it, or couldn't find the
-  subject) shows "dibs couldn't open this" with Back in place of the reading card and the box, and a line says
-  "dibs hasn't taken this yet" under it; either clears if dibs lists it later.
+  subject; dibs also ignores an open over an hour old) shows "dibs couldn't open this" with Try again (a new
+  `thread-open`, and the wait starts over) and Back in place of the reading card and the box, and a line says
+  "dibs hasn't taken this yet" under it; either clears if dibs lists it later. Done and Ask more come back on the
+  same clock, 15 s after the tap once the link is up, if dibs didn't act on them.
 - **Ways in:** the task page's bar (in place of "Ask dibs about it", which an older dibs still gets), the full
   story's bar, its paragraph long-press ("Ask about this part": the page opens with "About “<its first words>”: "
   in the box, nothing sent), and a note's page under its question's buttons. "Start a follow-up" stays on the full

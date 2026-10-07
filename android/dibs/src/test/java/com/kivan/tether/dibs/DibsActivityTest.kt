@@ -45,6 +45,14 @@ class DibsActivityTest {
     }
 
     @Test
+    fun aSubjectThatIsntOneIsIgnored() {
+        launch(DibsActivity.ask(context, 7, "../../etc"))
+        assertTrue(Dibs.pages.isEmpty())
+        Dibs.resolveAsk(DibsView.parse(JSONObject().put("threads", JSONArray().put(JSONObject().put("about", "task:9").put("id", 7)))))
+        assertEquals(listOf<Page>(Page.Ask("task:9")), Dibs.pages.toList())
+    }
+
+    @Test
     fun recentsDoesntOpenItAgain() {
         launch(DibsActivity.ask(context, 7, "note:41").addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY))
         launch(DibsActivity.task(context, 3).addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY))

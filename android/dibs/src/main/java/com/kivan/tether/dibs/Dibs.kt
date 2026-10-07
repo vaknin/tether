@@ -395,6 +395,8 @@ object Dibs {
      * until a view names it ([resolveAsk]).
      */
     private var askWanted: Long? = null
+    /** When [askWanted] was asked for: past [ASK_OPEN_MS] it no longer opens (the user moved on). */
+    private var askWantedAt = 0L
 
     fun askBox(about: String): Composer = askBoxes.getOrPut(about) { Composer(null, about) }
 
@@ -425,13 +427,21 @@ object Dibs {
         tab = DibsActivity.TAB_CHAT
         askWanted = null
         val known = about ?: view?.asks?.firstOrNull { it.id == id }?.about
-        if (known != null) open(Page.Ask(known)) else askWanted = id
+        if (known != null) {
+            open(Page.Ask(known))
+        } else {
+            askWanted = id
+            askWantedAt = now()
+        }
     }
 
-    /** A view arrived: the conversation a notification asked for opens once it's listed, unless the user went elsewhere first. */
+    /**
+     * A view arrived: the conversation a notification asked for opens once it's listed, unless the
+     * user went elsewhere first or it took longer than [ASK_OPEN_MS].
+     */
     fun resolveAsk(view: DibsView?) {
         val id = askWanted ?: return
-        if (pages.isNotEmpty()) {
+        if (pages.isNotEmpty() || now() - askWantedAt > ASK_OPEN_MS) {
             askWanted = null
             return
         }
@@ -441,7 +451,10 @@ object Dibs {
         }
     }
 
-    /** The user went elsewhere (another intent): a notification's conversation no longer waits to open. */
+    /**
+     * The user went elsewhere (another intent, another tab, the screen left): a notification's
+     * conversation no longer waits to open.
+     */
     fun forgetAsk() {
         askWanted = null
     }
@@ -451,7 +464,7 @@ object Dibs {
         val t = text.trim()
         if (t.isEmpty()) return
         val uid = UUID.randomUUID().toString()
-        addPending(Pending(uid, t, emptyList(), ask = about))
+        addPending(Pending(uid, t, emptyList(), tsMs = now(), ask = about))
         host.act("thread-say", JSONObject().put("about", about).put("text", t), uid)
     }
 
@@ -479,13 +492,28 @@ object Dibs {
 
     /**
      * A line sent at [sentMs] (or a page opened then) that dibs hasn't listed is taken as not heard
-     * once the link has been up ([upSinceMs], null while it's down) for [ASK_WAIT_MS] since.
+     * once the link has been up ([upSinceMs], null while it's down) for [waitMs] since. A tap (Done,
+     * Ask more) frees itself on the same clock, after [TAP_MS].
      */
-    fun unheard(sentMs: Long, upSinceMs: Long?, nowMs: Long): Boolean =
-        upSinceMs != null && nowMs - maxOf(sentMs, upSinceMs) >= ASK_WAIT_MS
+    fun unheard(sentMs: Long, upSinceMs: Long?, nowMs: Long, waitMs: Long = ASK_WAIT_MS): Boolean =
+        upSinceMs != null && nowMs - maxOf(sentMs, upSinceMs) >= waitMs
 
     /** dibs lists an open or a line within a second or two over a live link; this is far past that. */
     const val ASK_WAIT_MS = 20_000L
+
+    /** A notification's conversation not listed by then doesn't open any more ([resolveAsk]). */
+    const val ASK_OPEN_MS = 30_000L
+
+    /** The clock the Ask about page's waits run on; the screen tests set the test clock. */
+    internal var clock: () -> Long = System::currentTimeMillis
+
+    fun now(): Long = clock()
+
+    /** A subject an intent may name (the screen is exported): `task:`, `note:`, `project:` or `file:` and more. */
+    fun askSubjectKey(about: String?): String? =
+        about?.takeIf { a -> SUBJECTS.any { a.startsWith(it) && a.length > it.length } }
+
+    private val SUBJECTS = listOf("task:", "note:", "project:", "file:")
 
     /** For tests: forget the boxes and what was told seen. */
     internal fun resetAsks() {
@@ -493,6 +521,7 @@ object Dibs {
         askSeen.clear()
         askTitles.clear()
         askWanted = null
+        clock = System::currentTimeMillis
         _pending.value = emptyList()
     }
 
