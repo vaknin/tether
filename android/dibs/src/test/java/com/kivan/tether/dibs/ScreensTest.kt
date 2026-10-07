@@ -43,11 +43,14 @@ class FakeHost(view: JSONObject?) : DibsHost {
     override val pickDir = File(System.getProperty("java.io.tmpdir"), "dibs-pick")
     override val uploads: StateFlow<Map<String, Float>> = MutableStateFlow(emptyMap())
     val acts = mutableListOf<Pair<String, JSONObject?>>()
+    /** Each act's uid, in step with [acts] (null when none was given). */
+    val uids = mutableListOf<String?>()
     /** Files dibs "sent", by the prefix a screen asks for (`story-31-`). */
     val files = mutableMapOf<String, File>()
 
     override fun act(action: String, value: JSONObject?, uid: String?): String {
         acts += action to value
+        uids += uid
         return uid ?: "uid"
     }
 

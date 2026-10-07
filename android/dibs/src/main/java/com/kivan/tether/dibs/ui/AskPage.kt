@@ -212,8 +212,13 @@ private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: B
         is AskItem.Line -> i.line.who == "user"
         else -> false
     }
-    LaunchedEffect(newest) {
-        if (newest != null && (state.firstVisibleItemIndex <= 2 || newestMine)) state.animateScrollToItem(0)
+    LaunchedEffect(newest, talking) {
+        when {
+            newest == null -> Unit
+            // Before the first line: the reading card or the overview from its top.
+            !talking -> state.scrollToItem(reversed.lastIndex)
+            state.firstVisibleItemIndex <= 2 || newestMine -> state.animateScrollToItem(0)
+        }
     }
     val asked = remember(a?.asked, pending) { (a?.asked.orEmpty() + pending.map { it.text }).toSet() }
     val canAsk = a == null || (!a.ending && !a.isEnded && !ending)

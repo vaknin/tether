@@ -86,7 +86,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -494,3 +494,44 @@ Gemini (free tier, key in `local.properties`) transcribe and title, and sends th
   Voice or Text, then a calm record screen (time, level line, one Stop) or a box and Save. The dibs icon's
   shortcuts "Record an idea" and "Type an idea" go straight in.
 - Tests: `IdeasTest` (the sample, drafts, recovery, the worker's paths with a fake Gemini), `IdeasScreensTest`.
+
+## Ask about (task #102, 2026-10-07; app 0.7.0)
+
+The user chose option A of dibs's docs/plan/talking.md: a short conversation about one subject (a task, a note,
+later a project or a file) with a helper that knows only that subject, so questions don't wake dibs's brain or
+crowd the main chat. The contract both apps draw is the task's DESIGN.md (payload and actions below); the
+mockups are its p1–p9. The user never sees the word "thread": it is **Ask about it** / **Ask about this note**,
+**Back to your questions** while one is open, **Ask more** once ended (dibs words the label). Tether already has a
+"thread" channel kind, so the Kotlin says `Asking`, `AskPage`, `Page.Ask(about)`, `AskRow`.
+
+- **Contract.** The payload's `threads` (dibs ≥ the #102 ship; dibs gates it on app 0.7.0): conversations active in
+  the last 24 hours, at most 6, newest first, each with all its lines: `about` (the key: `task:<n>`, `note:<id>`,
+  `project:<name>`, `file:<path>`), `id`, `title`, `eyebrow`, `state` (reading | answering | open | ending | ended),
+  `row {title, words, tone: new|busy|plain}`, `intro`, `reading`, `overview {text, chips}`, `lines [{id, uid?, who:
+  user|dibs|note, text, ts, wait?, chips?}]`, `asked` (chips already sent), `status {busy, words}`, `ended {words,
+  kept_title, kept, foot}`, `placeholder`, `done`, `more`, `ts`, `last_ts` (`Asking` in `Payload.kt`; every field
+  optional). A main chat line carries `thread: <about>` (drawn as that conversation's row) and a line passed on to
+  dibs carries `under` ("From your conversation about …"). Every subject that can be asked about carries
+  `ask {about, label}`: `yours[i]`, task cards of `board`, `ideas.notes[i]`. Sample: `dibs/src/test/resources/threads.json`
+  (written from DESIGN.md until dibs's `tests/samples/threads.json` replaces it).
+- **Actions** (all through `act`): `thread-open {about}` (open, or bring an ended one back), `thread-say {about,
+  text}` with the line's uid (its echo clears when a `lines[].uid` matches), `thread-done {about}`, `thread-seen
+  {about, n}` (the page is on screen showing `n` lines; sent once per count, and again when the overview arrives).
+- **The page** (`ui/AskPage.kt`): opens at once on the tap, keyed by `about`, before dibs lists it ("Opening", the
+  button's subject title, the reading card); the box works from the start and early lines wait as dashed echoes
+  ("Waiting for the overview"). Then the intro, the overview card with its suggested questions (chips that wrap; a
+  tap sends one as the user's line, an asked one shows a check), the lines (the user's on the right, waiting ones
+  dashed with dibs's words under them; dibs's as Markdown on the ground; notes small and centred with an arrow),
+  only the newest answer's chips (the overview's until an answer has some), the status row, and the ended card.
+  Done in the header (no confirm; the box greys at once); once ended, Ask more replaces the box. A conversation
+  that leaves the payload closes its page. No attachments here.
+- **Ways in:** the task page's bar (in place of "Ask dibs about it", which an older dibs still gets), the full
+  story's bar, its paragraph long-press ("Ask about this part": the page opens with "About “<its first words>”: "
+  in the box, nothing sent), and a note's page under its question's buttons. "Start a follow-up" stays on the full
+  story's bar, where #85 put it.
+- **Main chat:** one row per conversation (`AskRow` in `ChatParts.kt`), updated in place: tile, "Asking about: …",
+  how it stands (accent with a dot when new, a pulsing dot while busy), ›; a tap opens it. A line for a conversation
+  no longer listed reads as a plain note.
+- Tests: `AskTest` (the sample, older payloads, what each tap sends), `AskScreensTest` (412 and 320 dp: reading,
+  overview and chips, a full conversation and Done, ending, ended, the main chat row, long titles and chips, the
+  entry buttons).
