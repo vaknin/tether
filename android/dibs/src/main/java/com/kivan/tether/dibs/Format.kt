@@ -137,3 +137,37 @@ fun aboutWords(a: About): String = when {
     a.quote != null -> "About a part of the full story of ${a.title}"
     else -> "About the full story of ${a.title}"
 }
+
+/** An Ask about subject's name before dibs lists the conversation ("task:85" → "Task #85"), when no button named it. */
+fun askSubject(about: String): String {
+    val kind = about.substringBefore(':')
+    val rest = about.substringAfter(':', "")
+    return when (kind) {
+        "task" -> "Task #$rest"
+        "note" -> "A note"
+        "project" -> rest.ifBlank { "A project" }
+        "file" -> rest.substringAfterLast('/').ifBlank { "A file" }
+        else -> about
+    }
+}
+
+/**
+ * A paragraph asked about, as the start of the box's draft: "About “It first folded the lines by
+ * day”: ". Its first sentence when short, else its first words (never cut with "…").
+ */
+fun askQuote(paragraph: String): String {
+    val text = paragraph.trim().replace(Regex("\\s+"), " ")
+    val sentence = Regex("^.+?[.!?](?=\\s|$)").find(text)?.value ?: text
+    val words = sentence.removeSuffix(".").split(' ')
+    val quote = if (words.size <= 12) words.joinToString(" ") else text.split(' ').take(8).joinToString(" ").trimEnd(',', ';', ':')
+    return "About “$quote”: "
+}
+
+/** What the reading card says before dibs words it ("Reading the note"). */
+fun askReading(about: String): String = when (about.substringBefore(':')) {
+    "task" -> "Reading the task"
+    "note" -> "Reading the note"
+    "project" -> "Reading the project"
+    "file" -> "Reading the file"
+    else -> "Reading"
+}

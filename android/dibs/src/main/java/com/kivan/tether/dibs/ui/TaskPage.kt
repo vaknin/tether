@@ -109,13 +109,20 @@ internal fun TaskPage(id: Long, view: DibsView) {
             chatItems(rows, echoes, look)
             if (t.busy) item(key = "_busy") { Typing("${t.label} is on it") }
         }
-        AskDibs(t)
+        AskDibs(t, view)
     }
 }
 
 /** The way to say something about this task: to dibs, in its chat, with the task named. */
 @Composable
-private fun AskDibs(t: YourTask) {
+private fun AskDibs(t: YourTask, view: DibsView) {
+    // A dibs that offers Ask about: the conversation about this task (its own page, back returns here).
+    view.askFor(t)?.let { ask ->
+        Row(Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 10.dp)) {
+            ActButton(ask.label, "primary", icon = R.drawable.lucide_message_circle_question) { Dibs.askAbout(view, ask.about, t.label) }
+        }
+        return
+    }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

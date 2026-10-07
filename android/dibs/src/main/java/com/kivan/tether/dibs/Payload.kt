@@ -34,7 +34,62 @@ data class TalkLine(
     val ask: Ask?,
     /** dibs's note that a task's full story is ready: its task id, whose story a tap opens. */
     val open: Long? = null,
+    /** The line stands for an Ask about conversation (its `about`): the chat draws that conversation's row instead. */
+    val thread: String? = null,
+    /** Where a line of the user's came from ("From your conversation about the home server"), small under it. */
+    val under: String? = null,
 )
+
+/** A subject's way into an Ask about conversation: its key (`task:85`, `note:41`) and the button's words. */
+data class AskEntry(val about: String, val label: String)
+
+/** An Ask about conversation's row in the main chat: [tone] `new`, `busy` or `plain`. */
+data class AskRowWords(val title: String, val words: String, val tone: String)
+
+/** The conversation's overview: Markdown, and the questions it suggests. */
+data class AskOverview(val text: String, val chips: List<String>)
+
+/**
+ * One line of an Ask about conversation: [who] `user`, `dibs` or `note`; [uid] the phone's for the
+ * user's (its echo clears on it); [wait] the words under a line still waiting; [chips] an answer's
+ * follow-up questions.
+ */
+data class AskLine(val id: String, val uid: String?, val who: String, val text: String, val ts: Long, val wait: String?, val chips: List<String>)
+
+/** What the helper is doing now ("Answering 2 questions · reading the research"). */
+data class AskStatus(val busy: Boolean, val words: String)
+
+/** How it ended, and the lines kept in dibs's notes. */
+data class AskEnded(val words: String, val keptTitle: String?, val kept: List<String>, val foot: String?)
+
+/**
+ * A short conversation about one subject (DESIGN.md of task #102; dibs calls it a thread, the user
+ * never sees that word). [state] reading | answering | open | ending | ended. [done] the header's
+ * button and [more] the one in place of the box once ended, each null when not offered.
+ */
+data class Asking(
+    val about: String,
+    val id: Long,
+    val title: String,
+    val eyebrow: String,
+    val state: String,
+    val row: AskRowWords?,
+    val intro: String?,
+    val reading: String?,
+    val overview: AskOverview?,
+    val lines: List<AskLine>,
+    val asked: List<String>,
+    val status: AskStatus?,
+    val ended: AskEnded?,
+    val placeholder: String?,
+    val done: String?,
+    val more: String?,
+    val ts: Long,
+    val lastTs: Long,
+) {
+    val ending: Boolean get() = state == "ending"
+    val isEnded: Boolean get() = state == "ended"
+}
 
 data class Question(
     val id: Long,
@@ -260,6 +315,8 @@ data class YourTask(
     val talk: List<TalkLine> = emptyList(),
     /** Its full story, once asked for; null when it never was. */
     val story: Story? = null,
+    /** Ask about it (a dibs that offers it). */
+    val ask: AskEntry? = null,
 ) {
     /** Its name as the screens show it. */
     val label: String get() = plainTitle(title, asked).ifBlank { name }.ifBlank { "Task $id" }
@@ -285,6 +342,8 @@ data class BoardCard(
     val actions: List<String> = emptyList(),
     /** What Delete loses, in plain words ("Delete removes this idea. No work is lost."), shown at its confirm step. */
     val deleteText: String? = null,
+    /** Ask about it (tasks only, a dibs that offers it). */
+    val ask: AskEntry? = null,
 ) {
     /** Its task's id, for a task card; null for an idea. */
     val task: Long? get() = key.removePrefix("task:").takeIf { key.startsWith("task:") }?.toLongOrNull()
@@ -323,8 +382,16 @@ data class DibsView(
     val board: Board? = null,
     /** The Ideas tab; null from a dibs that doesn't send it (the tab shows only what's made here). */
     val ideas: com.kivan.tether.dibs.ideas.Ideas? = null,
+    /** The Ask about conversations of the last 24 hours, newest first (a dibs that sends them). */
+    val asks: List<Asking> = emptyList(),
 ) {
     fun task(id: Long): YourTask? = yours?.firstOrNull { it.id == id }
+
+    /** A task's Ask about button: its own, else its board card's (a dibs that offers it). */
+    fun askFor(t: YourTask): AskEntry? = t.ask ?: board?.let { b -> (b.columns.flatMap { it.cards } + b.done).firstOrNull { it.task == t.id }?.ask }
+
+    /** The conversation about [about], if dibs lists it. */
+    fun asking(about: String): Asking? = asks.firstOrNull { it.about == about }
 
     companion object {
         /** The payload of a whole channel view, or null when dibs sent none (an older dibs). */
@@ -379,7 +446,47 @@ data class DibsView(
                 yours = if (o.has("yours")) o.optJSONArray("yours").objects().map(::yourTask) else null,
                 board = o.optJSONObject("board")?.let(::board),
                 ideas = o.optJSONObject("ideas")?.let(com.kivan.tether.dibs.ideas.Ideas::parse),
+                asks = o.optJSONArray("threads").objects().mapNotNull(::asking).distinctBy { it.about },
             )
+        }
+
+        /** One conversation; none without its `about`, the key everything finds it by. */
+        private fun asking(o: JSONObject): Asking? {
+            val about = o.str("about") ?: return null
+            return Asking(
+                about = about,
+                id = o.optLong("id"),
+                title = o.optString("title"),
+                eyebrow = o.optString("eyebrow"),
+                state = o.optString("state"),
+                row = o.optJSONObject("row")?.let { AskRowWords(it.optString("title"), it.optString("words"), it.optString("tone")) },
+                intro = o.str("intro"),
+                reading = o.str("reading"),
+                overview = o.optJSONObject("overview")?.let { AskOverview(it.optString("text"), it.optJSONArray("chips").strings().filter(String::isNotBlank)) },
+                lines = o.optJSONArray("lines").objects().map {
+                    AskLine(
+                        it.optString("id"), it.str("uid"), it.optString("who"), it.optString("text"), it.optLong("ts"), it.str("wait"),
+                        it.optJSONArray("chips").strings().filter(String::isNotBlank),
+                    )
+                }.filter { it.id.isNotEmpty() }.distinctBy { it.id },
+                asked = o.optJSONArray("asked").strings(),
+                status = o.optJSONObject("status")?.let { st -> st.str("words")?.let { AskStatus(st.optBoolean("busy"), it) } },
+                ended = o.optJSONObject("ended")?.let {
+                    AskEnded(it.optString("words"), it.str("kept_title"), it.optJSONArray("kept").strings().filter(String::isNotBlank), it.str("foot"))
+                },
+                placeholder = o.str("placeholder"),
+                done = o.str("done"),
+                more = o.str("more"),
+                ts = o.optLong("ts"),
+                lastTs = o.optLong("last_ts"),
+            )
+        }
+
+        private fun askEntry(o: JSONObject?): AskEntry? {
+            o ?: return null
+            val about = o.str("about") ?: return null
+            val label = o.str("label") ?: return null
+            return AskEntry(about, label)
         }
 
         private fun yourTask(o: JSONObject): YourTask {
@@ -416,6 +523,7 @@ data class DibsView(
                     )
                 },
                 story = o.optJSONObject("story")?.let(::story),
+                ask = askEntry(o.optJSONObject("ask")),
             )
         }
 
@@ -446,6 +554,7 @@ data class DibsView(
             story = o.optJSONObject("story")?.let(::story),
             actions = o.optJSONArray("actions").strings(),
             deleteText = o.str("delete_text"),
+            ask = askEntry(o.optJSONObject("ask")),
         )
 
         private fun decision(o: JSONObject) =
@@ -478,6 +587,8 @@ data class DibsView(
                 Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"), a.str("hint"))
             },
             open = o.optJSONObject("open")?.long("story"),
+            thread = o.str("thread"),
+            under = o.str("under"),
         )
 
         private fun question(o: JSONObject): Question {

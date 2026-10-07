@@ -32,6 +32,8 @@ data class IdeaNote(
     val fetch: IdeaButton?,
     /** The ids of its additions, so an addition sent from here is known to have landed. */
     val adds: Set<String>,
+    /** Ask about this note (a dibs that offers it). */
+    val ask: com.kivan.tether.dibs.AskEntry? = null,
 ) {
     /**
      * The start of the name of the file a Load brings: `idea-<id>-<hash>`, the hash naming this
@@ -89,6 +91,11 @@ data class Ideas(
                 transcript = if (o.isNull("transcript")) null else o.optString("transcript"),
                 fetch = o.optJSONObject("fetch")?.let(::button),
                 adds = o.optJSONArray("adds").let { a -> (0 until (a?.length() ?: 0)).mapNotNull { a?.optString(it)?.takeIf(String::isNotEmpty) }.toSet() },
+                ask = o.optJSONObject("ask")?.let { a ->
+                    val about = a.optString("about").takeIf { it.isNotEmpty() && !a.isNull("about") }
+                    val label = a.optString("label").takeIf { it.isNotEmpty() && !a.isNull("label") }
+                    if (about != null && label != null) com.kivan.tether.dibs.AskEntry(about, label) else null
+                },
             )
         }
 

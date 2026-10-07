@@ -32,11 +32,14 @@ import kotlinx.coroutines.delay
 internal fun ChatTab(view: DibsView) {
     val all by Dibs.pending.collectAsStateWithLifecycle()
     // The echoes of messages to dibs; a task's are in its own chat.
-    val pending = remember(all) { all.filter { it.task == null } }
+    val pending = remember(all) { all.filter { it.task == null && it.ask == null } }
     val hidden = Dibs.hidden.keys.toSet()
     val talk = remember(view.talk, hidden) { view.talk.filter { it.id !in hidden } }
     // A note that a task's full story is ready opens it ("Read it") while the task is listed.
-    val look = remember(view.yours) { ChatLook(stories = view.yours?.mapTo(HashSet()) { it.id }.orEmpty()) }
+    // A line standing for an Ask about conversation draws that conversation's row.
+    val look = remember(view.yours, view.asks) {
+        ChatLook(stories = view.yours?.mapTo(HashSet()) { it.id }.orEmpty(), asks = view.asks.associateBy { it.about })
+    }
     val rows = rememberChatRows(talk, pending, look)
     val echoes = remember(pending) { pending.associateBy { it.uid } }
     Column(Modifier.fillMaxSize()) {

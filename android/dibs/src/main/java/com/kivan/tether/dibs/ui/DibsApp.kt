@@ -139,6 +139,7 @@ fun DibsApp() {
                 is Page.Report -> ReportScreen(page.id, view)
                 is Page.Story -> StoryScreen(page.id, view)
                 is Page.Idea -> IdeaPage(page.id, view)
+                is Page.Ask -> AskPage(page.about, view)
             }
         }
         return

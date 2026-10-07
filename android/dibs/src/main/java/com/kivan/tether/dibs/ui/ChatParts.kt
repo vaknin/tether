@@ -101,6 +101,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.About
 import com.kivan.tether.dibs.Ask
+import com.kivan.tether.dibs.Asking
 import com.kivan.tether.dibs.ChatRow
 import com.kivan.tether.dibs.Composer
 import com.kivan.tether.dibs.DayRow
@@ -153,7 +154,14 @@ private const val ASK = "ask:"
  * are kept under, and the tasks whose full story a line's "Read it" can open ([stories]).
  */
 @Immutable
-internal data class ChatLook(val name: String? = null, val hide: Boolean = true, val days: String = DAY, val stories: Set<Long> = emptySet())
+internal data class ChatLook(
+    val name: String? = null,
+    val hide: Boolean = true,
+    val days: String = DAY,
+    val stories: Set<Long> = emptySet(),
+    /** The Ask about conversations by `about`: a line naming one draws its row ([AskRow]). */
+    val asks: Map<String, Asking> = emptyMap(),
+)
 
 /** The chat's rows from [talk] and the echoes still waiting, regrouped as the clock moves on. */
 @Composable
@@ -174,12 +182,59 @@ internal fun LazyListScope.chatItems(rows: List<ChatRow>, echoes: Map<String, Pe
             when (row) {
                 is FoldRow -> Fold(row, look)
                 is DayRow -> DayHeader(row, look)
-                is NoteRow -> NoteLine(row.line, look)
-                is LineRow -> Line(row, look)
+                is NoteRow -> askOf(row.line, look)?.let { AskRow(it) } ?: NoteLine(row.line, look)
+                // A line for a conversation dibs no longer lists reads as a note.
+                is LineRow -> askOf(row.line, look)?.let { AskRow(it) } ?: if (row.line.thread != null) NoteLine(row.line, look) else Line(row, look)
                 is EchoRow -> echoes[row.uid]?.let { EchoBubble(it, row) }
             }
         }
     }
+}
+
+/** The conversation a line stands for, when dibs lists it with its row. */
+private fun askOf(l: TalkLine, look: ChatLook): Asking? = l.thread?.let { look.asks[it] }?.takeIf { it.row != null }
+
+/**
+ * An Ask about conversation in the main chat, one row updated in place: its tile, "Asking about: …"
+ * (wrapping), how it stands ("New answer · 4 questions" in the accent with a dot, a pulsing dot while
+ * it works), and ›. A tap opens it.
+ */
+@Composable
+internal fun AskRow(a: Asking) {
+    val row = a.row ?: return
+    Row(
+        Modifier.fillMaxWidth().padding(top = Space.S).clip(MaterialTheme.shapes.medium).background(Palette.Surface)
+            .clickable(onClickLabel = "Open") { Dibs.open(Page.Ask(a.about)) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Palette.AccentDim), contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.lucide_message_circle_question), null, Modifier.size(19.dp), tint = Palette.Accent)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(row.title, style = AppType.body.copy(fontWeight = Bold), color = Palette.Text)
+            if (row.words.isNotBlank()) {
+                val color = if (row.tone == "new") Palette.Accent else Palette.Muted
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    when (row.tone) {
+                        "new" -> Box(Modifier.padding(end = 6.dp).size(7.dp).background(Palette.Accent, CircleShape))
+                        "busy" -> PulseDot(Modifier.padding(end = 6.dp))
+                    }
+                    Text(row.words, style = AppType.small.copy(fontSize = AppType.label.fontSize), color = color)
+                }
+            }
+        }
+        Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(18.dp), tint = Palette.Muted)
+    }
+}
+
+/** A small accent dot breathing in and out: something is being worked on. */
+@Composable
+private fun PulseDot(modifier: Modifier = Modifier) {
+    val pulse = rememberInfiniteTransition(label = "pulse")
+    val a by pulse.animateFloat(0.35f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "pulse")
+    Box(modifier.size(7.dp).graphicsLayer { alpha = a }.background(Palette.Accent, CircleShape))
 }
 
 /**
@@ -431,6 +486,8 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                 if (l.text.isNotEmpty() || row.last) {
                     LineText(l.id, l.text, if (row.last) time(l.ts) else null, meta)
                 }
+                // Where it came from: "From your conversation about the home server".
+                l.under?.let { Text(it, style = AppType.small, color = Palette.Muted) }
                 ReadIt(l, look)
                 when {
                     ask != null && outcome != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -683,9 +740,9 @@ internal fun Typing(line: String?) {
  * offers Photos, Camera and Files.
  */
 @Composable
-internal fun InputArea(box: Composer, placeholder: String) {
+internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = true, enabled: Boolean = true) {
     val draft = box.draft
-    val canSend = box.canSend
+    val canSend = box.canSend && enabled
     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
         box.about?.let { AboutChip(it) }
         if (box.picked.isNotEmpty()) Strip(box)
@@ -693,10 +750,11 @@ internal fun InputArea(box: Composer, placeholder: String) {
             Modifier.fillMaxWidth().background(Palette.Surface, MaterialTheme.shapes.large).padding(6.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Attach(box)
+            if (attach) Attach(box) else Spacer(Modifier.width(8.dp))
             BasicTextField(
                 value = draft,
                 onValueChange = { box.typed(it) },
+                enabled = enabled,
                 textStyle = bodyStyle.merge(TextStyle(color = Palette.Text)),
                 cursorBrush = SolidColor(Palette.Accent),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -704,7 +762,7 @@ internal fun InputArea(box: Composer, placeholder: String) {
                 modifier = Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 9.dp),
                 decorationBox = { inner ->
                     Box {
-                        if (draft.isEmpty()) Text(placeholder, style = AppType.body, color = Palette.Muted)
+                        if (draft.isEmpty()) Text(placeholder, style = AppType.body, color = if (enabled) Palette.Muted else Palette.Muted.copy(alpha = 0.6f))
                         inner()
                     }
                 },

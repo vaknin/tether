@@ -75,13 +75,19 @@ import kotlin.math.min
 
 // Small pieces the four tabs share: buttons, chips, the answer box, a ticking clock, thumbnails.
 
-/** A button named for what it does. primary: filled accent; plain: quiet text; danger: red outline; else outlined. */
+/**
+ * A button named for what it does. primary: filled accent; plain: quiet text; danger: red outline; else outlined.
+ * [icon] (a drawable) goes before its words.
+ */
 @Composable
-internal fun ActButton(label: String, style: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun ActButton(label: String, style: String, modifier: Modifier = Modifier, enabled: Boolean = true, icon: Int? = null, onClick: () -> Unit) {
     val pad = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
     val mod = modifier.heightIn(min = 36.dp)
     val shape = MaterialTheme.shapes.medium
-    val text: @Composable () -> Unit = { Text(label, style = AppType.label) }
+    val text: @Composable () -> Unit = {
+        if (icon != null) Icon(painterResource(icon), null, Modifier.padding(end = 8.dp).size(18.dp))
+        Text(label, style = AppType.label)
+    }
     when (style) {
         "primary" -> Button(
             onClick, mod, enabled, shape = shape, contentPadding = pad,

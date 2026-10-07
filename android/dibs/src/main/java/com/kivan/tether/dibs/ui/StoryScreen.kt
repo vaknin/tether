@@ -49,6 +49,7 @@ import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.Story
 import com.kivan.tether.dibs.YourTask
+import com.kivan.tether.dibs.askQuote
 import com.kivan.tether.dibs.markdownBlocks
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Palette
@@ -117,7 +118,7 @@ internal fun StoryScreen(id: Long, view: DibsView) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val b = blocks
             when {
-                b != null -> StoryText(b, t, s, writing, writeAgain)
+                b != null -> StoryText(b, t, view, s, writing, writeAgain)
                 bad && !fetch.waiting -> Calm("It couldn't be read", null) {
                     ActButton("Get it again", "primary", Modifier.padding(top = Space.L)) { fetch.refresh() }
                 }
@@ -130,7 +131,7 @@ internal fun StoryScreen(id: Long, view: DibsView) {
                 else -> Waiting(fetch, "full story")
             }
         }
-        StoryBar(t, blocks != null)
+        StoryBar(t, view, blocks != null)
     }
 }
 
@@ -163,7 +164,7 @@ private fun Calm(title: String, line: String?, more: @Composable () -> Unit = {}
 
 /** When and by whom it was written, whether the task moved on since, then the story itself. */
 @Composable
-private fun StoryText(blocks: List<MdBlock>, t: YourTask, s: Story?, writing: Boolean, writeAgain: () -> Unit) {
+private fun StoryText(blocks: List<MdBlock>, t: YourTask, view: DibsView, s: Story?, writing: Boolean, writeAgain: () -> Unit) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.XS, bottom = Space.XXL),
@@ -171,7 +172,7 @@ private fun StoryText(blocks: List<MdBlock>, t: YourTask, s: Story?, writing: Bo
     ) {
         item(key = "_meta") { Meta(s, writing, writeAgain) }
         if (s != null && s.stale && !writing) item(key = "_stale") { Stale(writeAgain) }
-        itemsIndexed(blocks) { _, b -> StoryBlock(b, t) }
+        itemsIndexed(blocks) { _, b -> StoryBlock(b, t, view) }
     }
 }
 
@@ -214,12 +215,13 @@ private fun Stale(writeAgain: () -> Unit) {
 }
 
 /**
- * One block of the story. A long press on a paragraph or a point offers "Ask dibs about this part"
- * (the chat opens with it quoted) and Copy; that's why the text isn't selectable.
+ * One block of the story. A long press on a paragraph or a point offers "Ask about this part" (its
+ * Ask about page opens with the paragraph's start in the box; an older dibs: the chat with it quoted)
+ * and Copy; that's why the text isn't selectable.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun StoryBlock(b: MdBlock, t: YourTask) {
+private fun StoryBlock(b: MdBlock, t: YourTask, view: DibsView) {
     val text = when (b) {
         is MdBlock.Para -> b.text
         is MdBlock.Item -> b.text
@@ -251,12 +253,15 @@ private fun StoryBlock(b: MdBlock, t: YourTask) {
                 ),
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            val ask = view.askFor(t)
             DropdownMenuItem(
-                text = { Text("Ask dibs about this part") },
-                leadingIcon = { Icon(painterResource(R.drawable.lucide_message_circle), null, Modifier.size(18.dp)) },
+                text = { Text(if (ask != null) "Ask about this part" else "Ask dibs about this part") },
+                leadingIcon = {
+                    Icon(painterResource(if (ask != null) R.drawable.lucide_message_circle_question else R.drawable.lucide_message_circle), null, Modifier.size(18.dp))
+                },
                 onClick = {
                     menu = false
-                    Dibs.chatAboutStory(t, "ask", plain)
+                    if (ask != null) Dibs.askAbout(view, ask.about, t.label, draft = askQuote(plain)) else Dibs.chatAboutStory(t, "ask", plain)
                 },
             )
             DropdownMenuItem(
@@ -277,7 +282,7 @@ private fun StoryBlock(b: MdBlock, t: YourTask) {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StoryBar(t: YourTask, shown: Boolean) {
+private fun StoryBar(t: YourTask, view: DibsView, shown: Boolean) {
     FlowRow(
         Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(Space.S, Alignment.End),
@@ -287,7 +292,12 @@ private fun StoryBar(t: YourTask, shown: Boolean) {
         ActButton("Show the conversation", "plain") { Dibs.open(Page.Transcript(t.id)) }
         if (shown) {
             ActButton("Start a follow-up", "") { Dibs.chatAboutStory(t, "follow") }
-            ActButton("Ask dibs about this", "primary") { Dibs.chatAboutStory(t, "ask") }
+            val ask = view.askFor(t)
+            if (ask != null) {
+                ActButton(ask.label, "primary", icon = R.drawable.lucide_message_circle_question) { Dibs.askAbout(view, ask.about, t.label) }
+            } else {
+                ActButton("Ask dibs about this", "primary") { Dibs.chatAboutStory(t, "ask") }
+            }
         }
     }
 }

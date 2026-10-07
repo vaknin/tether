@@ -68,7 +68,7 @@ fun chatRows(
 
     // Ids are list keys: an echo the view already lists is drawn once, as the view's line.
     val ids = talk.mapTo(HashSet()) { it.id }
-    val items = talk.mapIndexed { i, l -> Item(l, null, l.ts, l.mine, apart = l.note || l.ask != null, open = i >= cut || day(l.ts).toString() in unfolded) } +
+    val items = talk.mapIndexed { i, l -> Item(l, null, l.ts, l.mine, apart = l.note || l.ask != null || l.thread != null, open = i >= cut || day(l.ts).toString() in unfolded) } +
         echoes.filter { it.uid !in ids }.distinctBy { it.uid }.map { Item(null, it.uid, it.ts, mine = true, apart = false, open = true) }
 
     val out = ArrayList<ChatRow>(items.size + 8)

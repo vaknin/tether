@@ -90,7 +90,15 @@ interface DibsHost {
  * A message sent from here that no view lists yet (its echo), with the files picked for it; [task]
  * when it went to one of the user's tasks instead of dibs.
  */
-data class Pending(val uid: String, val text: String, val files: List<Picked>, val tsMs: Long = System.currentTimeMillis(), val task: Long? = null)
+data class Pending(
+    val uid: String,
+    val text: String,
+    val files: List<Picked>,
+    val tsMs: Long = System.currentTimeMillis(),
+    val task: Long? = null,
+    /** It went to an Ask about conversation (its `about`) instead of dibs. */
+    val ask: String? = null,
+)
 
 /** A file picked to send: its copy in [DibsHost.pickDir], its name, whether it's an image, and where it came from. */
 data class Picked(val uri: Uri, val name: String, val image: Boolean, val source: Uri = uri)
@@ -106,11 +114,12 @@ data class About(val story: Long, val kind: String, val title: String, val quote
 }
 
 /**
- * A message box: its draft and picked files, kept across screens. The dibs chat has one, and each
- * of the user's tasks has its own ([task]: its messages go to that task's agent, `task-say`).
+ * A message box: its draft and picked files, kept across screens. The dibs chat has one, each of
+ * the user's tasks has its own ([task]: its messages go to that task's agent, `task-say`), and so
+ * has each Ask about conversation ([thread]: its `about`; words only, `thread-say`).
  */
 @Stable
-class Composer(val task: Long?) {
+class Composer(val task: Long?, val thread: String? = null) {
     /** The text in the box. */
     var draft by mutableStateOf("")
 
@@ -120,7 +129,7 @@ class Composer(val task: Long?) {
      */
     fun typed(v: String) {
         draft = v
-        if (task == null) Dibs.typing.edited(v, System.currentTimeMillis())
+        if (task == null && thread == null) Dibs.typing.edited(v, System.currentTimeMillis())
     }
     /** Files picked for the next message. */
     val picked = mutableStateListOf<Picked>()
@@ -132,12 +141,17 @@ class Composer(val task: Long?) {
      * (sent bare, dibs would start a task from nothing).
      */
     val canSend: Boolean
-        get() = picked.isNotEmpty() ||
+        get() = if (thread != null) draft.isNotBlank() else picked.isNotEmpty() ||
             (if (about?.kind == "follow") draft.trim().removePrefix(Dibs.FOLLOW_UP.trim()) else draft).isNotBlank()
 
     /** Sends the box (text and picked files); it shows as pending until the view lists its uid. */
     fun send() {
         if (!canSend) return
+        if (thread != null) {
+            Dibs.askSay(thread, draft.trim())
+            draft = ""
+            return
+        }
         val text = draft.trim()
         val files = picked.toList()
         if (text.isEmpty() && files.isEmpty()) return
@@ -215,6 +229,8 @@ sealed interface Page {
     data class Story(val id: Long) : Page
     /** A note of the Ideas tab, by its id. */
     data class Idea(val id: String) : Page
+    /** An Ask about conversation, by its subject (`task:85`, `note:41`): it opens before dibs lists it. */
+    data class Ask(val about: String) : Page
 }
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
@@ -368,6 +384,63 @@ object Dibs {
 
     internal const val FOLLOW_UP = "Follow-up: "
 
+    /** The subject's title from the button tapped, for the page until dibs lists the conversation. */
+    val askTitles = mutableStateMapOf<String, String>()
+    /** Each Ask about conversation's box, by its `about`. */
+    private val askBoxes = HashMap<String, Composer>()
+    /** The line count each conversation was last told seen at (`thread-seen`), with whether it had its overview. */
+    private val askSeen = HashMap<String, String>()
+
+    fun askBox(about: String): Composer = askBoxes.getOrPut(about) { Composer(null, about) }
+
+    /**
+     * Ask about [about] (a subject's button, [title] its name): dibs opens the conversation, or
+     * brings an ended one back, unless one is open already; the page opens at once either way.
+     * [draft] goes into its box (a paragraph of a full story), nothing sent until the user sends.
+     */
+    fun askAbout(view: DibsView?, about: String, title: String, draft: String? = null) {
+        val a = view?.asking(about)
+        if (a == null || a.isEnded) host.act("thread-open", JSONObject().put("about", about))
+        askTitles[about] = title
+        if (draft != null) askBox(about).draft = draft
+        open(Page.Ask(about))
+    }
+
+    /** A line to the conversation (typed, or a suggested question tapped): it shows as an echo until dibs lists its uid. */
+    fun askSay(about: String, text: String) {
+        val t = text.trim()
+        if (t.isEmpty()) return
+        val uid = UUID.randomUUID().toString()
+        addPending(Pending(uid, t, emptyList(), ask = about))
+        host.act("thread-say", JSONObject().put("about", about).put("text", t), uid)
+    }
+
+    /** Done in the header: it ends (no confirm; Ask more brings it back). */
+    fun askDone(about: String) {
+        host.act("thread-done", JSONObject().put("about", about))
+    }
+
+    /** Ask more, in place of the box once it ended. */
+    fun askMore(about: String) {
+        host.act("thread-open", JSONObject().put("about", about))
+    }
+
+    /** The page shows [n] lines (and the overview, [overview]): dibs clears "New answer", once for each. */
+    fun seenAsk(about: String, n: Int, overview: Boolean) {
+        val key = "$n:$overview"
+        if (askSeen[about] == key) return
+        askSeen[about] = key
+        host.act("thread-seen", JSONObject().put("about", about).put("n", n))
+    }
+
+    /** For tests: forget the boxes and what was told seen. */
+    internal fun resetAsks() {
+        askBoxes.clear()
+        askSeen.clear()
+        askTitles.clear()
+        _pending.value = emptyList()
+    }
+
     internal fun addPending(p: Pending) {
         _pending.update { it + p }
     }
@@ -387,6 +460,7 @@ object Dibs {
         holdTap?.let { tap -> if (tap.shown?.let { view.state.hold?.kind == it.kind } ?: (view.state.hold?.kind != tap.gone)) holdTap = null }
         val listed = HashSet(ids)
         view.yours?.forEach { t -> t.talk.forEach { listed += it.id } }
+        view.asks.forEach { a -> a.lines.forEach { l -> l.uid?.let { listed += it } } }
         _pending.update { list -> list.filter { it.uid !in listed } }
         val asked = HashSet<String>()
         // A tick, untick or open here shows at once, until the view agrees.

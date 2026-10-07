@@ -91,6 +91,10 @@ internal fun IdeaPage(id: String, view: DibsView) {
                 if (view.task(task) != null) ActButton("Open its task", "") { Dibs.open(Page.Task(task)) }
             }
             IdeaButtons(n.actions.takeIf { answered == null }.orEmpty()) { IdeaTaps.tap(it, view.ideas) }
+            // A dibs that offers it: a short conversation about this note, on its own page.
+            n.ask?.let { ask ->
+                ActButton(ask.label, "primary", icon = R.drawable.lucide_message_circle_question) { Dibs.askAbout(view, ask.about, n.title) }
+            }
 
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf("Summary", "Transcript").forEachIndexed { i, label ->
