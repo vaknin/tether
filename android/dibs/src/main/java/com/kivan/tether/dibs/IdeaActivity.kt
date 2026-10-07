@@ -1,7 +1,9 @@
 package com.kivan.tether.dibs
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -34,19 +36,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.kivan.tether.dibs.ideas.Drafts
 import com.kivan.tether.dibs.ideas.IdeaRecording
 import com.kivan.tether.dibs.ideas.RecorderState
 import com.kivan.tether.dibs.ui.IdeaTextBox
-import com.kivan.tether.dibs.ui.later
 import com.kivan.tether.dibs.ui.RecordPanel
+import com.kivan.tether.dibs.ui.later
 import com.kivan.tether.dibs.ui.rememberRecord
 import com.kivan.tether.dibs.ui.theme.AppTheme
 import com.kivan.tether.dibs.ui.theme.AppType
@@ -56,7 +62,6 @@ import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import androidx.lifecycle.lifecycleScope
 
 /**
  * An idea from anywhere (PLAN.md "Capture moves into dibs"): the Quick Settings tile opens a dark
@@ -67,11 +72,16 @@ import androidx.lifecycle.lifecycleScope
 class IdeaActivity : ComponentActivity() {
     private var mode by mutableStateOf(CHOOSE)
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(MODE, mode)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         Drafts.init(this)
-        take(intent)
+        if (savedInstanceState == null) take(intent) else mode = savedInstanceState.getInt(MODE, CHOOSE)
         setContent {
             AppTheme {
                 when (mode) {
@@ -107,6 +117,7 @@ class IdeaActivity : ComponentActivity() {
     companion object {
         const val ACTION_RECORD = "com.kivan.tether.dibs.IDEA_RECORD"
         const val ACTION_TYPE = "com.kivan.tether.dibs.IDEA_TYPE"
+        private const val MODE = "mode"
         private const val CHOOSE = 0
         private const val VOICE = 1
         private const val TEXT = 2
@@ -167,7 +178,17 @@ private fun VoiceScreen(onDone: () -> Unit) {
     val rec by IdeaRecording.state.collectAsStateWithLifecycle()
     var denied by remember { mutableStateOf(false) }
     val record = rememberRecord(onDenied = { denied = true })
-    var started by remember { mutableStateOf(IdeaRecording.busy) }
+    // Saved: a screen made again (rotated) during "Saved" mustn't start another recording.
+    var started by rememberSaveable { mutableStateOf(IdeaRecording.busy) }
+    val context = LocalContext.current
+    // Back from the app's settings with the microphone allowed: record.
+    LifecycleResumeEffect(denied) {
+        if (denied && context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            denied = false
+            record(null)
+        }
+        onPauseOrDispose {}
+    }
     LaunchedEffect(Unit) {
         if (!started) {
             started = true

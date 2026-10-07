@@ -85,7 +85,10 @@ internal fun rememberRecord(onDenied: () -> Unit = {}): (String?) -> Unit {
     return { note ->
         when {
             context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> IdeaRecording.start(context, note)
-            micAsked && !shouldAsk(context) -> openAppSettings(context)
+            micAsked && !shouldAsk(context) -> {
+                onDenied()
+                openAppSettings(context)
+            }
             else -> {
                 asked = note
                 micAsked = true

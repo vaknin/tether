@@ -150,10 +150,11 @@ internal fun IdeaPage(id: String, view: DibsView) {
 /** The transcript as dibs sent it, else the one loaded on a tap (a channel file), else null. */
 @Composable
 private fun rememberTranscript(n: IdeaNote): String? {
-    val file by remember(n.id, n.fetch) { Dibs.host.channelFile(n.loadPrefix) }.collectAsStateWithLifecycle(null)
+    val prefix = n.loadPrefix
+    val file by remember(prefix) { Dibs.host.channelFile(prefix) }.collectAsStateWithLifecycle(null)
+    // A note added to since names a new file: the old text goes until that one is loaded.
     val loaded by produceState<String?>(null, file) {
-        val f = file ?: return@produceState
-        value = withContext(Dispatchers.IO) { runCatching { f.readText() }.getOrNull() }
+        value = file?.let { f -> withContext(Dispatchers.IO) { runCatching { f.readText() }.getOrNull() } }
     }
     return n.transcript ?: loaded
 }

@@ -5,7 +5,9 @@ import android.media.MediaMetadataRetriever
 import android.util.Log
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.Link
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
@@ -144,6 +146,7 @@ object Drafts {
             } else {
                 Log.i(TAG, "Recording ${f.name} was cut off; keeping what it got")
                 put(d.copy(recording = false, durationMs = durationOf(f)))
+                IdeaWorker.enqueue(context, d.id)
             }
         }
         // A recording no draft names (from before drafts were written at the start).
@@ -154,7 +157,9 @@ object Drafts {
                 continue
             }
             val ms = durationOf(f)
-            put(Draft(Draft.newId(), null, f.lastModified() - (ms ?: 0), typed = false, durationMs = ms, audio = f.name, gemini = true))
+            val d = Draft(Draft.newId(), null, f.lastModified() - (ms ?: 0), typed = false, durationMs = ms, audio = f.name, gemini = true)
+            put(d)
+            IdeaWorker.enqueue(context, d.id)
         }
     }
 
@@ -279,16 +284,23 @@ object Drafts {
      */
     suspend fun send(d: Draft) {
         if (d.gemini || d.failed) return
+        // One send per draft at a time (a view's resend and the worker's first send may meet).
+        if (!sending.add(d.id)) return
         val (action, value) = d.action()
         try {
-            Dibs.host.actStored(action, value)
-            get(d.id)?.let { put(it.copy(sentMs = System.currentTimeMillis())) }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
+            // Not cut short by the next view: once Tether has it, it is marked sent.
+            withContext(NonCancellable) {
+                Dibs.host.actStored(action, value)
+                get(d.id)?.let { put(it.copy(sentMs = System.currentTimeMillis())) }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Sending draft ${d.id}: $e")
+        } finally {
+            sending.remove(d.id)
         }
     }
+
+    private val sending: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     /** Retry on a failed draft: Gemini gets it again from the start (or dibs, once it's whole). */
     suspend fun retry(context: Context, id: String) {
