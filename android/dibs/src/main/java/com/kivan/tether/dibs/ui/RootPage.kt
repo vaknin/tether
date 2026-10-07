@@ -212,7 +212,9 @@ internal fun RootPage(id: Long, view: DibsView) {
                 )
             }
 
-            Row(
+            // The laptop refuses Never ask again for a step that reads the home folder: it could
+            // read something different every time.
+            if (root.home != "ro") Row(
                 Modifier.padding(top = Space.S).fillMaxWidth().toggleable(value = never, role = Role.Checkbox) { never = it },
                 verticalAlignment = Alignment.CenterVertically,
             ) {

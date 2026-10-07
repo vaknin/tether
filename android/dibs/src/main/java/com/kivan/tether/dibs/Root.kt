@@ -149,12 +149,19 @@ object RootMessage {
      * treats as binary in a file: controls other than newline and tab; every space other than the
      * plain one (no-break, en, em, thin, ideographic …); line and paragraph separators; and the
      * invisible format characters (bidi controls, zero-width ones, soft hyphen, BOM: Unicode Cf), private
-     * use (Co) and unassigned (Cn) code points. Any of them could make a line read differently from what
-     * runs: a no-break space before `#` looks like a comment and isn't one.
+     * use (Co) and unassigned (Cn) code points; and blank-looking ones (Hangul fillers, variation
+     * selectors, braille blank). Any of them could make a line read differently from what runs: a
+     * no-break space before `#` looks like a comment and isn't one.
      */
     fun hiddenChar(c: Int): Boolean {
         if (c == '\n'.code || c == '\t'.code || c == ' '.code) return false
-        if (c in 0x200b..0x200f || c in 0x202a..0x202e || c in 0x2060..0x2064 || c in 0x2066..0x2069 || c == 0xfeff) return true
+        if (c in 0x200b..0x200f || c in 0x202a..0x202e || c in 0x2060..0x206f || c == 0xfeff) return true
+        // Default_Ignorable_Code_Point (fillers, variation selectors, invisible marks) and the
+        // braille blank: they draw as nothing or a space, but bash reads them as part of a word.
+        if (c == 0x00ad || c == 0x034f || c == 0x061c || c in 0x115f..0x1160 || c in 0x17b4..0x17b5 ||
+            c in 0x180b..0x180f || c == 0x2800 || c == 0x3164 || c in 0xfe00..0xfe0f || c == 0xffa0 ||
+            c in 0xfff0..0xfff8 || c in 0x1bca0..0x1bca3 || c in 0x1d173..0x1d17a || c in 0xe0000..0xe0fff
+        ) return true
         return when (Character.getType(c).toByte()) {
             Character.CONTROL, Character.FORMAT, Character.PRIVATE_USE, Character.UNASSIGNED, Character.SURROGATE,
             Character.SPACE_SEPARATOR, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR,

@@ -122,6 +122,9 @@ object KeystoreRootKey : RootKey {
     override suspend fun ensure(context: Context): KeyState = withContext(Dispatchers.IO) {
         val now = stateNow()
         if (now is KeyState.Ready) return@withContext now
+        // A key that couldn't be read just now may work in a moment: never delete it for that, as a
+        // new key needs a password at the laptop. Only none at all or an invalidated one is remade.
+        if (now is KeyState.Broken) return@withContext now
         val can = context.getSystemService(BiometricManager::class.java)
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         when (can) {

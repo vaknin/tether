@@ -170,7 +170,8 @@ class RootTest {
         assertEquals("# a⟨U+2028⟩rm x⟨U+00AD⟩\n", RootMessage.visible("# a\u2028rm x\u00ad\n"))
         // A no-break space before # isn't a comment to bash: shown, never passed off as a space.
         assertEquals("true⟨U+00A0⟩# rm -rf /\n", RootMessage.visible("true\u00a0# rm -rf /\n"))
-        for (c in listOf(0xa0, 0x1680, 0x2000, 0x200a, 0x202f, 0x205f, 0x3000, 0x2028, 0x2029, 0x85, 0x0b, 0x0c, 0x7f, 0x180e, 0xe000, 0x10ffff, 0x0378)) {
+        for (c in listOf(0xa0, 0x1680, 0x2000, 0x200a, 0x202f, 0x205f, 0x3000, 0x2028, 0x2029, 0x85, 0x0b, 0x0c, 0x7f, 0x180e, 0xe000, 0x10ffff, 0x0378,
+            0x3164, 0xffa0, 0x115f, 0x1160, 0x2800, 0x034f, 0xfe0f, 0xe0100, 0x17b4, 0x180b, 0x180f)) {
             assertTrue("U+%04X".format(c), RootMessage.hiddenChar(c))
         }
         for (c in listOf(' ', '\t', '\n', 'a', '#', 'é', 'ש', '—', '“', '⟨').map { it.code }) {
