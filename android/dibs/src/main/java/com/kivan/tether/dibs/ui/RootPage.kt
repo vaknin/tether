@@ -206,7 +206,7 @@ internal fun RootPage(id: Long, view: DibsView) {
             message?.let {
                 Text(RootMessage.shortHash(it), style = AppType.mono.copy(fontSize = 17.sp, lineHeight = 22.sp), color = Palette.Text)
                 Text(
-                    "Worked out on this phone from what's shown here. The laptop's log shows the same code once it runs.",
+                    "Worked out on this phone from what's shown here, and shown in the fingerprint prompt too.",
                     style = AppType.small,
                     color = Palette.Muted,
                 )
