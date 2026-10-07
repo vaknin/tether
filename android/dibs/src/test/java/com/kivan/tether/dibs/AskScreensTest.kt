@@ -141,7 +141,8 @@ class AskScreensTest {
         assertEquals("Why 32 GB and not 16?", value!!.getString("text"))
         // Asked here: it shows checked at once, and as the user's line.
         compose.onNodeWithContentDescription("Asked: Why 32 GB and not 16?").assertExists()
-        compose.onAllNodesWithText("Why 32 GB and not 16?").assertCountEquals(2)
+        // The asked chip is read once, as asked (its words aren't read again); the line is the one left.
+        compose.onAllNodesWithText("Why 32 GB and not 16?").assertCountEquals(1)
     }
 
     @Test

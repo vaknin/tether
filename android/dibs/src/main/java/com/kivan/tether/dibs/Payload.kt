@@ -69,7 +69,8 @@ data class AskEnded(val words: String, val keptTitle: String?, val kept: List<St
  */
 data class Asking(
     val about: String,
-    val id: Long,
+    /** dibs's id for it (a notification's tag is `ask:<id>`); null when missing, so it never matches one. */
+    val id: Long?,
     val title: String,
     val eyebrow: String,
     val state: String,
@@ -397,6 +398,14 @@ data class DibsView(
         /** The payload of a whole channel view, or null when dibs sent none (an older dibs). */
         fun ofView(view: JSONObject?): DibsView? = view?.optJSONObject("dibs")?.let(::parse)
 
+        /**
+         * The `about` of the Ask about conversation [id] in a whole channel view, if it lists it: a
+         * notification's tap (tag `ask:<id>`) opens its page by it.
+         */
+        fun askAbout(view: JSONObject?, id: Long): String? = runCatching {
+            view?.optJSONObject("dibs")?.optJSONArray("threads").objects().firstOrNull { it.long("id") == id }?.str("about")
+        }.getOrNull()
+
         fun parse(o: JSONObject): DibsView {
             val st = o.optJSONObject("state") ?: JSONObject()
             val recap = o.optJSONObject("recap") ?: JSONObject()
@@ -450,29 +459,29 @@ data class DibsView(
             )
         }
 
-        /** One conversation; none without its `about`, the key everything finds it by. */
+        /** One conversation; none without its `about`, the key everything finds it by. A JSON null reads as missing. */
         private fun asking(o: JSONObject): Asking? {
             val about = o.str("about") ?: return null
             return Asking(
                 about = about,
-                id = o.optLong("id"),
-                title = o.optString("title"),
-                eyebrow = o.optString("eyebrow"),
-                state = o.optString("state"),
-                row = o.optJSONObject("row")?.let { AskRowWords(it.optString("title"), it.optString("words"), it.optString("tone")) },
+                id = o.long("id"),
+                title = o.str("title").orEmpty(),
+                eyebrow = o.str("eyebrow").orEmpty(),
+                state = o.str("state").orEmpty(),
+                row = o.optJSONObject("row")?.let { AskRowWords(it.str("title").orEmpty(), it.str("words").orEmpty(), it.str("tone").orEmpty()) },
                 intro = o.str("intro"),
                 reading = o.str("reading"),
-                overview = o.optJSONObject("overview")?.let { AskOverview(it.optString("text"), it.optJSONArray("chips").strings().filter(String::isNotBlank)) },
+                overview = o.optJSONObject("overview")?.let { AskOverview(it.str("text").orEmpty(), it.optJSONArray("chips").strings().filter(String::isNotBlank)) },
                 lines = o.optJSONArray("lines").objects().map {
                     AskLine(
-                        it.optString("id"), it.str("uid"), it.optString("who"), it.optString("text"), it.optLong("ts"), it.str("wait"),
+                        it.str("id").orEmpty(), it.str("uid"), it.str("who").orEmpty(), it.str("text").orEmpty(), it.optLong("ts"), it.str("wait"),
                         it.optJSONArray("chips").strings().filter(String::isNotBlank),
                     )
                 }.filter { it.id.isNotEmpty() }.distinctBy { it.id },
                 asked = o.optJSONArray("asked").strings(),
                 status = o.optJSONObject("status")?.let { st -> st.str("words")?.let { AskStatus(st.optBoolean("busy"), it) } },
                 ended = o.optJSONObject("ended")?.let {
-                    AskEnded(it.optString("words"), it.str("kept_title"), it.optJSONArray("kept").strings().filter(String::isNotBlank), it.str("foot"))
+                    AskEnded(it.str("words").orEmpty(), it.str("kept_title"), it.optJSONArray("kept").strings().filter(String::isNotBlank), it.str("foot"))
                 },
                 placeholder = o.str("placeholder"),
                 done = o.str("done"),

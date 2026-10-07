@@ -177,7 +177,7 @@ object Channels {
                 else n.appView(c.name)?.let(::parse)?.let { views[c.name] = it }
                 // Posts that arrived while nothing showed them.
                 for (item in n.appPending(c.name)) {
-                    post(c, item.data)
+                    post(c, item.data, views[c.name])
                     n.appDone(item.id)
                 }
             }
@@ -232,7 +232,7 @@ object Channels {
                 else -> {
                     val c = info(e.channel) ?: ChannelInfo(e.channel, e.channel, e.channel.take(1), null, Dir.AUTO, true, false, true)
                     if (c.thread) _threads.value = _threads.value + (c.name to n.appHistory(c.name, HISTORY))
-                    post(c, e.data)
+                    post(c, e.data, _views.value[c.name])
                     n.appDone(e.id)
                 }
             }
@@ -242,8 +242,9 @@ object Channels {
     /**
      * A thread post (or any queued item from the laptop) is a notification unless it is on screen:
      * titled by its `title` (else the channel's), and its own notification when it has a `tag`.
+     * [view] is the channel's newest (dibs's names what an `ask:<id>` tag's tap opens).
      */
-    private fun post(c: ChannelInfo, data: String) {
+    private fun post(c: ChannelInfo, data: String, view: JSONObject?) {
         if (!c.notify || showing(c.name)) return
         val d = parse(data) ?: return
         val p = d.optJSONObject("post")
@@ -253,7 +254,7 @@ object Channels {
         val actions = p?.optJSONArray("actions")?.let { a ->
             (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { it.optString("id") to it.optString("label") }
         }.orEmpty()
-        if (text.isNotBlank()) Notifier.app(app, c, title, text, actions, tag)
+        if (text.isNotBlank()) Notifier.app(app, c, title, text, actions, tag, view)
     }
 
     // A live `{"patch":{"<block id>":{…}}}` replaces those fields until the next view.

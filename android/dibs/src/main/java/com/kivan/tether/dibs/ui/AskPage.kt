@@ -31,11 +31,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,8 +50,11 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -63,6 +69,7 @@ import com.kivan.tether.dibs.AskLine
 import com.kivan.tether.dibs.Asking
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
+import com.kivan.tether.dibs.Link
 import com.kivan.tether.dibs.Pending
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.askReading
@@ -73,6 +80,7 @@ import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Pill
 import com.kivan.tether.dibs.ui.theme.Space
+import kotlinx.coroutines.delay
 
 // An Ask about conversation (task #102, DESIGN.md): a short talk with a helper that knows only one
 // subject. The page opens the moment the button is tapped, keyed by the subject, before dibs lists
@@ -82,6 +90,12 @@ import com.kivan.tether.dibs.ui.theme.Space
 /** The words under a line typed before the overview, while it waits for it. */
 internal const val WAITING_FOR_OVERVIEW = "Waiting for the overview"
 
+/** The words under a line dibs hasn't listed long after it went ([Dibs.unheard]). */
+internal const val NOT_TAKEN = "dibs hasn't taken this yet"
+
+/** The page of a conversation dibs never listed ([Dibs.unheard]). */
+internal const val COULD_NOT_OPEN = "dibs couldn't open this"
+
 private const val READING_FOOT =
     "A short overview comes first, in about 20 seconds. You can type questions now: they're answered right after it."
 
@@ -90,24 +104,56 @@ internal fun AskPage(about: String, view: DibsView) {
     val a = view.asking(about)
     // Once listed, a conversation that leaves the view (over 24 hours old) closes its page; one just
     // asked for isn't listed yet, and waits.
-    var listed by remember(about) { mutableStateOf(false) }
+    var listed by rememberSaveable(about) { mutableStateOf(false) }
     LaunchedEffect(a != null) {
         if (a != null) listed = true else if (listed) Dibs.back()
     }
     val all by Dibs.pending.collectAsStateWithLifecycle()
     val pending = remember(all, about) { all.filter { it.ask == about } }
-    // On screen: dibs clears "New answer" (once for each line count).
+    // On screen: dibs clears "New answer" (once for each newest line, and for the overview).
     val n = a?.lines?.size ?: 0
+    val newest = a?.lines?.lastOrNull()?.id
     val hasOverview = a?.overview != null
-    LaunchedEffect(about, a != null, n, hasOverview) {
-        if (a != null) Dibs.seenAsk(about, n, hasOverview)
+    LaunchedEffect(about, a != null, newest, hasOverview) {
+        if (a != null) Dibs.seenAsk(about, n, newest, hasOverview)
     }
-    // Done and Ask more show at once, until dibs's next view says how it went on.
-    var doneTapped by remember(about, a?.state) { mutableStateOf(false) }
-    var moreTapped by remember(about, a?.state) { mutableStateOf(false) }
+    // Done and Ask more show at once, until dibs's view agrees (ending or ended; back from ended), or
+    // a tap dibs refused frees them again after a while.
+    var doneTapped by rememberSaveable(about) { mutableStateOf(false) }
+    var moreTapped by rememberSaveable(about) { mutableStateOf(false) }
+    val state = a?.state
+    LaunchedEffect(state) {
+        if (state == "ending" || state == "ended") doneTapped = false
+        if (state != null && state != "ended") moreTapped = false
+    }
+    LaunchedEffect(doneTapped, moreTapped) {
+        if (doneTapped || moreTapped) {
+            delay(Dibs.TAP_MS)
+            doneTapped = false
+            moreTapped = false
+        }
+    }
+
+    // dibs lists an open and a line at once over a live link: one it still doesn't, well after the
+    // link came up, wasn't taken (dibs refused it, or couldn't find the subject).
+    val link by Dibs.host.link.collectAsStateWithLifecycle()
+    var upSince by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(link) { upSince = if (link == Link.CONNECTED) System.currentTimeMillis() else null }
+    val opened = remember(about) { System.currentTimeMillis() }
+    val starts = remember(a != null, pending) { (if (a == null) listOf(opened) else emptyList()) + pending.map { it.tsMs } }
+    val now by produceState(System.currentTimeMillis(), upSince, starts) {
+        val up = upSince ?: return@produceState
+        for (at in starts.map { maxOf(it, up) + Dibs.ASK_WAIT_MS }.sorted()) {
+            val wait = at - System.currentTimeMillis()
+            if (wait > 0) delay(wait)
+            value = System.currentTimeMillis()
+        }
+    }
+    val failed = a == null && Dibs.unheard(opened, upSince, now)
+    val unheard = remember(pending, upSince, now) { pending.filter { Dibs.unheard(it.tsMs, upSince, now) }.mapTo(HashSet()) { it.uid } }
 
     val title = a?.title?.takeIf { it.isNotBlank() } ?: Dibs.askTitles[about] ?: askSubject(about)
-    val eyebrow = a?.eyebrow?.takeIf { it.isNotBlank() } ?: "Opening"
+    val eyebrow = a?.eyebrow?.takeIf { it.isNotBlank() } ?: "Opening".takeIf { !failed }
     Column(Modifier.fillMaxSize()) {
         PageBar(title, eyebrow) {
             val done = a?.done
@@ -118,10 +164,12 @@ internal fun AskPage(about: String, view: DibsView) {
                 }
             }
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) { AskBody(about, a, pending, ending = doneTapped) }
+        Box(Modifier.weight(1f).fillMaxWidth()) { AskBody(about, a, pending, ending = doneTapped, failed = failed, unheard = unheard) }
         val more = a?.more
-        if (a != null && a.isEnded && !moreTapped) {
-            if (more != null) {
+        when {
+            // Nothing to type into: dibs didn't open it (its card has the way back).
+            failed -> Unit
+            a != null && a.isEnded && !moreTapped -> if (more != null) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 10.dp)) {
                     ActButton(more, "primary", icon = R.drawable.lucide_message_circle_question) {
                         moreTapped = true
@@ -129,9 +177,10 @@ internal fun AskPage(about: String, view: DibsView) {
                     }
                 }
             }
-        } else {
-            val ending = a?.ending == true || doneTapped
-            InputArea(Dibs.askBox(about), a?.placeholder ?: "Ask a question", attach = false, enabled = !ending)
+            else -> {
+                val ending = a?.ending == true || doneTapped
+                InputArea(Dibs.askBox(about), a?.placeholder ?: "Ask a question", attach = false, enabled = !ending)
+            }
         }
     }
 }
@@ -155,7 +204,7 @@ private sealed interface AskItem {
     data class Line(val line: AskLine) : AskItem {
         override val key get() = line.id
     }
-    data class Echo(val p: Pending, val early: Boolean) : AskItem {
+    data class Echo(val p: Pending, val early: Boolean, val unheard: Boolean) : AskItem {
         override val key get() = p.uid
     }
     data class Status(val words: String, val card: Boolean) : AskItem {
@@ -164,18 +213,22 @@ private sealed interface AskItem {
     data class Ended(val ended: AskEnded) : AskItem {
         override val key get() = "_ended"
     }
+    data object Failed : AskItem {
+        override val key get() = "_failed"
+    }
 }
 
 /**
  * The page's items, oldest first: the intro, the reading card or the overview with its suggested
  * questions, the lines (only the newest answer's chips; the overview's until an answer has some),
- * the echoes not listed yet, what it's doing, how it ended.
+ * the echoes not listed yet ([unheard]: by uid, the ones dibs didn't take), what it's doing, how it
+ * ended. [failed]: dibs never listed it; that says so in place of the reading card.
  */
-private fun askItems(about: String, a: Asking?, pending: List<Pending>, ending: Boolean): List<AskItem> {
+private fun askItems(about: String, a: Asking?, pending: List<Pending>, ending: Boolean, failed: Boolean, unheard: Set<String>): List<AskItem> {
     val out = ArrayList<AskItem>()
     a?.intro?.let { out += AskItem.Intro(it) }
     val beforeOverview = a == null || (a.overview == null && (a.state == "reading" || a.state.isEmpty()))
-    if (beforeOverview) out += AskItem.Reading(a?.reading ?: askReading(about))
+    if (failed) out += AskItem.Failed else if (beforeOverview) out += AskItem.Reading(a?.reading ?: askReading(about))
     a?.overview?.let { o ->
         out += AskItem.Overview(o.text)
         if (o.chips.isNotEmpty() && !a.ending && !a.isEnded && !ending && a.lines.none { it.who == "dibs" && it.chips.isNotEmpty() }) {
@@ -191,7 +244,7 @@ private fun askItems(about: String, a: Asking?, pending: List<Pending>, ending: 
         if (l === newestDibs && l.chips.isNotEmpty()) out += AskItem.Chips(l.id, l.chips, null)
     }
     val listed = lines.mapNotNullTo(HashSet()) { it.uid }
-    for (p in pending) if (p.uid !in listed) out += AskItem.Echo(p, early = beforeOverview)
+    for (p in pending) if (p.uid !in listed) out += AskItem.Echo(p, early = beforeOverview, unheard = p.uid in unheard)
     when {
         a?.status != null -> out += AskItem.Status(a.status.words, card = a.ending || a.isEnded)
         // Done tapped: it says so at once, until dibs's view does.
@@ -202,8 +255,8 @@ private fun askItems(about: String, a: Asking?, pending: List<Pending>, ending: 
 }
 
 @Composable
-private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: Boolean) {
-    val items = remember(about, a, pending, ending) { askItems(about, a, pending, ending) }
+private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: Boolean, failed: Boolean, unheard: Set<String>) {
+    val items = remember(about, a, pending, ending, failed, unheard) { askItems(about, a, pending, ending, failed, unheard) }
     val reversed = remember(items) { items.asReversed() }
     val state = rememberLazyListState()
     // The conversation reads from the top until dibs lists a line, then sits at its newest.
@@ -240,9 +293,18 @@ private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: B
                 is AskItem.Overview -> OverviewCard(item.text)
                 is AskItem.Chips -> AskChips(item.chips, item.title, asked, canAsk) { Dibs.askSay(about, it) }
                 is AskItem.Line -> AskLineView(item.line)
-                is AskItem.Echo -> MyLine(item.p.text, wait = if (item.early) WAITING_FOR_OVERVIEW else null, sending = true)
+                is AskItem.Echo -> MyLine(
+                    item.p.text,
+                    wait = when {
+                        item.unheard -> NOT_TAKEN
+                        item.early -> WAITING_FOR_OVERVIEW
+                        else -> null
+                    },
+                    sending = true,
+                )
                 is AskItem.Status -> StatusRow(item.words, item.card)
                 is AskItem.Ended -> EndedCard(item.ended)
+                AskItem.Failed -> FailedCard()
             }
         }
     }
@@ -335,7 +397,12 @@ private fun ReadingCard(words: String) {
     Column(Modifier.card().padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
             Dots()
-            Text(words, Modifier.weight(1f, fill = false), style = AppType.small.copy(fontSize = AppType.label.fontSize), color = Palette.Muted)
+            Text(
+                words,
+                Modifier.weight(1f, fill = false).semantics { liveRegion = LiveRegionMode.Polite },
+                style = AppType.small.copy(fontSize = AppType.label.fontSize),
+                color = Palette.Muted,
+            )
         }
         Column(Modifier.padding(top = Space.S)) {
             for (w in listOf(0.92f, 0.78f, 0.85f, 0.4f)) {
@@ -343,6 +410,18 @@ private fun ReadingCard(words: String) {
             }
         }
         Text(READING_FOOT, Modifier.padding(top = 10.dp), style = AppType.small, color = Palette.Muted)
+    }
+}
+
+/** dibs never listed the conversation: say so calmly, and the way back. */
+@Composable
+private fun FailedCard() {
+    Column(
+        Modifier.card().padding(14.dp).semantics { liveRegion = LiveRegionMode.Polite },
+        verticalArrangement = Arrangement.spacedBy(Space.M),
+    ) {
+        Text(COULD_NOT_OPEN, style = AppType.body, color = Palette.Text)
+        ActButton("Back", "") { Dibs.back() }
     }
 }
 
@@ -369,12 +448,14 @@ private fun OverviewCard(text: String) {
 private fun AskChips(chips: List<String>, title: String?, asked: Set<String>, enabled: Boolean, onAsk: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         if (title != null) Text(title, style = AppType.small, color = Palette.Muted)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.S), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        // Each chip takes a 48 dp touch target (its look stays 34 dp), which spaces the rows apart.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.S)) {
             for (c in chips) {
                 val done = c in asked
                 val shape = RoundedCornerShape(18.dp)
                 Row(
-                    (if (done) Modifier.dashed(Palette.Outline, 18.dp) else Modifier.background(Palette.SurfaceLow, shape).border(1.dp, Palette.Outline, shape))
+                    Modifier.minimumInteractiveComponentSize()
+                        .then(if (done) Modifier.dashed(Palette.Outline, 18.dp) else Modifier.background(Palette.SurfaceLow, shape).border(1.dp, Palette.Outline, shape))
                         .then(
                             if (!done && enabled) {
                                 Modifier.clip(shape).clickable(role = Role.Button, onClickLabel = "Ask it") { onAsk(c) }
@@ -382,7 +463,8 @@ private fun AskChips(chips: List<String>, title: String?, asked: Set<String>, en
                                 Modifier
                             },
                         )
-                        .then(if (done) Modifier.semantics { contentDescription = "Asked: $c" } else Modifier)
+                        // Read once, as asked (not its words again).
+                        .then(if (done) Modifier.clearAndSetSemantics { contentDescription = "Asked: $c" } else Modifier)
                         .padding(horizontal = 12.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -404,7 +486,12 @@ private fun StatusRow(words: String, card: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(Space.S),
     ) {
         Dots()
-        Text(words, Modifier.weight(1f, fill = false), style = AppType.small.copy(fontSize = AppType.label.fontSize), color = Palette.Muted)
+        Text(
+            words,
+            Modifier.weight(1f, fill = false).semantics { liveRegion = LiveRegionMode.Polite },
+            style = AppType.small.copy(fontSize = AppType.label.fontSize),
+            color = Palette.Muted,
+        )
     }
 }
 

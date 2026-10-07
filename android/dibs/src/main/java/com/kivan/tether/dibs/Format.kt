@@ -157,11 +157,25 @@ fun askSubject(about: String): String {
  */
 fun askQuote(paragraph: String): String {
     val text = paragraph.trim().replace(Regex("\\s+"), " ")
-    val sentence = Regex("^.+?[.!?](?=\\s|$)").find(text)?.value ?: text
+    // A sentence ends at . ! or ? before a space, but not at an abbreviation's dot ("e.g.", "etc.").
+    val end = Regex("[.!?](?=\\s|$)").findAll(text).firstOrNull { m ->
+        text[m.range.first] != '.' || !abbreviation(text.substring(0, m.range.first).substringAfterLast(' '))
+    }
+    val sentence = end?.let { text.substring(0, it.range.last + 1) } ?: text
     val words = sentence.removeSuffix(".").split(' ')
     val quote = if (words.size <= 12) words.joinToString(" ") else text.split(' ').take(8).joinToString(" ").trimEnd(',', ';', ':')
     return "About “$quote”: "
 }
+
+// The word before a dot is an abbreviation: single letters between dots ("e.g", "i.e"), one letter,
+// or a common short one. A file name ("PLAN.md") or a number ending a sentence isn't.
+private fun abbreviation(word: String): Boolean {
+    val w = word.trimStart('(', '“', '"', '\'').lowercase()
+    return DOTTED.matches(w) || w in ABBREVIATIONS
+}
+
+private val DOTTED = Regex("([a-z]\\.)*[a-z]")
+private val ABBREVIATIONS = setOf("etc", "vs", "cf", "approx", "incl", "mr", "mrs", "ms", "dr")
 
 /** What the reading card says before dibs words it ("Reading the note"). */
 fun askReading(about: String): String = when (about.substringBefore(':')) {

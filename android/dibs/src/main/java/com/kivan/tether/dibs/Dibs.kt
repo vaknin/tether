@@ -388,22 +388,62 @@ object Dibs {
     val askTitles = mutableStateMapOf<String, String>()
     /** Each Ask about conversation's box, by its `about`. */
     private val askBoxes = HashMap<String, Composer>()
-    /** The line count each conversation was last told seen at (`thread-seen`), with whether it had its overview. */
+    /** What each conversation was last told seen at (`thread-seen`): its newest line, and whether it had its overview. */
     private val askSeen = HashMap<String, String>()
+    /**
+     * A conversation's notification tapped before the view listed it (a cold start): its thread id,
+     * until a view names it ([resolveAsk]).
+     */
+    private var askWanted: Long? = null
 
     fun askBox(about: String): Composer = askBoxes.getOrPut(about) { Composer(null, about) }
 
     /**
      * Ask about [about] (a subject's button, [title] its name): dibs opens the conversation, or
      * brings an ended one back, unless one is open already; the page opens at once either way.
-     * [draft] goes into its box (a paragraph of a full story), nothing sent until the user sends.
+     * [draft] goes before what its box holds (a paragraph of a full story's quote), unless it's there
+     * already or the conversation is ending (the box is closed); nothing sent until the user sends.
      */
     fun askAbout(view: DibsView?, about: String, title: String, draft: String? = null) {
         val a = view?.asking(about)
         if (a == null || a.isEnded) host.act("thread-open", JSONObject().put("about", about))
         askTitles[about] = title
-        if (draft != null) askBox(about).draft = draft
+        if (draft != null && a?.ending != true) {
+            val box = askBox(about)
+            if (!box.draft.contains(draft.trim())) box.draft = draft + box.draft
+        }
         open(Page.Ask(about))
+    }
+
+    /**
+     * A conversation's notification (tag `ask:<id>`): its page over the chat, by the [about] the
+     * notification carried, else by the view; when neither knows it yet (a cold start, before the
+     * views are loaded), as soon as a view lists it ([resolveAsk]).
+     */
+    fun openAsk(id: Long, about: String?, view: DibsView?) {
+        pages.clear()
+        tab = DibsActivity.TAB_CHAT
+        askWanted = null
+        val known = about ?: view?.asks?.firstOrNull { it.id == id }?.about
+        if (known != null) open(Page.Ask(known)) else askWanted = id
+    }
+
+    /** A view arrived: the conversation a notification asked for opens once it's listed, unless the user went elsewhere first. */
+    fun resolveAsk(view: DibsView?) {
+        val id = askWanted ?: return
+        if (pages.isNotEmpty()) {
+            askWanted = null
+            return
+        }
+        view?.asks?.firstOrNull { it.id == id }?.let {
+            askWanted = null
+            open(Page.Ask(it.about))
+        }
+    }
+
+    /** The user went elsewhere (another intent): a notification's conversation no longer waits to open. */
+    fun forgetAsk() {
+        askWanted = null
     }
 
     /** A line to the conversation (typed, or a suggested question tapped): it shows as an echo until dibs lists its uid. */
@@ -425,19 +465,34 @@ object Dibs {
         host.act("thread-open", JSONObject().put("about", about))
     }
 
-    /** The page shows [n] lines (and the overview, [overview]): dibs clears "New answer", once for each. */
-    fun seenAsk(about: String, n: Int, overview: Boolean) {
-        val key = "$n:$overview"
+    /**
+     * The page shows [n] lines, the newest [newest] (and the overview, [overview]): dibs clears "New
+     * answer", once for each. Keyed on the newest line, not the count: dibs sends at most 40 lines, so
+     * the count stops changing in a long conversation.
+     */
+    fun seenAsk(about: String, n: Int, newest: String?, overview: Boolean) {
+        val key = "$newest:$overview"
         if (askSeen[about] == key) return
         askSeen[about] = key
         host.act("thread-seen", JSONObject().put("about", about).put("n", n))
     }
+
+    /**
+     * A line sent at [sentMs] (or a page opened then) that dibs hasn't listed is taken as not heard
+     * once the link has been up ([upSinceMs], null while it's down) for [ASK_WAIT_MS] since.
+     */
+    fun unheard(sentMs: Long, upSinceMs: Long?, nowMs: Long): Boolean =
+        upSinceMs != null && nowMs - maxOf(sentMs, upSinceMs) >= ASK_WAIT_MS
+
+    /** dibs lists an open or a line within a second or two over a live link; this is far past that. */
+    const val ASK_WAIT_MS = 20_000L
 
     /** For tests: forget the boxes and what was told seen. */
     internal fun resetAsks() {
         askBoxes.clear()
         askSeen.clear()
         askTitles.clear()
+        askWanted = null
         _pending.value = emptyList()
     }
 

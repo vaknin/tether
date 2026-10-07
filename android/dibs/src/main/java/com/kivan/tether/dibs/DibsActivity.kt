@@ -50,16 +50,19 @@ class DibsActivity : ComponentActivity() {
 
     // A tab or a task's page to show, and text or files shared to dibs (they wait in the box until sent).
     private fun take(intent: Intent) {
+        // Reopened from Recents (after the process went): the intent that first opened it, already
+        // taken; its page or share again would be stale.
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+        Dibs.forgetAsk()
         intent.getStringExtra(EXTRA_TAB)?.let {
             Dibs.tab = it
             Dibs.pages.clear()
         }
-        // A conversation's notification (`ask:<id>`): its page, found by the thread's id in the view.
+        // A conversation's notification (`ask:<id>`): its page, by the subject the notification
+        // carried; else by the thread's id, in the view now or once one lists it (a cold start).
         val ask = intent.getLongExtra(EXTRA_ASK, -1)
         if (ask >= 0) {
-            Dibs.pages.clear()
-            Dibs.tab = TAB_CHAT
-            runCatching { DibsView.ofView(Dibs.host.view.value) }.getOrNull()?.asks?.firstOrNull { it.id == ask }?.let { Dibs.open(Page.Ask(it.about)) }
+            Dibs.openAsk(ask, intent.getStringExtra(EXTRA_ASK_ABOUT), runCatching { DibsView.ofView(Dibs.host.view.value) }.getOrNull())
         }
         val task = intent.getLongExtra(EXTRA_TASK, -1)
         if (task >= 0) {
@@ -93,6 +96,8 @@ class DibsActivity : ComponentActivity() {
         const val EXTRA_TASK = "com.kivan.tether.dibs.TASK"
         /** An Ask about conversation, by its thread id (a Long): its page opens over the chat. */
         const val EXTRA_ASK = "com.kivan.tether.dibs.ASK"
+        /** With [EXTRA_ASK]: its subject (`about`, a String), when the notification knew it. */
+        const val EXTRA_ASK_ABOUT = "com.kivan.tether.dibs.ASK_ABOUT"
         const val TAB_CHAT = "chat"
         const val TAB_IDEAS = "ideas"
         const val TAB_WAITING = "waiting"
@@ -104,9 +109,14 @@ class DibsActivity : ComponentActivity() {
                 if (tab != null) putExtra(EXTRA_TAB, tab)
             }
 
-        /** Opens dibs on an Ask about conversation, by its thread id. */
-        fun ask(context: Context, id: Long): Intent =
+        /** Opens dibs on an Ask about conversation, by its thread id and, when known, its [about]. */
+        fun ask(context: Context, id: Long, about: String?): Intent =
             Intent(Intent.ACTION_VIEW, null, context, DibsActivity::class.java).putExtra(EXTRA_ASK, id)
+                .apply { if (about != null) putExtra(EXTRA_ASK_ABOUT, about) }
+
+        /** An Ask about notification's thread id, from its tag (`ask:<id>`); null for any other tag. */
+        fun askId(tag: String?): Long? =
+            tag?.takeIf { it.startsWith("ask:") }?.removePrefix("ask:")?.toLongOrNull()?.takeIf { it >= 0 }
 
         /** Opens dibs on one of the user's tasks. */
         fun task(context: Context, id: Long): Intent =

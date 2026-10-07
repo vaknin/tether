@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -112,6 +113,8 @@ fun DibsApp() {
     LaunchedEffect(view) {
         Dibs.seen(view)
         Drafts.seen(context, view?.ideas)
+        // A conversation's notification tapped before the views were loaded opens once one lists it.
+        Dibs.resolveAsk(view)
     }
 
     var tab by rememberSaveable { mutableStateOf(Tab.CHAT) }
@@ -133,13 +136,16 @@ fun DibsApp() {
             Modifier.fillMaxSize().background(Palette.Bg)
                 .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime)),
         ) {
-            when (page) {
-                is Page.Task -> TaskPage(page.id, view)
-                is Page.Transcript -> TranscriptScreen(page.id, view)
-                is Page.Report -> ReportScreen(page.id, view)
-                is Page.Story -> StoryScreen(page.id, view)
-                is Page.Idea -> IdeaPage(page.id, view)
-                is Page.Ask -> AskPage(page.about, view)
+            // Each page its own state (its scroll, its taps), also when one replaces another of its kind.
+            key(page) {
+                when (page) {
+                    is Page.Task -> TaskPage(page.id, view)
+                    is Page.Transcript -> TranscriptScreen(page.id, view)
+                    is Page.Report -> ReportScreen(page.id, view)
+                    is Page.Story -> StoryScreen(page.id, view)
+                    is Page.Idea -> IdeaPage(page.id, view)
+                    is Page.Ask -> AskPage(page.about, view)
+                }
             }
         }
         return

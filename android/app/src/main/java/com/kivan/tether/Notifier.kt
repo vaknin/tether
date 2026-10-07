@@ -24,7 +24,9 @@ import com.kivan.tether.core.ChatMessage
 import com.kivan.tether.core.MsgKind
 import com.kivan.tether.core.Status
 import com.kivan.tether.dibs.DibsActivity
+import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.ui.theme.Palette
+import org.json.JSONObject
 
 /**
  * Every high-priority FCM wake must end in a visible notification, or Android throttles FCM.
@@ -378,7 +380,8 @@ object Notifier {
     /**
      * A channel's news (a view's `notify`, a thread post). Without [tag], one notification per
      * channel, replaced; with one (a post's `tag`), one per tag, so each keeps its own buttons. A
-     * replaced notification doesn't alert again.
+     * replaced notification doesn't alert again. [view]: the channel's newest view, where dibs's
+     * notification for an Ask about conversation finds the subject its tap opens.
      */
     fun app(
         context: Context,
@@ -387,6 +390,7 @@ object Notifier {
         text: String,
         actions: List<Pair<String, String>> = emptyList(),
         tag: String? = null,
+        view: JSONObject? = null,
     ) {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
@@ -403,7 +407,7 @@ object Notifier {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setColor(c.accent ?: Palette.Accent.toArgb())
             .setShortcutId(Shortcuts.channelId(c.name))
-            .setContentIntent(if (dibs) openDibs(context, tag) else openChannel(context, c.name))
+            .setContentIntent(if (dibs) openDibs(context, tag, view) else openChannel(context, c.name))
             .setAutoCancel(true)
             // A tagged post updated in place doesn't alert again; a new untagged post (it replaces
             // the channel's one) does, as before.
@@ -510,11 +514,16 @@ object Notifier {
     /**
      * dibs's own screen, the chat: everything for the user is a line there, a question with its
      * buttons, a task's report too (the user, words 217 and 221: they talk only to dibs). An Ask about
-     * conversation's (tag `ask:<thread id>`, task #102) opens that conversation's page.
+     * conversation's (tag `ask:<thread id>`, task #102) opens that conversation's page, by its subject
+     * as [view] lists it (the screen may start before its views are loaded).
      */
-    private fun openDibs(context: Context, tag: String? = null): PendingIntent {
-        tag?.removePrefix("ask:")?.takeIf { tag.startsWith("ask:") }?.toLongOrNull()?.let { id ->
-            return PendingIntent.getActivity(context, "dibs:ask:$id".hashCode(), DibsActivity.ask(context, id), PendingIntent.FLAG_IMMUTABLE)
+    private fun openDibs(context: Context, tag: String? = null, view: JSONObject? = null): PendingIntent {
+        DibsActivity.askId(tag)?.let { id ->
+            // Updated: an earlier one for the same conversation may not have known its subject.
+            return PendingIntent.getActivity(
+                context, "dibs:ask:$id".hashCode(), DibsActivity.ask(context, id, DibsView.askAbout(view, id)),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
         }
         val tab = DibsActivity.TAB_CHAT
         // One request code per tab: the extras aren't part of a PendingIntent's identity.

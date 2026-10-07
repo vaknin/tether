@@ -83,6 +83,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -204,7 +205,7 @@ internal fun AskRow(a: Asking) {
     val row = a.row ?: return
     Row(
         Modifier.fillMaxWidth().padding(top = Space.S).clip(MaterialTheme.shapes.medium).background(Palette.Surface)
-            .clickable(onClickLabel = "Open") { Dibs.open(Page.Ask(a.about)) }
+            .clickable(role = Role.Button, onClickLabel = "Open") { Dibs.open(Page.Ask(a.about)) }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

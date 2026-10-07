@@ -96,7 +96,7 @@ class AskTest {
         Dibs.askAbout(null, NOTE, "Home server")
         Dibs.askSay(NOTE, "and is it quiet?")
         Dibs.askDone(NOTE)
-        Dibs.seenAsk(NOTE, 6, overview = true)
+        Dibs.seenAsk(NOTE, 6, "t1-6", overview = true)
         assertEquals(want.length(), host.acts.size)
         for (i in 0 until want.length()) {
             val w = want.getJSONObject(i)
@@ -181,6 +181,10 @@ class AskTest {
             "About “It first folded the lines by day in”: ",
             askQuote("It first folded the lines by day in a way that hid the newest entry of all and more besides."),
         )
+        // An abbreviation's dot doesn't end the sentence; a file name's or the last word's does.
+        assertEquals("About “Small things, e.g. the clock, moved”: ", askQuote("Small things, e.g. the clock, moved. Then more."))
+        assertEquals("About “It keeps lists, notes etc. in one place”: ", askQuote("It keeps lists, notes etc. in one place. Then more."))
+        assertEquals("About “It changed PLAN.md”: ", askQuote("It changed PLAN.md. Then it went on to the rest of the files one by one."))
     }
 
     @Test
@@ -229,16 +233,124 @@ class AskTest {
     }
 
     @Test
-    fun seenIsSentOncePerLineCount() {
-        Dibs.seenAsk("note:41", 0, overview = false)
-        Dibs.seenAsk("note:41", 0, overview = false)
-        Dibs.seenAsk("note:41", 0, overview = true)
-        Dibs.seenAsk("note:41", 3, overview = true)
-        Dibs.seenAsk("note:41", 3, overview = true)
-        Dibs.seenAsk("task:85", 3, overview = true)
-        assertEquals(listOf("thread-seen", "thread-seen", "thread-seen", "thread-seen"), host.acts.map { it.first })
-        assertEquals(listOf(0, 0, 3, 3), host.acts.map { it.second!!.getInt("n") })
-        assertEquals(listOf("note:41", "note:41", "note:41", "task:85"), host.acts.map { it.second!!.getString("about") })
+    fun seenIsSentOncePerNewestLine() {
+        Dibs.seenAsk("note:41", 0, null, overview = false)
+        Dibs.seenAsk("note:41", 0, null, overview = false)
+        Dibs.seenAsk("note:41", 0, null, overview = true)
+        Dibs.seenAsk("note:41", 3, "t1-3", overview = true)
+        Dibs.seenAsk("note:41", 3, "t1-3", overview = true)
+        Dibs.seenAsk("task:85", 3, "t2-3", overview = true)
+        // dibs sends at most 40 lines: a new answer past them keeps the count, and is still seen.
+        Dibs.seenAsk("note:41", 40, "t1-44", overview = true)
+        Dibs.seenAsk("note:41", 40, "t1-45", overview = true)
+        assertEquals(List(6) { "thread-seen" }, host.acts.map { it.first })
+        assertEquals(listOf(0, 0, 3, 3, 40, 40), host.acts.map { it.second!!.getInt("n") })
+        assertEquals(listOf("note:41", "note:41", "note:41", "task:85", "note:41", "note:41"), host.acts.map { it.second!!.getString("about") })
+    }
+
+    @Test
+    fun aNotificationOpensItsConversationOnAColdStart() {
+        // The notification knew the subject: its page at once, with no view loaded yet.
+        Dibs.pages += Page.Task(3)
+        Dibs.openAsk(1, NOTE, null)
+        assertEquals(listOf<Page>(Page.Ask(NOTE)), Dibs.pages.toList())
+        assertEquals(DibsActivity.TAB_CHAT, Dibs.tab)
+
+        // It didn't: the page opens once a view lists the thread's id.
+        Dibs.pages.clear()
+        Dibs.openAsk(1, null, null)
+        assertTrue(Dibs.pages.isEmpty())
+        Dibs.resolveAsk(null)
+        Dibs.resolveAsk(DibsView.parse(JSONObject()))
+        assertTrue(Dibs.pages.isEmpty())
+        val v = DibsView.parse(payload())
+        Dibs.resolveAsk(v)
+        assertEquals(listOf<Page>(Page.Ask(NOTE)), Dibs.pages.toList())
+        // Only once.
+        Dibs.pages.clear()
+        Dibs.resolveAsk(v)
+        assertTrue(Dibs.pages.isEmpty())
+
+        // A view that lists it already: by the view.
+        Dibs.openAsk(1, null, v)
+        assertEquals(listOf<Page>(Page.Ask(NOTE)), Dibs.pages.toList())
+
+        // The user went elsewhere before it was listed: it doesn't jump in later.
+        Dibs.openAsk(1, null, null)
+        Dibs.open(Page.Task(3))
+        Dibs.resolveAsk(v)
+        assertEquals(listOf<Page>(Page.Task(3)), Dibs.pages.toList())
+        Dibs.pages.clear()
+        Dibs.openAsk(1, null, null)
+        Dibs.forgetAsk()
+        Dibs.resolveAsk(v)
+        assertTrue(Dibs.pages.isEmpty())
+    }
+
+    @Test
+    fun aNotificationsTagNamesItsConversation() {
+        assertEquals(7L, DibsActivity.askId("ask:7"))
+        assertNull(DibsActivity.askId("ask:"))
+        assertNull(DibsActivity.askId("ask:-1"))
+        assertNull(DibsActivity.askId("task:7"))
+        assertNull(DibsActivity.askId(null))
+        val view = JSONObject().put("dibs", payload())
+        assertEquals(NOTE, DibsView.askAbout(view, 1))
+        assertNull(DibsView.askAbout(view, 99))
+        assertNull(DibsView.askAbout(null, 1))
+        assertNull(DibsView.askAbout(JSONObject().put("dibs", JSONObject().put("threads", "broken")), 1))
+        // A thread without an id never matches one (not even 0).
+        val noId = JSONObject().put("dibs", JSONObject().put("threads", JSONArray().put(JSONObject().put("about", "note:1"))))
+        assertNull(DibsView.askAbout(noId, 0))
+        assertNull(DibsView.parse(noId.getJSONObject("dibs")).asks.single().id)
+    }
+
+    @Test
+    fun aJsonNullReadsAsMissing() {
+        val v = DibsView.parse(JSONObject().put("threads", JSONArray().put(JSONObject().put("about", "note:1").put("title", JSONObject.NULL)
+            .put("state", JSONObject.NULL).put("eyebrow", JSONObject.NULL)
+            .put("row", JSONObject().put("title", JSONObject.NULL).put("words", JSONObject.NULL).put("tone", JSONObject.NULL))
+            .put("overview", JSONObject().put("text", JSONObject.NULL))
+            .put("lines", JSONArray().put(JSONObject().put("id", "a").put("who", JSONObject.NULL).put("text", JSONObject.NULL)))
+            .put("ended", JSONObject().put("words", JSONObject.NULL)))))
+        val a = v.asks.single()
+        assertEquals("", a.title)
+        assertEquals("", a.state)
+        assertEquals("", a.eyebrow)
+        assertEquals(AskRowWords("", "", ""), a.row)
+        assertEquals("", a.overview!!.text)
+        assertEquals("", a.lines.single().who)
+        assertEquals("", a.lines.single().text)
+        assertEquals("", a.ended!!.words)
+    }
+
+    @Test
+    fun aLineOrAnOpenDibsDoesntListIsUnheardOnlyAfterTheLinkWasUpAWhile() {
+        val w = Dibs.ASK_WAIT_MS
+        // The link down: never.
+        assertFalse(Dibs.unheard(0, null, 10 * w))
+        // Sent with the link up: from when it went.
+        assertFalse(Dibs.unheard(1_000, 0, 1_000 + w - 1))
+        assertTrue(Dibs.unheard(1_000, 0, 1_000 + w))
+        // Sent offline: from when the link came up.
+        assertFalse(Dibs.unheard(1_000, 50_000, 50_000 + w - 1))
+        assertTrue(Dibs.unheard(1_000, 50_000, 50_000 + w))
+    }
+
+    @Test
+    fun anotherPartGoesBeforeTheBoxAndNotTwice() {
+        val q = askQuote("The lines fold by day.")
+        Dibs.askBox("task:31").draft = "why?"
+        Dibs.askAbout(null, "task:31", "Recap", draft = q)
+        assertEquals("About “The lines fold by day”: why?", Dibs.askBox("task:31").draft)
+        Dibs.askAbout(null, "task:31", "Recap", draft = q)
+        assertEquals("About “The lines fold by day”: why?", Dibs.askBox("task:31").draft)
+        // Ending: its box is closed, so nothing goes in.
+        val ending = payload()
+        ending.getJSONArray("threads").getJSONObject(0).put("state", "ending")
+        Dibs.askAbout(DibsView.parse(ending), NOTE, "Home server", draft = q)
+        assertEquals("", Dibs.askBox(NOTE).draft)
+        assertEquals(Page.Ask(NOTE), Dibs.pages.last())
     }
 
     @Test
