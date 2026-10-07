@@ -217,9 +217,11 @@ private fun AskBody(about: String, a: Asking?, pending: List<Pending>, ending: B
     LaunchedEffect(newest, talking) {
         when {
             newest == null -> Unit
+            // A line of mine (a chip tapped, a question typed early): show it.
+            newestMine -> state.animateScrollToItem(0)
             // Before the first line: the reading card or the overview from its top.
             !talking -> state.scrollToItem(reversed.lastIndex)
-            state.firstVisibleItemIndex <= 2 || newestMine -> state.animateScrollToItem(0)
+            state.firstVisibleItemIndex <= 2 -> state.animateScrollToItem(0)
         }
     }
     val asked = remember(a?.asked, pending) { (a?.asked.orEmpty() + pending.map { it.text }).toSet() }
