@@ -166,6 +166,18 @@ class RootTest {
         val s = "echo a‮b​\r\tc\n"
         assertEquals("echo a⟨U+202E⟩b⟨U+200B⟩⟨U+000D⟩\tc\n", RootMessage.visible(s))
         assertEquals("plain\ttext\n", RootMessage.visible("plain\ttext\n"))
+        // Ones the helper lets through but the screen would hide or break the line at.
+        assertEquals("# a⟨U+2028⟩rm x⟨U+00AD⟩\n", RootMessage.visible("# a\u2028rm x\u00ad\n"))
+        // A no-break space before # isn't a comment to bash: shown, never passed off as a space.
+        assertEquals("true⟨U+00A0⟩# rm -rf /\n", RootMessage.visible("true\u00a0# rm -rf /\n"))
+        for (c in listOf(0xa0, 0x1680, 0x2000, 0x200a, 0x202f, 0x205f, 0x3000, 0x2028, 0x2029, 0x85, 0x0b, 0x0c, 0x7f, 0x180e, 0xe000, 0x10ffff, 0x0378)) {
+            assertTrue("U+%04X".format(c), RootMessage.hiddenChar(c))
+        }
+        for (c in listOf(' ', '\t', '\n', 'a', '#', 'é', 'ש', '—', '“', '⟨').map { it.code }) {
+            assertFalse("U+%04X".format(c), RootMessage.hiddenChar(c))
+        }
+        // The helper refuses them in a script, so the phone won't sign one.
+        assertNotNull(RootMessage.problem(vector().copy(script = "true\u00a0# x\n")))
         val r = vector().copy(script = s)
         assertTrue(RootMessage.build(r, false).contains("script ${RootMessage.sha256Hex(s.toByteArray(Charsets.UTF_8))}\n"))
     }

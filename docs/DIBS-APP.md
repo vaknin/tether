@@ -570,16 +570,18 @@ the wire formats both sides build byte for byte are the task's SPEC.md (dibs tas
 - **The card** (`RootCard` in `ui/RootPage.kt`): "Root step" eyebrow, the title, the agent's reason marked as its
   words, dibs's check ("dibs would approve it: …", or "dibs hasn't checked this one"), Review (opens
   `Page.Root(id)`) and Deny. A root question's line in the chat offers the same (`ChatLook.roots`).
-- **The page** (`RootPage`): when it expires; the agent's reason; dibs's check; the phone's own warnings worked
-  out from the bytes (`RootMessage.warnings`: network, home folder, downloads, piping into a shell, sudo/login/
+- **The page** (`RootPage`): when it expires; the agent's reason; dibs's check; the phone's own warnings worked out
+  from the bytes (`RootMessage.warnings`: network, home folder, downloads, piping into a shell, sudo/login/
   polkit/SSH rules, the helper itself, deleting, users and passwords, setuid, disable/mask, a file it can't show,
-  hidden characters, expiring soon); network, home and time limit in one line; the script and text files word
-  for word in monospace (wrapping, never cut; control and bidi/invisible characters written out as `⟨U+202E⟩`);
-  binary files by name, size and the laptop's hash; the request code (first 16 hex of the message's sha256,
-  worked out on the phone; it follows the Never ask again tick); "Never ask again" (off by default); Approve and
-  Deny. Approve builds the message again from what's on screen, asks for a fingerprint or face (platform
-  `BiometricPrompt`, `BIOMETRIC_STRONG` only, a `CryptoObject` around `SHA256withECDSA`; face needs a confirm tap),
-  signs, and sends `root-approve` `{item, request, sig: base64 DER, remember}`; the card closes at once. Deny sends
+  hidden characters, expiring soon); network, home and time limit in one line; the script and text files word for
+  word in monospace (wrapping, never cut; every character the helper refuses, i.e. controls but newline and tab,
+  every space but the plain one, line and paragraph separators, Unicode Cf/Co/Cn, written out as `⟨U+00A0⟩`, and a
+  script with any of them can't be approved); binary files by name, size and the laptop's hash; the request code
+  (first 16 hex of the message's sha256, worked out on the phone; it follows the Never ask again tick); "Never ask
+  again" (off by default); Approve and Deny. Approve builds the message again from what's on screen, asks for a
+  fingerprint or face (platform `BiometricPrompt`, `BIOMETRIC_STRONG` only, a `CryptoObject` around
+  `SHA256withECDSA`; face needs a confirm tap), signs only with the signature the prompt's success callback hands
+  back, and sends `root-approve` `{item, request, sig: base64 DER, remember}`; the card closes at once. Deny sends
   the card's `d<id>`. An expired request, a missing key or an invalidated one disables Approve with a plain line.
 - **The key** (`RootKey.kt`, behind the `RootKey` interface so the screen tests use `FakeKey`): Android Keystore
   alias `dibs-root-v1`, EC P-256, sign/SHA-256, StrongBox (TEE only when StrongBox is missing, reported as

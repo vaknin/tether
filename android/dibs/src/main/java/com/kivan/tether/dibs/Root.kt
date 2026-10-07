@@ -93,6 +93,8 @@ object RootMessage {
         r.files.any { !NAME.matches(it.name) } -> "A file has a name the phone can't sign."
         r.files.map { it.name }.toSet().size != r.files.size -> "Two files have the same name."
         r.files.any { it.binary && (it.sha256 == null || !HEX64.matches(it.sha256)) } -> "A file the phone can't show has no proper hash."
+        // The helper refuses these in a script, so a script that has them was never what it holds.
+        hasHidden(r.script) -> "Its script has hidden characters (shown as ⟨U+…⟩), which the laptop never runs."
         else -> null
     }
 
@@ -143,13 +145,23 @@ object RootMessage {
     }
 
     /**
-     * A character the helper refuses in a script (SPEC.md §7): controls other than newline and tab,
-     * and the invisible or direction-changing ones, which could make a line read differently from
-     * what runs.
+     * A character the helper refuses in a script (SPEC.md §7, widened after its security review), and
+     * treats as binary in a file: controls other than newline and tab; every space other than the
+     * plain one (no-break, en, em, thin, ideographic …); line and paragraph separators; and the
+     * invisible format characters (bidi controls, zero-width ones, soft hyphen, BOM: Unicode Cf), private
+     * use (Co) and unassigned (Cn) code points. Any of them could make a line read differently from what
+     * runs: a no-break space before `#` looks like a comment and isn't one.
      */
-    fun hiddenChar(c: Int): Boolean =
-        (c < 0x20 && c != '\n'.code && c != '\t'.code) || c in 0x7f..0x9f ||
-            c in 0x200b..0x200f || c in 0x202a..0x202e || c in 0x2060..0x2064 || c in 0x2066..0x2069 || c == 0xfeff
+    fun hiddenChar(c: Int): Boolean {
+        if (c == '\n'.code || c == '\t'.code || c == ' '.code) return false
+        if (c in 0x200b..0x200f || c in 0x202a..0x202e || c in 0x2060..0x2064 || c in 0x2066..0x2069 || c == 0xfeff) return true
+        return when (Character.getType(c).toByte()) {
+            Character.CONTROL, Character.FORMAT, Character.PRIVATE_USE, Character.UNASSIGNED, Character.SURROGATE,
+            Character.SPACE_SEPARATOR, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR,
+            -> true
+            else -> Character.isWhitespace(c) || Character.isSpaceChar(c)
+        }
+    }
 
     fun hasHidden(text: String): Boolean = text.codePoints().anyMatch(::hiddenChar)
 
