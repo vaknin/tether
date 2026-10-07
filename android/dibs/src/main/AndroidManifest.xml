@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The Ideas tab: speaking an idea (IdeaRecordingService) and Gemini titling it. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
     <application>
         <!-- dibs's own app inside the Tether APK: its own launcher icon and label, and its own task,
              so it has its own card in Recents (docs/DIBS-APP.md). -->
@@ -18,7 +24,34 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/dibs_idea_shortcuts" />
         </activity>
+
+        <!-- The Idea tile and the icon's shortcuts land here: Voice or Text, recording, typing. It
+             works over the lock screen, and its own task returns to whatever was showing. -->
+        <activity
+            android:name=".IdeaActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity="com.kivan.tether.dibs.idea"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Dibs.Over" />
+
+        <service
+            android:name=".ideas.IdeaTileService"
+            android:exported="true"
+            android:icon="@drawable/lucide_lightbulb"
+            android:label="@string/idea_tile"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- The camera writes the photo it takes for dibs here (cache/camera), through a content URI. -->
         <provider
@@ -30,6 +63,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/dibs_files" />
         </provider>
+
+        <!-- Records an idea while the screen may be off; started only from a dibs screen on top. -->
+        <service
+            android:name="com.kivan.tether.dibs.ideas.IdeaRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 
 </manifest>
