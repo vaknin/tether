@@ -86,7 +86,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -546,3 +546,55 @@ mockups are its p1–p9. The user never sees the word "thread": it is **Ask abou
 - Tests: `AskTest` (the sample, older payloads, what each tap sends), `AskScreensTest` (412 and 320 dp: reading,
   overview and chips, a full conversation and Done, ending, ended, the main chat row, long titles and chips, the
   entry buttons).
+
+## Root steps approved from the phone (task #145, 2026-10-07; app 0.8.0)
+
+A root step an agent needs (a fix in `/etc`, a service restart) runs only after the user approves it on the phone
+with their fingerprint or face. The laptop's root helper (`dibs-root`, in the dibs repo) trusts nothing the user's
+account can write, only a signature made by a key in the phone's security chip. Design: dibs's task #142 PLAN.md;
+the wire formats both sides build byte for byte are the task's SPEC.md (dibs task #145), summed up here.
+
+- **Contract.** A root request is a Waiting question of `kind: "root"`, actions `[{"id": "d<id>", "label": "Deny"}]`
+  (no Approve: approving needs the page) and a `root` object: `request`, `machine` (32 hex), `nonce` (32 hex),
+  `expires` (unix s), `network` (bool), `home` (`no` | `ro`), `timeout` (s), `script` (text), `files` (`{name,
+  text}` shown whole, or `{name, size, sha256}` binary), `why` (the agent's own words), `note` and `pick`
+  (`accept` | `reject`; both null until dibs has checked it, up to ~3 min), `allow_list` (`{name, action}`).
+  Parsed into `RootRequest` (`Root.kt`). The key's setup is a question of `kind: "rootkey"`, whose Set up the phone
+  handles itself.
+- **The signed message** (`RootMessage.build`, unit-tested against the spec's fixed vector): UTF-8 lines, each
+  ending in `\n`: `dibs-root v1`, `machine`, `request`, `nonce`, `expires`, `network yes|no`, `home no|ro`,
+  `timeout`, `remember yes|no` (Never ask again), `script <sha256>`, then `file <name> <sha256>` per file sorted
+  by name. **The phone hashes the script and every text file itself, from the text it shows**; only a binary
+  file's hash comes from the laptop, and the page says so. A request the phone can't sign as given (a bad
+  name, machine or nonce, an odd `home`, a time limit out of 1–3600 s) says why and offers only Deny.
+- **The card** (`RootCard` in `ui/RootPage.kt`): "Root step" eyebrow, the title, the agent's reason marked as its
+  words, dibs's check ("dibs would approve it: …", or "dibs hasn't checked this one"), Review (opens
+  `Page.Root(id)`) and Deny. A root question's line in the chat offers the same (`ChatLook.roots`).
+- **The page** (`RootPage`): when it expires; the agent's reason; dibs's check; the phone's own warnings worked
+  out from the bytes (`RootMessage.warnings`: network, home folder, downloads, piping into a shell, sudo/login/
+  polkit/SSH rules, the helper itself, deleting, users and passwords, setuid, disable/mask, a file it can't show,
+  hidden characters, expiring soon); network, home and time limit in one line; the script and text files word
+  for word in monospace (wrapping, never cut; control and bidi/invisible characters written out as `⟨U+202E⟩`);
+  binary files by name, size and the laptop's hash; the request code (first 16 hex of the message's sha256,
+  worked out on the phone; it follows the Never ask again tick); "Never ask again" (off by default); Approve and
+  Deny. Approve builds the message again from what's on screen, asks for a fingerprint or face (platform
+  `BiometricPrompt`, `BIOMETRIC_STRONG` only, a `CryptoObject` around `SHA256withECDSA`; face needs a confirm tap),
+  signs, and sends `root-approve` `{item, request, sig: base64 DER, remember}`; the card closes at once. Deny sends
+  the card's `d<id>`. An expired request, a missing key or an invalidated one disables Approve with a plain line.
+- **The key** (`RootKey.kt`, behind the `RootKey` interface so the screen tests use `FakeKey`): Android Keystore
+  alias `dibs-root-v1`, EC P-256, sign/SHA-256, StrongBox (TEE only when StrongBox is missing, reported as
+  `strongbox: false`), authentication on every use by a **strong biometric only** (no PIN: dibs knows the PIN and
+  can type it over adb), invalidated when a fingerprint or face is enrolled. Invalidated, the page says "set up
+  again; the laptop needs one password to trust the new key". Set up (`Page.RootKey`) makes the key when there's
+  none (or it was invalidated), shows its code (sha256 of the public key's SubjectPublicKeyInfo, 16 hex in 4
+  groups; the laptop's setup popup shows the same) and sends `root-key` `{spki: base64, strongbox, fingerprint}`.
+  dibs only stores it; the laptop's setup step, with one password, makes the helper trust it.
+- **Release signing.** Once the release key moves to `/var/lib/dibs-root/keys` (root only), `~/.config/tether/
+  keystore.properties` is gone, Gradle builds `app-release-unsigned.apk` (zipaligned) and
+  `scripts/install-phone.sh` runs `dibs root request "Sign Tether <version> for your phone" --script
+  scripts/sign-apk.sh --file app.apk=<unsigned> --wait 1800`, then installs the `app.apk` from the `out: <dir>` it
+  prints. `scripts/sign-apk.sh` is the fixed script the user approves (keep its bytes stable, so "Never ask
+  again" keeps matching). While `keystore.properties` exists, the build signs as before.
+- Tests: `RootTest` (the vector, sorting, binary hashes, refusals, warnings, hidden characters, codes),
+  `PayloadTest.aRootStepCarriesItsRequest`, `RootScreensTest` (card, page, approve and what it sends, a closed
+  prompt, expired, invalidated, deny, setup, the chat's Review, 320 dp).
