@@ -368,6 +368,9 @@ class PayloadTest {
         assertEquals("ready", c.story?.state)
         assertTrue(c.story!!.have)
         assertEquals(listOf("hold", "stop", "story"), c.actions)
+        // An old dibs sends no primary or lane.
+        assertNull(c.primary)
+        assertNull(c.lane)
         val idea = b.columns[1].cards.single()
         assertNull("an idea has no number", idea.n)
         assertNull("nor a task page", idea.task)
@@ -379,22 +382,65 @@ class PayloadTest {
         assertEquals(emptyList<String>(), b.done.single().actions)
     }
 
+    /** The two-list board (active, backlog), each card's `primary` and an Active card's `lane`, reads as sent. */
+    @Test
+    fun parsesTheActiveAndBacklogBoard() {
+        val d = DibsView.parse(
+            JSONObject(
+                """
+                {"now": 1791213484, "yours": [],
+                 "board": {
+                   "columns": [
+                     {"key": "active", "title": "Active", "counts": {"working": 1}, "cards": [
+                       {"key": "task:1", "n": 1, "title": "One", "state_words": "working", "actions": ["park", "down", "stop", "story"],
+                        "primary": "park", "lane": "running"},
+                       {"key": "task:3", "n": 3, "title": "Three", "state_words": "next", "actions": ["park", "start_now", "delete"],
+                        "primary": "park", "lane": "waiting"}]},
+                     {"key": "backlog", "title": "Backlog", "cards": [
+                       {"key": "idea:note-41", "n": null, "title": "A note", "state_words": "your note", "actions": ["start", "down"],
+                        "primary": "start", "move": "x"}]}
+                   ],
+                   "done": {"count": 1, "cards": [{"key": "task:7", "n": 7, "title": "Done one", "state_words": "done", "actions": ["story"]}]}
+                 }}
+                """,
+            ),
+        )
+        val b = d.board!!
+        assertEquals(listOf("active", "backlog"), b.columns.map { it.key })
+        assertEquals(listOf("Active", "Backlog"), b.columns.map { it.title })
+        assertEquals(listOf("park", "park"), b.columns[0].cards.map { it.primary })
+        assertEquals(listOf("running", "waiting"), b.columns[0].cards.map { it.lane })
+        val note = b.columns[1].cards.single()
+        assertEquals("start", note.primary)
+        assertNull(note.lane)
+        assertEquals(listOf("start", "down"), note.actions)
+        // Done cards carry no primary.
+        assertNull(b.done.single().primary)
+        assertNull(b.done.single().lane)
+    }
+
     /** dibs's own recorded board (its tests/samples/board.json, copied here) reads as sent. */
     @Test
     fun parsesDibssSampleBoard() {
         val sample = JSONObject(javaClass.getResource("/board.json")!!.readText())
         val b = DibsView.parse(JSONObject().put("now", 1791213484).put("yours", JSONArray()).put("board", sample.getJSONObject("board"))).board!!
-        assertEquals(listOf("now", "next", "later"), b.columns.map { it.key })
-        assertEquals(listOf("task:3", "task:2"), b.columns[1].cards.map { it.key })
-        val first = b.columns[0].cards.single()
+        assertEquals(listOf("active", "backlog"), b.columns.map { it.key })
+        assertEquals(listOf("task:1", "task:2", "task:3", "task:4"), b.columns[0].cards.map { it.key })
+        assertEquals(listOf("running", "running", "waiting", "waiting"), b.columns[0].cards.map { it.lane })
+        assertTrue(b.columns[0].cards.all { it.primary == "park" })
+        assertEquals(listOf("idea:note-41", "task:5", "task:6"), b.columns[1].cards.map { it.key })
+        assertTrue(b.columns[1].cards.all { it.primary == "start" && it.lane == null })
+        val first = b.columns[0].cards.first()
         assertEquals("", first.now)
         assertNull(first.story)
         assertNull(first.deleteText)
-        val held = b.columns[2].cards.single { it.key == "task:4" }
-        assertTrue(held.deleteText!!.startsWith("Delete throws away 3 saved changes"))
-        assertNull(b.columns[2].cards.single { it.key == "idea:1" }.n)
+        assertEquals(listOf("park", "down", "stop", "story"), first.actions)
+        val saved = b.columns[1].cards.single { it.key == "task:5" }
+        assertTrue(saved.deleteText!!.startsWith("Delete throws away 3 saved changes"))
+        assertNull(b.columns[1].cards.single { it.key == "idea:note-41" }.n)
         assertEquals(1, b.doneCount)
         assertEquals(listOf("story"), b.done.single().actions)
+        assertNull(b.done.single().primary)
     }
 
     /** A JSON null never reads as the word "null", and keyless or repeated cards and columns are dropped. */

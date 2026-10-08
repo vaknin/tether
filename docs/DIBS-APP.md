@@ -89,7 +89,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -274,15 +274,26 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
   builds the board and both apps draw it unchanged). From a dibs that sends `board` next to `yours`, the tab draws it
   in place of the project groups and the Ticked fold; without it, the old list stays. The Laptop line and the
   "for you" words stay on top.
-  - Each column with cards gets its title as a section heading ("Working now", "Up next", "Later") and its cards in
+  - **Two lists since 0.10.5 (dibs task #184):** `columns` holds exactly **Active** (key `active`) and **Backlog**
+    (key `backlog`), then Done. An older dibs sends three, `now`, `next`, `later` ("Working now", "Queue", "Later"):
+    the app still reads and draws any columns sent, in order, so the phone can update before dibs does.
+  - Each column with cards gets its title as a section heading ("Active", "Backlog") and its cards in
     the order sent; an empty column is left out, and one quiet line shows when all are. Then **Done · 12**, folded
     by default, with its cards. dibs's own work stays folded at the bottom.
   - **A card:** "#31" (small, muted; ideas have no number), the title whole and wrapping, dibs's state words (a
     working one with the busy dot when its `yours` task is busy), the tags as small pills ("On hold", "work saved"),
     a "Full story" pill once a story is ready or being written, and `now` muted when it says something.
+  - **The button on the face (0.10.5):** a card's `primary` (`"park"` on every Active card, `"start"` on every Backlog
+    card, absent on Done and from an older dibs) is drawn as a small accent-coloured text button at the right of the
+    title row, "Park" or "Start". A tap sends `task-act` with that act. The long-press menu leaves it out and lists the
+    rest of `actions`. An Active card's `lane` (`running|waiting`) is read and kept; the app draws nothing of its own
+    from it (dibs's state words already say it). The laptop's room line ("No room for another task") sits above the
+    column keyed `active` (an older dibs: `next`).
   - **A tap** opens a task's page; an idea has none, so a tap opens its menu. **A long press** opens the menu of the
-    card's `actions` in plain words: Put on hold, Resume, Stop, Delete, Move up, Move down, Move to Up next, Move to
-    Later, Full story. Only what the card lists shows. Stop and Delete ask again ("Stop it?"; Delete shows the card's
+    card's `actions` in plain words (minus its `primary`): Start, Park, Start now, Move up, Move down, Stop, Delete,
+    Full story. Only what the card lists shows; dibs's `move` is never in a menu. The names an older dibs sends keep
+    their words: Put on hold (`hold`), Resume (`resume`), Move to the queue (`to_next`), Move to the Backlog
+    (`to_later`, was "Move to Later"). Stop and Delete ask again ("Stop it?"; Delete shows the card's
     `delete_text` under it, what deleting loses) and act on the second tap within 4 s. Full story opens the story's
     page; the rest go back as the phone action `task-act` (`Dibs.TASK_ACT`, one constant, as the name may still
     change): `{"key": "task:31", "act": "hold", "before": "task:30"?, "confirm": true?}`. `confirm` is sent only
@@ -291,11 +302,12 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
     `null` text reads as empty, never as the word "null".
   - Payload (`Payload.kt`: `Board`, `BoardColumn`, `BoardCard`; `DibsView.board` is null without it):
     ```json
-    "board": {"columns": [{"key": "now|next|later", "title": "Working now", "cards": [Card]}],
+    "board": {"columns": [{"key": "active|backlog", "title": "Active", "cards": [Card]}],   // older dibs: now|next|later
               "done": {"count": 12, "cards": [Card]}}
     Card: {"key": "task:31|idea:7", "n": 31|null, "title": "whole", "state_words": "built, waiting to land",
            "now": "what it's doing, or empty", "tags": ["On hold", "work saved"], "story": {…like yours[].story}|null,
-           "actions": ["hold","resume","stop","delete","up","down","to_next","to_later","story"],
+           "actions": ["start","park","start_now","up","down","stop","delete","story"],   // older dibs also: hold, resume, to_next, to_later
+           "primary": "park|start"?, "lane": "running|waiting"?,   // primary: every Active (park) and Backlog (start) card
            "delete_text": "what Delete loses, in plain words"?}
     ```
 - **dibs's own work** (its background tasks, the live sessions, ships) folds into one line at the bottom,
@@ -377,7 +389,7 @@ These are new keys in the `dibs` payload, sent only to app 0.5.0 and newer. Olde
   - `fetch` (`value.task`, `value.what`: `transcript|report`).
   - `task-act` (0.5.9, `value.key`: a board card's key, `value.act`: one of its `actions`, `value.before`?: for a
     move, `value.confirm`?: `true` once Stop's or Delete's confirm step was taken): a board card's long-press menu
-    ("The board" above).
+    ("The board" above) or, since 0.10.5, the Start/Park button on its face (`value.act` = its `primary`).
 - Unchanged: `stop`, `reopen` and the question answers. `tell` stays for older apps.
 
 ### What changes in Tether

@@ -3,8 +3,8 @@
   "board": {
     "columns": [
       {
-        "key": "now",
-        "title": "Working now",
+        "key": "active",
+        "title": "Active",
         "cards": [
           {
             "key": "task:1",
@@ -15,88 +15,141 @@
             "tags": [],
             "story": null,
             "actions": [
-              "hold",
+              "park",
+              "down",
               "stop",
               "story"
-            ]
-          }
-        ]
-      },
-      {
-        "key": "next",
-        "title": "Queue",
-        "cards": [
-          {
-            "key": "task:3",
-            "n": 3,
-            "title": "Make landing work on master faster",
-            "state_words": "next in line",
-            "now": "",
-            "tags": [],
-            "story": null,
-            "actions": [
-              "down",
-              "to_later",
-              "delete"
             ],
-            "delete_text": "Delete removes this task. No work is lost."
+            "primary": "park",
+            "lane": "running",
+            "goal": null,
+            "activity": "working"
           },
           {
             "key": "task:2",
             "n": 2,
-            "title": "Water plan for the balcony",
-            "state_words": "2nd in line",
+            "title": "Test the new sync screen on your phone",
+            "state_words": "waiting for you: an answer in its tab",
             "now": "",
             "tags": [],
             "story": null,
             "actions": [
+              "park",
               "up",
-              "to_later",
-              "delete"
+              "stop",
+              "story"
             ],
-            "delete_text": "Delete removes this task. No work is lost."
-          }
-        ]
-      },
-      {
-        "key": "later",
-        "title": "Later",
-        "cards": [
+            "primary": "park",
+            "lane": "running",
+            "goal": null,
+            "activity": "you"
+          },
           {
-            "key": "idea:1",
-            "n": null,
-            "title": "Read the weekly retro aloud",
-            "state_words": "an idea, not started",
+            "key": "task:3",
+            "n": 3,
+            "title": "Water plan for the balcony",
+            "state_words": "next",
             "now": "",
-            "tags": [],
+            "tags": [
+              "Priority"
+            ],
             "story": null,
             "actions": [
+              "park",
+              "start_now",
               "down",
-              "to_next",
               "delete"
             ],
-            "delete_text": "Delete removes this idea. No work is lost."
+            "primary": "park",
+            "lane": "waiting",
+            "serves": true,
+            "goal": null,
+            "delete_text": "Delete removes this task. No work is lost."
           },
           {
             "key": "task:4",
             "n": 4,
+            "title": "Make landing work on master faster",
+            "state_words": "waits for room",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [
+              "park",
+              "start_now",
+              "up",
+              "delete"
+            ],
+            "primary": "park",
+            "lane": "waiting",
+            "goal": null,
+            "delete_text": "Delete removes this task. No work is lost."
+          }
+        ],
+        "counts": {
+          "working": 1,
+          "you": 1
+        }
+      },
+      {
+        "key": "backlog",
+        "title": "Backlog",
+        "cards": [
+          {
+            "key": "idea:note-41",
+            "n": null,
+            "title": "A standing desk that remembers two heights",
+            "state_words": "your note · Start builds it",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [
+              "start",
+              "down"
+            ],
+            "primary": "start",
+            "open": "idea:41"
+          },
+          {
+            "key": "task:5",
+            "n": 5,
             "title": "The dibs app on the laptop",
-            "state_words": "on hold (you held it)",
+            "state_words": "you parked it",
             "now": "",
             "tags": [
-              "On hold",
               "work saved"
             ],
             "story": null,
             "actions": [
-              "resume",
+              "start",
+              "start_now",
               "up",
-              "to_next",
+              "down",
               "stop",
               "delete",
               "story"
             ],
+            "primary": "start",
+            "goal": null,
             "delete_text": "Delete throws away 3 saved changes that are not on master yet, and its folder. Stop keeps them."
+          },
+          {
+            "key": "task:6",
+            "n": 6,
+            "title": "Read the weekly retro aloud",
+            "state_words": "not started",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [
+              "start",
+              "start_now",
+              "up",
+              "delete"
+            ],
+            "primary": "start",
+            "goal": null,
+            "delete_text": "Delete removes this task. No work is lost."
           }
         ]
       }
@@ -105,8 +158,8 @@
       "count": 1,
       "cards": [
         {
-          "key": "task:5",
-          "n": 5,
+          "key": "task:7",
+          "n": 7,
           "title": "A Full story button on each task",
           "state_words": "done",
           "now": "Each task now has a Full story button.",
@@ -114,15 +167,36 @@
           "story": null,
           "actions": [
             "story"
-          ]
+          ],
+          "goal": null
         }
       ]
+    },
+    "priority": {
+      "text": "Water the balcony before the heat",
+      "goals": [
+        "the balcony plants"
+      ],
+      "by": "user",
+      "set_at": 1791201600,
+      "line": "Priority: Water the balcony before the heat (your word, 10-05)"
+    },
+    "goals": [],
+    "room": {
+      "room": 0,
+      "why": "2.0 GB free, 1.7 GB kept for the next build and 2.8 GB above the low-memory floor; build helpers (Gradle, Kotlin) hold 4.3 GB until idle 10 min",
+      "light": 0,
+      "free_mb": 2048,
+      "sessions": 4,
+      "builds_waiting": 0,
+      "helpers_mb": 4400,
+      "line": "no room for another task now: 2.0 GB free, 1.7 GB kept for the next build and 2.8 GB above the low-memory floor; build helpers (Gradle, Kotlin) hold 4.3 GB until idle 10 min (new ones queue)"
     }
   },
   "action": {
     "action": "task-act",
-    "key": "task:2",
-    "act": "to_later",
+    "key": "task:3",
+    "act": "park",
     "before": null,
     "confirm": false
   }
