@@ -41,6 +41,7 @@ internal fun ChatTab(view: DibsView) {
         ChatLook(
             stories = view.yours?.mapTo(HashSet()) { it.id }.orEmpty(),
             asks = view.asks.associateBy { it.about },
+            replies = true,
             roots = view.questions.filter { (it.kind == "root" && it.root != null) || it.kind == "rootkey" }.associateBy { it.id },
         )
     }
@@ -57,7 +58,7 @@ internal fun ChatTab(view: DibsView) {
                     modifier = Modifier.align(Alignment.Center).padding(Space.XL),
                 )
             }
-            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line, look = look)
+            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line, look = look, held = Dibs.hold(view)?.kind == "held")
         }
         HoldBar(view)
         InputArea(Dibs.chat, "Message dibs")

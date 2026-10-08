@@ -109,8 +109,8 @@ class FormatTest {
 
     @Test
     fun theChipOverTheBox() {
-        assertEquals("About the full story of Recap", aboutWords(About(31, "ask", "Recap")))
-        assertEquals("About a part of the full story of Recap", aboutWords(About(31, "ask", "Recap", "It tried X first.")))
-        assertEquals("Follow-up to Recap", aboutWords(About(31, "follow", "Recap")))
+        assertEquals("About the full story of #31 Recap", aboutWords(About(31, "ask", "Recap")))
+        assertEquals("About a part of the full story of #31 Recap", aboutWords(About(31, "ask", "Recap", "It tried X first.")))
+        assertEquals("Follow-up to #31 Recap", aboutWords(About(31, "follow", "Recap")))
     }
 }

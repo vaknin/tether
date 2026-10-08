@@ -2,6 +2,7 @@ package com.kivan.tether.dibs.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -101,7 +103,7 @@ internal enum class Tab(val key: String, val label: String, val icon: Int) {
     RECAP("recap", "Recap", R.drawable.lucide_history),
 }
 
-/** dibs's screen: the header, the lend bar when dibs has the phone, a tab, and the tabs below. */
+/** dibs's screen: the slim bar, a tab, and the tabs below. The lend switches and usage live on the dibs page. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DibsApp() {
@@ -147,6 +149,7 @@ fun DibsApp() {
                     is Page.Ask -> AskPage(page.about, view)
                     is Page.Root -> RootPage(page.id, view)
                     Page.RootKey -> RootKeyPage()
+                    Page.Status -> StatusPage(view, link)
                 }
             }
         }
@@ -164,7 +167,7 @@ fun DibsApp() {
             if (view != null && !typing) {
                 // The Tasks badge counts what the tab says it does, and drops as soon as one is opened here.
                 val forYou = view.yours?.count { wantsYou(it, Dibs.ticked(it), Dibs.unread(it)) } ?: view.badges.work
-                NavBar(tab, view.badges, forYou, view.yours != null) {
+                NavBar(tab, view.badges, forYou, view.yours != null, view.ideas?.total ?: 0) {
                     tab = it
                     // Gone elsewhere: a notification's conversation not listed yet no longer opens.
                     Dibs.forgetAsk()
@@ -177,17 +180,10 @@ fun DibsApp() {
                 // Sideways (landscape: a cutout or a side navigation bar), then the keyboard.
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).imePadding(),
         ) {
-            Header(link, view?.state, typing)
+            Header(link, view?.state, view?.lends, view?.lend)
             if (view == null) {
                 Empty(hasView = json != null)
                 return@Column
-            }
-            // Two toggles from a dibs that sends them; the older "dibs has your phone" bar otherwise.
-            val lends = view.lends
-            // While typing they give their room to the chat: with the keyboard open on a small
-            // screen they left the box no room at all (the user, 2026-10-06, word 117).
-            if (!typing) {
-                if (lends != null && (lends.phone != null || lends.laptop != null)) LendToggles(lends) else view.lend?.let { LendBar(it) }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 // The other tabs keep their place (scroll, folds) under a page and across tab
@@ -209,9 +205,13 @@ fun DibsApp() {
     }
 }
 
-/** The mark on dibs's tile, the state in an eyebrow above the name, and ⋮. */
+/**
+ * The slim bar, pinned over every tab (about 52 dp): the mark, "dibs" with its state under it, marks
+ * that show only when they matter (the phone or laptop lent to dibs, a usage window past its warning),
+ * and ⋮. A tap on the mark, name or marks opens the dibs page; nothing hides on scroll or typing.
+ */
 @Composable
-private fun Header(link: Link, state: State?, typing: Boolean) {
+private fun Header(link: Link, state: State?, lends: Lends?, oldLend: Lend?) {
     var menu by remember { mutableStateOf(false) }
     val words = stateWords(link, state)
     // Red only with words: the link is lost. Muted while it can't do anything for you.
@@ -222,33 +222,54 @@ private fun Header(link: Link, state: State?, typing: Boolean) {
         state.doing == null && !state.busy && !state.usage.isNullOrBlank() -> Palette.Warning
         else -> Palette.Accent
     }
+    val ctx = LocalContext.current
+    val now by rememberNow()
+    val warn = remember(state?.limits, now / 60) { usageWarning(state?.limits.orEmpty(), now, ctx) }
+    val phone = lends?.phone?.lent == true || (lends?.phone == null && oldLend != null)
+    val laptop = lends?.laptop?.lent == true
     Column(Modifier.fillMaxWidth().background(Palette.Bg).statusBarsPadding()) {
         Row(
-            Modifier.fillMaxWidth().padding(start = Space.L, end = Space.XS, top = 6.dp, bottom = 10.dp),
+            Modifier.fillMaxWidth().padding(start = Space.L, end = Space.XS, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(36.dp).clip(CircleShape).background(Palette.Tile), contentAlignment = Alignment.Center) {
-                // The launcher's monochrome layer: its mark fills 46 of 108 dp, so draw it larger than the tile.
-                Icon(painterResource(R.drawable.ic_dibs_monochrome), null, Modifier.requiredSize(48.dp), tint = Palette.Text)
-            }
-            // The usage steps aside while typing. With it, the state takes what it needs up to 130 dp (a
-            // longer one, "Waiting for dibs", wraps), and the usage the rest; without, all of it.
-            val limits = state?.limits?.takeIf { it.isNotEmpty() && !typing }
-            Column(
-                (if (limits != null) Modifier.widthIn(max = 130.dp) else Modifier.weight(1f)).padding(start = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+            Row(
+                Modifier.weight(1f).clip(MaterialTheme.shapes.medium)
+                    .clickable(role = Role.Button, onClickLabel = "Open the dibs page") { Dibs.open(Page.Status) }
+                    .semantics { contentDescription = "dibs, laptop and phone" }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Eyebrow(words, color = color)
-                Text("dibs", style = AppType.heading, color = Palette.Text)
-            }
-            if (limits != null) {
-                Box(Modifier.weight(1f).padding(start = Space.S), contentAlignment = Alignment.CenterEnd) { Usage(limits) }
+                Box(Modifier.size(32.dp).clip(CircleShape).background(Palette.Tile), contentAlignment = Alignment.Center) {
+                    // The launcher's monochrome layer: its mark fills 46 of 108 dp, so draw it larger than the tile.
+                    Icon(painterResource(R.drawable.ic_dibs_monochrome), null, Modifier.requiredSize(42.dp), tint = Palette.Text)
+                }
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text("dibs", style = AppType.heading, color = Palette.Text)
+                    Text(words, style = AppType.small, color = color)
+                }
+                if (phone) LentMark(R.drawable.lucide_smartphone, "Phone lent to dibs")
+                if (laptop) LentMark(R.drawable.lucide_laptop, "Laptop lent to dibs")
+                if (warn != null) {
+                    Text(
+                        warn.replace(' ', NBSP),
+                        Modifier.padding(start = 6.dp).semantics { contentDescription = "Claude usage $warn" },
+                        style = AppType.mono, color = Palette.Warning,
+                    )
+                }
             }
             Box {
                 IconButton(onClick = { menu = true }) {
                     Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More", tint = Palette.Muted)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Laptop and phone") },
+                        leadingIcon = { Icon(painterResource(R.drawable.lucide_laptop), null, Modifier.size(18.dp)) },
+                        onClick = {
+                            menu = false
+                            Dibs.open(Page.Status)
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Open Tether") },
                         leadingIcon = { Icon(painterResource(R.drawable.lucide_external_link), null, Modifier.size(18.dp)) },
@@ -262,120 +283,39 @@ private fun Header(link: Link, state: State?, typing: Boolean) {
         }
         // dibs's brain is on but down: one tap starts it (your start: no limit holds it back).
         if (link == Link.CONNECTED && state?.brainDown == true) {
-            Row(Modifier.fillMaxWidth().padding(start = Space.L, end = Space.L, bottom = 10.dp), horizontalArrangement = Arrangement.End) {
+            Row(Modifier.fillMaxWidth().padding(start = Space.L, end = Space.L, bottom = 8.dp), horizontalArrangement = Arrangement.End) {
                 ActButton("Start dibs", "primary") { Dibs.host.act("brain-start") }
             }
         }
     }
 }
 
-/**
- * Claude's usage, always in sight: each window's percent and when it resets, amber near the end.
- * Never cut: a line too long for its room breaks only after its "·" ("7d 93% ·" over "resets Sun
- * 10:00"), as each half is held together.
- */
+/** A filled accent pill with an icon: lent to dibs, readable without colour (the fill and the icon say it). */
 @Composable
-private fun Usage(limits: List<Limit>) {
-    val ctx = LocalContext.current
-    val now by rememberNow()
-    val lines = remember(limits, now / 60) {
-        val zone = ZoneId.systemDefault()
-        limitWords(
-            limits, now,
-            clock = { android.text.format.DateFormat.getTimeFormat(ctx).format(Date(it * 1000)) },
-            day = { Instant.ofEpochSecond(it).atZone(zone).dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()) },
-        )
-    }
-    if (lines.isEmpty()) return
-    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        for (l in lines) {
-            Text(
-                remember(l.text) { l.text.replace(' ', NBSP).replace("$NBSP·$NBSP", "$NBSP· ") },
-                style = AppType.small,
-                color = if (l.warn) Palette.Warning else Palette.Muted,
-                textAlign = TextAlign.End,
-            )
-        }
-    }
+private fun LentMark(icon: Int, description: String) {
+    Box(
+        Modifier.padding(start = 6.dp).size(28.dp).background(Palette.AccentDim, CircleShape)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) { Icon(painterResource(icon), null, Modifier.size(16.dp), tint = Palette.Accent) }
 }
 
-private const val NBSP = '\u00A0'
-
-/** "dibs has your phone": above every tab while dibs has it, Take it back in one tap. */
-@Composable
-private fun LendBar(lend: Lend) {
-    Row(
-        Modifier.padding(horizontal = Space.L).padding(bottom = Space.S).fillMaxWidth()
-            .background(Palette.AccentDim, MaterialTheme.shapes.medium)
-            .padding(start = Space.M, end = Space.S, top = 10.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(painterResource(R.drawable.lucide_smartphone), null, Modifier.size(18.dp), tint = Palette.Accent)
-        Column(Modifier.weight(1f)) {
-            Text("dibs has your phone", style = AppType.label, color = Palette.Text)
-            if (lend.text.isNotBlank()) Text(lend.text, style = AppType.small, color = Palette.Text)
-        }
-        ActButton("Take it back", "primary") { Dibs.host.act("phone-back") }
-    }
-}
-
-/** Lend the phone and the laptop to dibs, or take them back (task #29): one tap each, above every tab. */
-@Composable
-private fun LendToggles(lends: Lends) {
-    Row(
-        // Both as tall as the taller one, when one's words wrap.
-        Modifier.padding(horizontal = Space.L).padding(bottom = Space.S).fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(Space.S),
-    ) {
-        lends.phone?.let { LendToggleCard(it, "Phone", R.drawable.lucide_smartphone, Modifier.weight(1f).fillMaxHeight()) }
-        lends.laptop?.let { LendToggleCard(it, "Laptop", R.drawable.lucide_laptop, Modifier.weight(1f).fillMaxHeight()) }
-    }
-}
+/** The first usage window past its warning as "5h 88%" (no reset time), or null when none is. */
+internal fun usageWarning(limits: List<Limit>, now: Long, ctx: android.content.Context): String? =
+    limitWords(
+        limits, now,
+        clock = { android.text.format.DateFormat.getTimeFormat(ctx).format(Date(it * 1000)) },
+        day = { Instant.ofEpochSecond(it).atZone(ZoneId.systemDefault()).dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()) },
+    ).firstOrNull { it.warn }?.text?.substringBefore(" · ")
 
 @Composable
-private fun LendToggleCard(t: LendToggle, title: String, icon: Int, modifier: Modifier) {
-    // Between the tap and dibs's next view: say so, and don't send it twice.
-    var sent by remember(t.lent, t.action) { mutableStateOf(false) }
-    // A tap dibs refused (a locked laptop, a phone out of reach) changes nothing: free it again.
-    LaunchedEffect(sent) {
-        if (sent) {
-            delay(15_000)
-            sent = false
-        }
-    }
-    val sub = when {
-        sent -> if (t.lent) "Taking it back" else "Lending"
-        t.lent -> t.text.ifBlank { "Lent to dibs" }
-        else -> "Yours"
-    }
-    Row(
-        modifier.clip(MaterialTheme.shapes.medium)
-            .background(if (t.lent) Palette.AccentDim else Palette.SurfaceLow)
-            .toggleable(value = t.lent, enabled = !sent, role = Role.Switch) {
-                sent = true
-                Dibs.host.act(t.action)
-            }
-            .semantics { stateDescription = if (t.lent) "lent to dibs" else "yours" }
-            .padding(horizontal = Space.M, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(painterResource(icon), null, Modifier.size(18.dp), tint = if (t.lent) Palette.Accent else Palette.Muted)
-        Column(Modifier.weight(1f)) {
-            Text(if (t.lent) "$title lent to dibs" else title, style = AppType.label, color = Palette.Text)
-            Text(sub, style = AppType.small, color = if (t.lent) Palette.Text else Palette.Muted)
-        }
-    }
-}
-
-@Composable
-private fun NavBar(tab: Tab, badges: Badges, tasks: Int, yours: Boolean, onTab: (Tab) -> Unit) {
+private fun NavBar(tab: Tab, badges: Badges, tasks: Int, yours: Boolean, ideas: Int, onTab: (Tab) -> Unit) {
     NavigationBar(containerColor = Palette.SurfaceLow, tonalElevation = 0.dp) {
         for (t in Tab.entries) {
             val count = when (t) {
                 Tab.WAITING -> badges.waiting
                 Tab.TASKS -> tasks
+                Tab.IDEAS -> ideas
                 else -> 0
             }
             // An older dibs: the old Work tab.

@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -73,6 +74,11 @@ internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long
     if (q.kind == "root" && q.root != null) return RootCard(q, q.root, now, modifier)
     if (q.kind == "rootkey") return RootKeyCard(q, now, modifier)
     Column(modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // A tap on the card's words opens the task it is about (not the buttons or the answer box).
+        Column(
+            (if (task != null) Modifier.clip(MaterialTheme.shapes.small).clickable(role = Role.Button, onClickLabel = "Open task") { Dibs.open(Page.Task(task)) } else Modifier),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (q.kind == "phone") Icon(painterResource(R.drawable.lucide_smartphone), "Phone request", Modifier.size(14.dp), tint = Palette.Muted)
             if (q.kind == "laptop") Icon(painterResource(R.drawable.lucide_laptop), "Laptop request", Modifier.size(14.dp), tint = Palette.Muted)
@@ -81,6 +87,7 @@ internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long
         }
         Text(q.title, style = AppType.body.copy(fontWeight = Bold), color = Palette.Text)
         if (q.why.isNotBlank()) Text(q.why, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
+        }
         q.details?.let { Details(q.id, it) }
         QuestionControls(q.id, "q/${q.id}", q.actions, q.reply, q.hint, Modifier.padding(top = 4.dp))
         if (task != null) {

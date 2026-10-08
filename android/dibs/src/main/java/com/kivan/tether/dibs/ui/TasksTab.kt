@@ -44,7 +44,6 @@ import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.dayOf
 import com.kivan.tether.dibs.forYouWords
-import com.kivan.tether.dibs.laptopWords
 import com.kivan.tether.dibs.taskWords
 import com.kivan.tether.dibs.tasksList
 import com.kivan.tether.dibs.ui.theme.AppType
@@ -73,7 +72,7 @@ private val ACT_WORDS = mapOf(
     "delete" to "Delete",
     "up" to "Move up",
     "down" to "Move down",
-    "to_next" to "Move to Up next",
+    "to_next" to "Move to the queue",
     "to_later" to "Move to Later",
     "story" to "Full story",
 )
@@ -91,15 +90,6 @@ internal fun TasksTab(view: DibsView) {
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
         verticalArrangement = Arrangement.spacedBy(Space.S),
     ) {
-        // The laptop's state, where the running work is (a dibs that sends it).
-        view.state.laptop?.let(::laptopWords)?.let { words ->
-            item(key = "_laptop") {
-                Column(Modifier.padding(top = Space.M), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Eyebrow("Laptop")
-                    Text(words, style = AppType.small, color = Palette.Muted)
-                }
-            }
-        }
         // What the tab's badge counts, said plainly (nothing when nothing wants you).
         val open = list.groups.flatMap { it.tasks }
         val read = open.count { it.state != "needs" && Dibs.unread(it) }
@@ -112,7 +102,9 @@ internal fun TasksTab(view: DibsView) {
             // dibs's board as it sent it: no grouping or sorting here.
             val columns = board.columns.filter { it.cards.isNotEmpty() }
             for (c in columns) {
-                item(key = "col-${c.key}") { Section(c.title) }
+                // The laptop has no room: say why the queue waits, right above it.
+                if (c.key == "next" && board.room?.n == 0) item(key = "_room") { RoomLine(board.room.line) }
+                item(key = "col-${c.key}") { Section("${c.title} · ${c.cards.size}") }
                 items(c.cards, key = { "c-${c.key}-${it.key}" }) { card -> BoardCardRow(card, view, armed, Modifier.animateItem()) }
             }
             if (columns.isEmpty()) item(key = "_none") { Quiet("Nothing on the board. Tasks you ask for show here.") }
@@ -365,5 +357,14 @@ private fun TickedRow(t: YourTask, modifier: Modifier) {
             Text(listOfNotNull(t.project, day?.let { "ticked $it" }).joinToString(" · "), style = AppType.small, color = Palette.Muted)
         }
         ActButton("Untick", "plain") { Dibs.untick(t) }
+    }
+}
+
+/** "No room for another task": the laptop's reason, small and amber with an icon (never colour alone). */
+@Composable
+private fun RoomLine(line: String) {
+    Row(Modifier.padding(top = Space.M), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(painterResource(R.drawable.lucide_clock), null, Modifier.padding(top = 2.dp).size(14.dp), tint = Palette.Warning)
+        Text(line, style = AppType.small, color = Palette.Warning)
     }
 }

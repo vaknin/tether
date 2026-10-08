@@ -38,7 +38,12 @@ data class TalkLine(
     val thread: String? = null,
     /** Where a line of the user's came from ("From your conversation about the home server"), small under it. */
     val under: String? = null,
+    /** The line this one answers (a swipe to reply), quoted at its top; an older dibs sends none. */
+    val reply: ReplyRef? = null,
 )
+
+/** The line a reply answers: its number, who said it (`dibs` or `user`) and its text, whole (the bubble clamps it). */
+data class ReplyRef(val n: Long, val who: String, val text: String)
 
 /** A subject's way into an Ask about conversation: its key (`task:85`, `note:41`) and the button's words. */
 data class AskEntry(val about: String, val label: String)
@@ -359,7 +364,10 @@ data class BoardColumn(val key: String, val title: String, val cards: List<Board
  * dibs's board for the Tasks tab: its columns in order, and what's done ([doneCount], [done] its cards).
  * The phone draws it unchanged: no grouping or sorting of its own (the user, 2026-10-06).
  */
-data class Board(val columns: List<BoardColumn>, val doneCount: Int, val done: List<BoardCard>)
+data class Board(val columns: List<BoardColumn>, val doneCount: Int, val done: List<BoardCard>, val room: BoardRoom? = null)
+
+/** How many more tasks the laptop has room to start ([n], 0 = none) and why, in dibs's words ([line]). */
+data class BoardRoom(val n: Int, val line: String)
 
 data class DibsView(
     /** dibs's clock when it published. */
@@ -550,6 +558,7 @@ data class DibsView(
                     .filter { it.key.isNotEmpty() }.distinctBy { it.key },
                 doneCount = done.long("count")?.toInt() ?: doneCards.size,
                 done = doneCards,
+                room = o.optJSONObject("room")?.let { r -> r.str("line")?.takeIf { it.isNotBlank() }?.let { BoardRoom(r.optInt("room", -1), it) } },
             )
         }
 
@@ -600,6 +609,7 @@ data class DibsView(
             open = o.optJSONObject("open")?.long("story"),
             thread = o.str("thread"),
             under = o.str("under"),
+            reply = o.optJSONObject("reply")?.let { r -> ReplyRef(r.optLong("n"), r.optString("who"), r.optString("text")) },
         )
 
         private fun question(o: JSONObject): Question {

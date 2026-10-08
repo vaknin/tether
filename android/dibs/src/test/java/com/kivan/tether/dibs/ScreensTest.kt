@@ -4,6 +4,12 @@ import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.hasText
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -84,6 +90,7 @@ class ScreensTest {
         Dibs.open.clear()
         Dibs.chat.draft = ""
         Dibs.chat.about = null
+        Dibs.chat.replyTo = null
         Dibs.holdTap = null
     }
 
@@ -267,7 +274,7 @@ class ScreensTest {
         Dibs.pages.clear()
         Dibs.chat.about = About(31, "ask", "Recap", "It tried folding by day first, which hid the newest entry.")
         compose.waitForIdle()
-        compose.onNodeWithText("About a part of the full story of Recap").assertIsDisplayed()
+        compose.onNodeWithText("About a part of the full story of #31 Recap").assertIsDisplayed()
         shot("chat-about-story")
     }
 
@@ -277,9 +284,16 @@ class ScreensTest {
         Dibs.tab = "tasks"
         compose.waitForIdle()
         compose.onNodeWithText(LONG_TITLE).assertIsDisplayed()
-        compose.onAllNodes(hasText("resets", substring = true), useUnmergedTree = true).assertCountEquals(2)
         noEllipsis()
         shot("tasks-long")
+        // The usage windows and the laptop's lend card live on the dibs page now.
+        Dibs.pages += Page.Status
+        compose.waitForIdle()
+        compose.onAllNodes(hasText("resets", substring = true), useUnmergedTree = true).assertCountEquals(2)
+        noEllipsis()
+        shot("dibs-page-long")
+        Dibs.pages.clear()
+        compose.waitForIdle()
         Dibs.pages += Page.Task(41)
         compose.waitForIdle()
         noEllipsis()
@@ -305,7 +319,8 @@ class ScreensTest {
         show(boardView())
         Dibs.tab = "tasks"
         compose.waitForIdle()
-        for (h in listOf("WORKING NOW", "UP NEXT", "LATER", "DONE · 12")) compose.onNodeWithText(h).assertIsDisplayed()
+        for (h in listOf("WORKING NOW · 1", "QUEUE · 1", "LATER · 1")) compose.onNodeWithText(h).assertIsDisplayed()
+        compose.onNodeWithText("DONE · 12").assertIsDisplayed()
         compose.onNodeWithText(LONG_TITLE).assertIsDisplayed()
         compose.onNodeWithText("#31").assertIsDisplayed()
         compose.onNodeWithText("On hold").assertIsDisplayed()
@@ -337,7 +352,7 @@ class ScreensTest {
         compose.waitForIdle()
         compose.onNodeWithText(LONG_TITLE).performTouchInput { longClick() }
         compose.waitForIdle()
-        for (w in listOf("Put on hold", "Stop", "Full story", "Move to Up next")) compose.onAllNodes(hasText(w)).assertCountEquals(if (w == "Full story") 2 else 1)
+        for (w in listOf("Put on hold", "Stop", "Full story", "Move to the queue")) compose.onAllNodes(hasText(w)).assertCountEquals(if (w == "Full story") 2 else 1)
         for (w in listOf("Resume", "Delete", "Move up", "Move to Later")) compose.onAllNodes(hasText(w)).assertCountEquals(0)
         // Stop asks again; only the second tap sends it.
         compose.onNodeWithText("Stop").performClick()
@@ -394,7 +409,7 @@ class ScreensTest {
                     card("task:31", 31, LONG_TITLE, "working", "Running the screen tests again after the header change",
                         listOf("work saved"), listOf("hold", "stop", "story", "to_next"), JSONObject().put("state", "ready").put("have", true)),
                 )))
-                .put(JSONObject().put("key", "next").put("title", "Up next").put("cards", JSONArray().put(
+                .put(JSONObject().put("key", "next").put("title", "Queue").put("cards", JSONArray().put(
                     card("idea:7", null, "A widget that shows the board on the home screen", "an idea", actions = listOf("up", "down", "to_later", "delete")),
                 )))
                 .put(JSONObject().put("key", "later").put("title", "Later").put("cards", JSONArray().put(
@@ -454,6 +469,161 @@ class ScreensTest {
             Nothing on the phone; dibs's side still writes two titles.
             """.trimIndent(),
         )
+    }
+
+    /** The usage of [pct] percent in the first window. */
+    private fun usageAt(v: JSONObject, pct: Double): JSONObject {
+        v.getJSONObject("dibs").getJSONObject("state").getJSONObject("limits").getJSONArray("windows")
+            .getJSONObject(0).put("pct", pct)
+        return v
+    }
+
+    @Test
+    fun theBarSaysNothingAboutUsageUntilAWindowWarns() {
+        val v = usageAt(view(talk = longTalk()), 17.0)
+        v.getJSONObject("dibs").getJSONObject("state").getJSONObject("limits").getJSONArray("windows").getJSONObject(1).put("pct", 20.0)
+        show(v)
+        compose.onAllNodes(hasText("5h", substring = true)).assertCountEquals(0)
+        compose.onNodeWithText("dibs").assertIsDisplayed()
+    }
+
+    @Test
+    fun theBarShowsTheWarningWindowWithoutItsResetTime() {
+        show(usageAt(view(talk = longTalk()), 88.0))
+        compose.onNodeWithText("5h\u00A088%").assertIsDisplayed()
+        compose.onAllNodes(hasText("resets", substring = true)).assertCountEquals(0)
+        shot("bar-warning")
+    }
+
+    @Test
+    fun aLentLaptopShowsAsAPillAndAnUnlentPhoneDoesNot() {
+        show(view(talk = longTalk()))
+        compose.onNodeWithContentDescription("Laptop lent to dibs", useUnmergedTree = true).assertExists()
+        compose.onNodeWithContentDescription("Phone lent to dibs", useUnmergedTree = true).assertDoesNotExist()
+        // No lend cards on the chat any more.
+        compose.onAllNodes(hasText("Until 15:40", substring = true)).assertCountEquals(0)
+    }
+
+    @Test
+    fun aTapOnTheBarOpensTheDibsPageWithBothLendCardsAndEveryUsageLine() {
+        show(view(talk = longTalk()))
+        compose.onNodeWithContentDescription("dibs, laptop and phone").performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Status, Dibs.pages.last())
+        compose.onNodeWithText("Phone").assertIsDisplayed()
+        compose.onNodeWithText("Laptop lent to dibs").assertIsDisplayed()
+        compose.onNodeWithText("Until 15:40").assertIsDisplayed()
+        compose.onNodeWithText("5h\u00A087%", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("7d\u00A063%", substring = true).assertIsDisplayed()
+        shot("dibs-page")
+    }
+
+    @Test
+    fun theChatKeepsMostOfTheScreen() {
+        show(view(talk = longTalk()))
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot.height
+        val chat = compose.onNodeWithTag("conversation").fetchSemanticsNode().boundsInRoot.height
+        assertTrue("chat ${chat / root}", chat / root > 0.65f)
+        shot("chat-share")
+    }
+
+    @Test
+    fun heldDibsShowsItsLineWithoutTheDots() {
+        val held = JSONObject().put("kind", "held").put("note", "dibs waits for your next message")
+            .put("button", "Go ahead").put("action", "go-ahead").put("style", "primary")
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").getJSONObject("state").put("busy", true).put("line", "Reading the board")
+        show(v)
+        compose.onAllNodesWithTag("typing-dots").assertCountEquals(1)
+        v.getJSONObject("dibs").getJSONObject("state").put("hold", held)
+        host.view.value = JSONObject(v.toString())
+        compose.waitForIdle()
+        compose.onAllNodesWithTag("typing-dots").assertCountEquals(0)
+        compose.onNodeWithText("Reading the board").assertIsDisplayed()
+    }
+
+    @Test
+    fun aSwipeToTheRightRepliesToALineAndAVerticalOneDoesNot() {
+        show(view(talk = longTalk()))
+        compose.onNodeWithText("Line 27 from me").performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        assertEquals(null, Dibs.chat.replyTo)
+        compose.onNodeWithText("Line 27 from me").performTouchInput { swipeRight(startX = left + 10f, endX = left + 400f) }
+        compose.waitForIdle()
+        assertEquals("u-27", Dibs.chat.replyTo?.id)
+        compose.onNodeWithText("Replying to yourself").assertIsDisplayed()
+        shot("chat-reply-chip")
+        // One at a time: an about chip replaces the reply.
+        Dibs.chat.aboutIs(About(31, "ask", "Recap"))
+        assertEquals(null, Dibs.chat.replyTo)
+        Dibs.chat.replyIs(longTalk().let { TalkLine("s1", 1, false, "x", null, false, 0, emptyList(), null) })
+        assertEquals(null, Dibs.chat.about)
+    }
+
+    @Test
+    fun sendingAReplyPutsItsLineInTheSayAndClearsTheChip() {
+        show(view(talk = longTalk()))
+        Dibs.chat.replyIs(TalkLine("s28", 28, false, "dibs's line 28", null, false, 0, emptyList(), null))
+        compose.waitForIdle()
+        Dibs.chat.draft = "yes, that one"
+        Dibs.chat.send()
+        compose.waitForIdle()
+        val say = host.acts.last { it.first == "say" }.second!!
+        assertEquals(28L, say.getJSONObject("reply").getLong("n"))
+        assertEquals(null, Dibs.chat.replyTo)
+        compose.onAllNodesWithText("Replying to dibs").assertCountEquals(0)
+    }
+
+    @Test
+    fun aReplyDrawsItsQuoteAndATapJumpsToTheQuotedLine() {
+        val talk = longTalk().toMutableList()
+        talk[29] = JSONObject(talk[29].toString()).put("reply", JSONObject().put("n", 3).put("who", "user").put("text", "Line 3 from me"))
+        show(view(talk = talk))
+        compose.onNodeWithText("You").assertIsDisplayed()
+        compose.onNodeWithText("Line 3 from me").performClick()
+        compose.waitForIdle()
+        shot("chat-reply-quote")
+    }
+
+    @Test
+    fun selectTextOpensTheLineWholeInASheet() {
+        show(view(talk = longTalk()))
+        compose.onNodeWithText("Line 27 from me").performTouchInput { longClick() }
+        compose.onNodeWithText("Select text").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Copy all").assertIsDisplayed()
+        shot("chat-select-text")
+    }
+
+    @Test
+    fun aWaitingCardOpensItsTaskOnATapOnItsWords() {
+        val v = view(talk = longTalk(), questions = listOf(JSONObject().put("id", 7).put("title", "Queue the cleanup now?").put("why", "It is small")
+            .put("from", "agent").put("ts", NOW - 60).put("kind", "question").put("task", 41).put("actions", JSONArray())))
+        v.getJSONObject("dibs").put("yours", JSONArray().put(yours(41, "Cleanup", "needs")))
+        show(v)
+        Dibs.tab = "waiting"
+        compose.waitForIdle()
+        compose.onNodeWithText("Queue the cleanup now?").performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Task(41), Dibs.pages.last())
+    }
+
+    @Test
+    fun theTasksTabCountsItsSectionsAndExplainsAFullLaptop() {
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").put("yours", JSONArray().put(yours(1, "Cleanup", "working")))
+        v.getJSONObject("dibs").put("board", JSONObject()
+            .put("columns", JSONArray()
+                .put(JSONObject().put("key", "next").put("title", "Queue").put("cards", JSONArray().put(JSONObject().put("key", "task:1").put("n", 1).put("title", "Cleanup")
+                    .put("state_words", "Waiting its turn").put("now", "").put("tags", JSONArray()).put("actions", JSONArray())))))
+            .put("done", JSONObject().put("count", 0).put("cards", JSONArray()))
+            .put("room", JSONObject().put("room", 0).put("line", "No room for another task: the laptop is at 14 of 15.6 GB")))
+        show(v)
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText("QUEUE · 1").assertIsDisplayed()
+        compose.onNodeWithText("No room for another task", substring = true).assertIsDisplayed()
+        shot("tasks-queue")
     }
 
     private fun yours(id: Long, title: String, state: String, asked: String = title, unread: Boolean = false) = JSONObject()

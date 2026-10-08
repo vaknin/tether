@@ -6,6 +6,29 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import com.kivan.tether.dibs.ReplyRef
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -68,6 +91,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -165,7 +189,19 @@ internal data class ChatLook(
     val asks: Map<String, Asking> = emptyMap(),
     /** Root steps and the key's setup by question id: their line offers Review or Set up ([RootActions]), never a plain Approve. */
     val roots: Map<Long, Question> = emptyMap(),
+    /** Swipe or long press to reply: the dibs chat only (a task's chat has no `reply` to send). */
+    val replies: Boolean = false,
 )
+
+/**
+ * What a line's long press and swipe need from the conversation around it: Select text opens its
+ * sheet, [reply] (null where replying isn't offered) fills the box's chip, [jump] scrolls to a quoted
+ * line, and [flash] is the line number lit for a second after that.
+ */
+@Stable
+internal class LineActions(val select: (TalkLine) -> Unit, val reply: ((TalkLine) -> Unit)?, val jump: (Long) -> Unit, val flash: Long?)
+
+internal val LocalLineActions = compositionLocalOf<LineActions?> { null }
 
 /** The chat's rows from [talk] and the echoes still waiting, regrouped as the clock moves on. */
 @Composable
@@ -246,7 +282,7 @@ private fun PulseDot(modifier: Modifier = Modifier) {
  * (always after one of mine). Scrolled up, "↓ N new" goes back down.
  */
 @Composable
-internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, busy: Boolean, busyLine: String?, look: ChatLook = ChatLook()) {
+internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, busy: Boolean, busyLine: String?, look: ChatLook = ChatLook(), held: Boolean = false) {
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val reversed = remember(rows) { rows.asReversed() }
@@ -267,15 +303,35 @@ internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, bus
         if (i < 0) 0 else rows.drop(i + 1).count { it !is DayRow && it !is FoldRow }
     }
     val scrolledUp by remember { derivedStateOf { state.firstVisibleItemIndex > 3 } }
+    var selecting by remember { mutableStateOf<TalkLine?>(null) }
+    var flash by remember { mutableStateOf<Long?>(null) }
+    val actions = remember(look.replies, flash, reversed, busy) {
+        LineActions(
+            select = { selecting = it },
+            reply = if (look.replies) { l -> Dibs.chat.replyIs(l) } else null,
+            jump = { n ->
+                val at = reversed.indexOfFirst { it is LineRow && it.line.n == n || it is NoteRow && it.line.n == n }
+                if (at >= 0) scope.launch {
+                    state.animateScrollToItem(at + if (busy) 1 else 0)
+                    flash = n
+                    delay(1000)
+                    flash = null
+                }
+            },
+            flash = flash,
+        )
+    }
+    selecting?.let { SelectSheet(it) { selecting = null } }
 
-    Box(Modifier.fillMaxSize()) {
+    CompositionLocalProvider(LocalLineActions provides actions) {
+    Box(Modifier.fillMaxSize().testTag("conversation")) {
         LazyColumn(
             Modifier.fillMaxSize(),
             state = state,
             reverseLayout = true,
             contentPadding = PaddingValues(horizontal = Space.L, vertical = Space.S),
         ) {
-            if (busy) item(key = "_busy") { Typing(busyLine) }
+            if (busy) item(key = "_busy") { Typing(busyLine, dots = !held) }
             chatItems(reversed, echoes, look)
         }
         AnimatedVisibility(
@@ -293,6 +349,25 @@ internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, bus
             ) {
                 Icon(painterResource(R.drawable.lucide_arrow_down), null, Modifier.size(16.dp), tint = Palette.Text)
                 Text(if (fresh > 0) "$fresh new" else "Latest", style = AppType.label, color = Palette.Text)
+            }
+        }
+    }
+    }
+}
+
+/** Select text: the line whole in a sheet, any part of it selectable, and Copy all. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectSheet(l: TalkLine, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Palette.SurfaceLow, contentColor = Palette.Text) {
+        Column(Modifier.padding(horizontal = Space.L).padding(bottom = Space.L), verticalArrangement = Arrangement.spacedBy(Space.M)) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                SelectionContainer { Text(l.text, style = bodyStyle, color = Palette.Text) }
+            }
+            ActButton("Copy all", "primary", icon = R.drawable.lucide_copy) {
+                copy(ctx, l.text)
+                onDismiss()
             }
         }
     }
@@ -334,7 +409,11 @@ private fun DayHeader(row: DayRow, look: ChatLook) {
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NoteLine(l: TalkLine, look: ChatLook) {
+private fun NoteLine(l: TalkLine, look: ChatLook) = SwipeToReply(l) { NoteLineBody(l, look) }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun NoteLineBody(l: TalkLine, look: ChatLook) {
     val open = Dibs.open[l.id] == true
     var menu by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
@@ -381,12 +460,33 @@ private fun ReadIt(l: TalkLine, look: ChatLook, modifier: Modifier = Modifier) {
     }
 }
 
-/** Copy and (in dibs's own chat) Hide, on a long press (the old swipe, tucked away). */
+/** Reply and Select text, Copy and (in dibs's own chat) Hide, on a long press. */
 @Composable
 private fun LineMenu(expanded: Boolean, l: TalkLine, look: ChatLook, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    val actions = LocalLineActions.current
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        actions?.reply?.let { reply ->
+            if (l.n > 0 && l.ask == null) {
+                DropdownMenuItem(
+                    text = { Text("Reply") },
+                    leadingIcon = { Icon(painterResource(R.drawable.lucide_reply), null, Modifier.size(18.dp)) },
+                    onClick = {
+                        onDismiss()
+                        reply(l)
+                    },
+                )
+            }
+        }
         if (l.text.isNotEmpty()) {
+            DropdownMenuItem(
+                text = { Text("Select text") },
+                leadingIcon = { Icon(painterResource(R.drawable.lucide_text_cursor), null, Modifier.size(18.dp)) },
+                onClick = {
+                    onDismiss()
+                    actions?.select?.invoke(l)
+                },
+            )
             DropdownMenuItem(
                 text = { Text("Copy") },
                 leadingIcon = { Icon(painterResource(R.drawable.lucide_copy), null, Modifier.size(18.dp)) },
@@ -420,7 +520,81 @@ private fun Line(row: LineRow, look: ChatLook) {
         AnsweredRow(l, outcomeWords(outcome), look)
         return
     }
-    Bubble(row, outcome, look)
+    if (ask == null) SwipeToReply(l) { Bubble(row, outcome, look) } else Bubble(row, outcome, look)
+}
+
+/**
+ * A line that follows a swipe to the right a little, shows a reply arrow on its left that fades in
+ * and ticks the phone once past [SWIPE_FROM], and springs back on release; past it, the box is
+ * replying to the line. Horizontal only: a vertical scroll never starts it. Nothing where replying
+ * isn't offered (a task's chat, an older dibs' lines without a number).
+ */
+@Composable
+private fun SwipeToReply(l: TalkLine, content: @Composable () -> Unit) {
+    val reply = LocalLineActions.current?.reply
+    if (reply == null || l.n <= 0) return content()
+    val density = LocalDensity.current
+    val max = with(density) { SWIPE_MAX.toPx() }
+    val from = with(density) { SWIPE_FROM.toPx() }
+    val haptics = LocalHapticFeedback.current
+    var off by remember { mutableFloatStateOf(0f) }
+    var past by remember { mutableStateOf(false) }
+    val drag = rememberDraggableState { d ->
+        off = (off + d).coerceIn(0f, max)
+        val now = off >= from
+        if (now && !past) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        past = now
+    }
+    Box(
+        Modifier.draggable(
+            drag, Orientation.Horizontal,
+            onDragStopped = {
+                if (off >= from) reply(l)
+                past = false
+                animate(off, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { v, _ -> off = v }
+            },
+        ),
+    ) {
+        Icon(
+            painterResource(R.drawable.lucide_reply), null,
+            Modifier.align(Alignment.CenterStart).padding(start = Space.S).size(20.dp).graphicsLayer { alpha = (off / from).coerceIn(0f, 1f) },
+            tint = Palette.Accent,
+        )
+        Box(Modifier.offset { IntOffset(off.roundToInt(), 0) }) { content() }
+    }
+}
+
+private val SWIPE_FROM = 56.dp
+private val SWIPE_MAX = 72.dp
+
+/** The quote at the top of a reply: who said it, and two lines of what; a tap goes to that line. */
+@Composable
+private fun ReplyQuote(r: ReplyRef, mine: Boolean, look: ChatLook) {
+    val jump = LocalLineActions.current?.jump
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(MaterialTheme.shapes.small)
+            .background(Palette.Bg.copy(alpha = 0.35f))
+            .then(if (jump != null) Modifier.clickable(role = Role.Button, onClickLabel = "Go to that message") { jump(r.n) } else Modifier),
+    ) {
+        Box(Modifier.width(3.dp).fillMaxHeight().background(Palette.Accent))
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(replyWho(r, look), style = AppType.label, color = Palette.Accent)
+            FadedText(r.text, 2, AppType.small, if (mine) MineMeta else Palette.Muted)
+        }
+    }
+}
+
+private fun replyWho(r: ReplyRef, look: ChatLook): String = if (r.who == "user") "You" else look.name ?: "dibs"
+
+/** [text] clamped to [lines] lines with its end faded out, never an ellipsis. */
+@Composable
+private fun FadedText(text: String, lines: Int, style: TextStyle, color: Color) {
+    var over by remember(text) { mutableStateOf(false) }
+    Text(
+        text, style = style.merge(TextStyle(textDirection = TextDirection.Content)), color = color, maxLines = lines, overflow = TextOverflow.Clip,
+        onTextLayout = { over = it.hasVisualOverflow },
+        modifier = if (over) Modifier.fadeOut() else Modifier,
+    )
 }
 
 /** "✓ Inside Tether, separate app? · Inside Tether · 17:58", wrapping whole; a tap opens the full bubble. */
@@ -471,7 +645,8 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
     var menu by remember { mutableStateOf(false) }
     val meta = if (l.mine) MineMeta else Palette.Muted
     val ask = l.ask
-    BubbleBox(l.mine, row.first, row.last) {
+    val lit = LocalLineActions.current?.flash == l.n && l.n > 0
+    BubbleBox(l.mine, row.first, row.last, lit) {
         Box {
             Column(
                 Modifier.combinedClickable(
@@ -486,6 +661,7 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                 if (!l.mine && row.first && look.name != null) {
                     Text(look.name, style = AppType.label, color = Palette.Accent)
                 }
+                l.reply?.let { ReplyQuote(it, l.mine, look) }
                 for (f in l.files) FileView(f, l.mine)
                 if (l.text.isNotEmpty() || row.last) {
                     LineText(l.id, l.text, if (row.last) time(l.ts) else null, meta)
@@ -695,7 +871,7 @@ private fun TextWithMeta(text: AnnotatedString, color: Color, style: TextStyle, 
  * next of its run, with a small tail corner on the last.
  */
 @Composable
-internal fun BubbleBox(mine: Boolean, first: Boolean, last: Boolean, content: @Composable () -> Unit) {
+internal fun BubbleBox(mine: Boolean, first: Boolean, last: Boolean, lit: Boolean = false, content: @Composable () -> Unit) {
     val big = 14.dp
     val join = 4.dp
     val tail = 6.dp
@@ -709,22 +885,26 @@ internal fun BubbleBox(mine: Boolean, first: Boolean, last: Boolean, content: @C
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
     ) {
         Box(Modifier.fillMaxWidth(0.82f), contentAlignment = if (mine) Alignment.CenterEnd else Alignment.CenterStart) {
-            Box(Modifier.clip(shape).background(if (mine) Palette.AccentDim else Palette.Surface)) { content() }
+            // A line just jumped to is lit by a border (shape, not only colour).
+            Box(
+                Modifier.clip(shape).background(if (mine) Palette.AccentDim else Palette.Surface)
+                    .then(if (lit) Modifier.border(2.dp, Palette.Accent, shape) else Modifier),
+            ) { content() }
         }
     }
 }
 
-/** "dibs is on it": three calm dots under the newest line while dibs (or a task's agent) works. */
+/** "dibs is on it": three calm dots under the newest line while dibs (or a task's agent) works; none while the user holds dibs ([dots] false), only the line. */
 @Composable
-internal fun Typing(line: String?) {
+internal fun Typing(line: String?, dots: Boolean = true) {
     val pulse = rememberInfiniteTransition(label = "typing")
     Row(
         Modifier.fillMaxWidth().padding(top = Space.S, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.S),
     ) {
-        Row(
-            Modifier.background(Palette.Surface, MaterialTheme.shapes.medium).padding(horizontal = 12.dp, vertical = 11.dp),
+        if (dots) Row(
+            Modifier.testTag("typing-dots").background(Palette.Surface, MaterialTheme.shapes.medium).padding(horizontal = 12.dp, vertical = 11.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             for (i in 0 until 3) {
@@ -750,6 +930,7 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
     val canSend = box.canSend && enabled
     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
         box.about?.let { AboutChip(it) }
+        box.replyTo?.let { ReplyChip(it, box) }
         if (box.picked.isNotEmpty()) Strip(box)
         Row(
             Modifier.fillMaxWidth().background(Palette.Surface, MaterialTheme.shapes.large).padding(6.dp),
@@ -784,6 +965,25 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
                 ),
                 modifier = Modifier.size(40.dp),
             ) { Icon(painterResource(R.drawable.lucide_send_horizontal), "Send", Modifier.size(20.dp)) }
+        }
+    }
+}
+
+/** "Replying to dibs" over the box, with two lines of that message and ✕; the next message answers it. */
+@Composable
+private fun ReplyChip(l: TalkLine, box: Composer) {
+    Row(
+        Modifier.fillMaxWidth().background(Palette.AccentDim, MaterialTheme.shapes.medium).padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(painterResource(R.drawable.lucide_reply), null, Modifier.size(16.dp), tint = Palette.Accent)
+        Column(Modifier.weight(1f).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(if (l.mine) "Replying to yourself" else "Replying to dibs", style = AppType.label, color = Palette.Text)
+            if (l.text.isNotEmpty()) FadedText(l.text, 2, AppType.small, Palette.Muted)
+        }
+        IconButton(onClick = { box.replyIs(null) }, modifier = Modifier.size(36.dp)) {
+            Icon(painterResource(R.drawable.lucide_x), "Cancel the reply", Modifier.size(16.dp), tint = Palette.Muted)
         }
     }
 }

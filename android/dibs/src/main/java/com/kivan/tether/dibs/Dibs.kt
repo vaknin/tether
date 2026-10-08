@@ -135,6 +135,20 @@ class Composer(val task: Long?, val thread: String? = null) {
     val picked = mutableStateListOf<Picked>()
     /** What the next message is about (a full story), shown as a chip over the box; the dibs chat's only. */
     var about by mutableStateOf<About?>(null)
+    /** The line the next message answers (a swipe or Reply), shown as a chip over the box; the dibs chat's only. */
+    var replyTo by mutableStateOf<TalkLine?>(null)
+
+    /** The next message is about [a] (or nothing): one at a time, so it replaces a reply. */
+    fun aboutIs(a: About?) {
+        about = a
+        if (a != null) replyTo = null
+    }
+
+    /** The next message answers [l] (or no line): it replaces an about chip. */
+    fun replyIs(l: TalkLine?) {
+        replyTo = l
+        if (l != null) about = null
+    }
 
     /**
      * There is something to send: words or files. A follow-up's "Follow-up: " alone isn't words
@@ -164,10 +178,15 @@ class Composer(val task: Long?, val thread: String? = null) {
         if (task == null) Dibs.typing.sent()
         picked.clear()
         val on = about?.takeIf { task == null }?.json()
+        val answers = replyTo?.takeIf { task == null }
         about = null
+        replyTo = null
         val action = if (task == null) "say" else "task-say"
         val extra = {
-            if (task == null) JSONObject().apply { on?.let { put("about", it) } } else JSONObject().put("task", task)
+            if (task == null) JSONObject().apply {
+                on?.let { put("about", it) }
+                answers?.let { put("reply", JSONObject().put("n", it.n)) }
+            } else JSONObject().put("task", task)
         }
         if (files.isEmpty()) {
             Dibs.host.act(action, extra().put("text", text), uid)
@@ -235,6 +254,8 @@ sealed interface Page {
     data class Root(val id: Long) : Page
     /** Setting up the phone's key for root steps: its code, sent to the laptop. */
     data object RootKey : Page
+    /** The dibs page: its state, the lend switches, Claude usage and the laptop (opened from the bar). */
+    data object Status : Page
 }
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
@@ -375,7 +396,7 @@ object Dibs {
     fun chatAboutStory(t: YourTask, kind: String, quote: String? = null) {
         chat.draft = chat.draft.removePrefix(FOLLOW_UP)
         if (kind == "follow") chat.draft = FOLLOW_UP + chat.draft
-        chat.about = About(t.id, kind, t.label, quote)
+        chat.aboutIs(About(t.id, kind, t.label, quote))
         pages.clear()
         tab = DibsActivity.TAB_CHAT
     }
@@ -383,7 +404,7 @@ object Dibs {
     /** ✕ on the chip: the next message is about nothing in particular (and loses "Follow-up: "). */
     fun dropAbout() {
         if (chat.about?.kind == "follow") chat.draft = chat.draft.removePrefix(FOLLOW_UP)
-        chat.about = null
+        chat.aboutIs(null)
     }
 
     internal const val FOLLOW_UP = "Follow-up: "

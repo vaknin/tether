@@ -133,9 +133,9 @@ fun storyWords(s: Story?, written: String?): String = when {
 
 /** The chip over the chat box while a message is about a full story: "About the full story of X", "Follow-up to X". */
 fun aboutWords(a: About): String = when {
-    a.kind == "follow" -> "Follow-up to ${a.title}"
-    a.quote != null -> "About a part of the full story of ${a.title}"
-    else -> "About the full story of ${a.title}"
+    a.kind == "follow" -> "Follow-up to #${a.story} ${a.title}"
+    a.quote != null -> "About a part of the full story of #${a.story} ${a.title}"
+    else -> "About the full story of #${a.story} ${a.title}"
 }
 
 /** An Ask about subject's name before dibs lists the conversation ("task:85" → "Task #85"), when no button named it. */

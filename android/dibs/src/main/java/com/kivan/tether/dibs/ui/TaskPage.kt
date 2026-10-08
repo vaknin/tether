@@ -130,7 +130,7 @@ private fun AskDibs(t: YourTask, view: DibsView) {
     ) {
         Text("Questions or changes go through dibs.", Modifier.weight(1f), style = AppType.small, color = Palette.Muted)
         ActButton("Ask dibs about it", "primary") {
-            val about = "About ${t.label}: "
+            val about = "About #${t.id} ${t.label}: "
             Dibs.dropAbout()
             if (!Dibs.chat.draft.startsWith(about)) Dibs.chat.draft = about + Dibs.chat.draft
             Dibs.pages.clear()

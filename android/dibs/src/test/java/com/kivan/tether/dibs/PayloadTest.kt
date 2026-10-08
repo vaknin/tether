@@ -266,6 +266,29 @@ class PayloadTest {
     }
 
     @Test
+    fun parsesTheBoardsRoomWhenDibsSendsIt() {
+        fun board(room: String) = DibsView.parse(JSONObject("""{"now": 1, "yours": [], "board": {"columns": [], "done": {"count": 0, "cards": []}$room}}""")).board!!
+        assertEquals(BoardRoom(0, "No room for another task: 14 of 15.6 GB used"), board(""", "room": {"room": 0, "why": "memory", "line": "No room for another task: 14 of 15.6 GB used"}""").room)
+        assertEquals(BoardRoom(2, "Room for 2 more"), board(""", "room": {"room": 2, "line": "Room for 2 more"}""").room)
+        assertNull(board("").room)
+    }
+
+    @Test
+    fun parsesTheLineAReplyAnswers() {
+        val d = DibsView.parse(
+            JSONObject(
+                """
+                {"now": 1791213484, "talk": [
+                  {"id": "s1", "n": 1, "who": "dibs", "text": "Started task x", "ts": 1},
+                  {"id": "u-2", "n": 2, "who": "user", "text": "ok", "ts": 2, "reply": {"n": 1, "who": "dibs", "text": "Started task x, as you said"}}]}
+                """,
+            ),
+        )
+        assertNull(d.talk[0].reply)
+        assertEquals(ReplyRef(1, "dibs", "Started task x, as you said"), d.talk[1].reply)
+    }
+
+    @Test
     fun parsesTheBoardAsSent() {
         val d = DibsView.parse(
             JSONObject(
