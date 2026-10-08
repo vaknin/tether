@@ -646,3 +646,19 @@ a few lines typed and the keyboard closed, the chat got under 40 % of the screen
 **Why not the user's other ideas:** lend cards on one specific tab would still cost that tab the room and split
 "what dibs may use" from "how dibs is doing"; a header that collapses on scroll makes the chat jump and hides the
 state just when dibs is working. A slim pinned bar gives the chat about 240 dp back on every tab without either.
+
+### As built (app 0.9.0, 2026-10-08)
+- Built as decided: `Header` is one slim row (mark 32 dp, "dibs" over the state words); phone and laptop marks are
+  filled accent pills with an icon, only while lent; "5h 88%" shows in amber only for the first window past 80 %;
+  the whole mark, name and marks area is one button (`dibs, laptop and phone`) opening `Page.Status`
+  (`ui/StatusPage.kt`: state, both lend cards stacked, every usage line whole, the laptop's load and the board's
+  `room.line`, Start dibs, Open Tether). The Tasks tab's laptop block is gone. On a 412×915 dp screen the
+  conversation takes more than 65 % of the window with the keyboard closed (`ScreensTest.theChatKeepsMostOfTheScreen`);
+  a 320×568 dp screen has less room because of its 80 dp tab bar, and its keyboard-open cases still show the box.
+- Folded in: section counts and "Move to the queue" (the column title is dibs's, never hard-coded), the room line
+  above the queue (`Board.room`), an Ideas badge (`ideas.total`: active notes only), a Waiting card's words open its
+  task, a held chat shows its line without the dots (`typing-dots` tag), "About #N" in the box and its chip,
+  long-press Reply and Select text (sheet with `SelectionContainer` and Copy all), swipe right to reply
+  (`SwipeToReply`, `Composer.replyTo`, `ReplyChip`, `ReplyQuote`; one of about and reply at a time, `say` carries
+  `reply: {n}`), icons added through `regen-look.sh` (`reply`, `text-cursor`).
+- Not as planned: the Tasks tab on an older dibs still reads "Up next" (the title is what dibs sends).
