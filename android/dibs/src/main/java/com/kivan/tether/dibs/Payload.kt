@@ -421,8 +421,9 @@ data class BoardColumn(val key: String, val title: String, val cards: List<Board
 /**
  * dibs's board for the Tasks tab: its columns in order, and what's done ([doneCount], [done] its cards).
  * The phone draws it unchanged: no grouping or sorting of its own (the user, 2026-10-06).
+ * [hold]: why nothing new starts (a move, a used-up plan), in dibs's words; null while the queue runs.
  */
-data class Board(val columns: List<BoardColumn>, val doneCount: Int, val done: List<BoardCard>, val room: BoardRoom? = null)
+data class Board(val columns: List<BoardColumn>, val doneCount: Int, val done: List<BoardCard>, val room: BoardRoom? = null, val hold: String? = null)
 
 /** How many more tasks the laptop has room to start ([n], 0 = none) and why, in dibs's words ([line]). */
 data class BoardRoom(val n: Int, val line: String)
@@ -684,6 +685,7 @@ data class DibsView(
                 doneCount = done.long("count")?.toInt() ?: doneCards.size,
                 done = doneCards,
                 room = o.optJSONObject("room")?.let { r -> r.str("line")?.takeIf { it.isNotBlank() }?.let { BoardRoom(r.optInt("room", -1), it) } },
+                hold = o.optJSONObject("hold")?.str("line")?.takeIf { it.isNotBlank() },
             )
         }
 

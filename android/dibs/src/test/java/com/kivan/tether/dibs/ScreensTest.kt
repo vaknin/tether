@@ -640,6 +640,24 @@ class ScreensTest {
         shot("tasks-queue")
     }
 
+    @Test
+    fun theTasksTabSaysFirstWhenTheQueueIsOnHold() {
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").put("yours", JSONArray().put(yours(1, "Cleanup", "working")))
+        v.getJSONObject("dibs").put("board", JSONObject()
+            .put("columns", JSONArray()
+                .put(JSONObject().put("key", "next").put("title", "Queue").put("cards", JSONArray().put(JSONObject().put("key", "task:1").put("n", 1).put("title", "Cleanup")
+                    .put("state_words", "Waiting its turn").put("now", "").put("tags", JSONArray()).put("actions", JSONArray())))))
+            .put("done", JSONObject().put("count", 0).put("cards", JSONArray()))
+            .put("hold", JSONObject().put("why", "move").put("line", "On hold while dibs moves to the server: nothing new starts")))
+        show(v)
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText("On hold while dibs moves to the server: nothing new starts").assertIsDisplayed()
+        compose.onNodeWithText("QUEUE · 1").assertIsDisplayed()
+        shot("tasks-queue-on-hold")
+    }
+
     private fun yours(id: Long, title: String, state: String, asked: String = title, unread: Boolean = false) = JSONObject()
         .put("id", id).put("title", title).put("name", "t$id").put("project", "tether").put("state", state)
         .put("ts", NOW - id * 60).put("started", NOW - 3600).put("asked", asked).put("unread", unread).put("line", "What it did last")

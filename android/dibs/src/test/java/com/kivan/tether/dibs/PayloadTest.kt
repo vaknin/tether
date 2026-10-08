@@ -277,6 +277,15 @@ class PayloadTest {
     }
 
     @Test
+    fun parsesTheQueuesHoldAndDropsItWhenItLifts() {
+        fun board(hold: String) = DibsView.parse(JSONObject("""{"now": 1, "yours": [], "board": {"columns": [], "done": {"count": 0, "cards": []}$hold}}""")).board!!
+        val line = "On hold while dibs moves to the server: nothing new starts"
+        assertEquals(line, board(""", "hold": {"why": "move", "line": "$line"}""").hold)
+        assertNull(board("").hold)
+        assertNull(board(""", "hold": {"why": "move", "line": ""}""").hold)
+    }
+
+    @Test
     fun parsesTheLineAReplyAnswers() {
         val d = DibsView.parse(
             JSONObject(
