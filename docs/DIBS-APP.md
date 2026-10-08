@@ -308,8 +308,15 @@ the plan is in `~/Projects/dibs/docs/PLAN.md`, "Your tasks on the phone".
            "now": "what it's doing, or empty", "tags": ["On hold", "work saved"], "story": {…like yours[].story}|null,
            "actions": ["start","park","start_now","up","down","stop","delete","story"],   // older dibs also: hold, resume, to_next, to_later
            "primary": "park|start"?, "lane": "running|waiting"?,   // primary: every Active (park) and Backlog (start) card
-           "delete_text": "what Delete loses, in plain words"?}
+           "delete_text": "what Delete loses, in plain words"?,
+           "progress": {"stage": "plan|build|review|ship", "words": "building, step 2 of 5", "from": <start>,
+                        "eta": <likely done>, "lo": <earliest>, "hi": <latest>, "guess": bool, "seen": 12}?}
     ```
+  - **Progress** (a running task, dibs 2026-10-08, the user's word 608): its stage in words and
+    "done in ~15 min", a range ("done in ~10–30 min") when the tasks it's judged by varied, "(rough guess)" with
+    few of them; no `eta` (nothing like it finished yet): the words only. dibs sends times, not minutes, and keeps a
+    card's times until the estimate really moves (each new view wakes the link); the app counts down on its own
+    clock (`Progress.kt`). The bar under it is solid up to the latest finish and light up to the earliest.
 - **dibs's own work** (its background tasks, the live sessions, ships) folds into one line at the bottom,
   "dibs's own work · 3", which opens on a tap. It holds today's Work tab content, and nothing in it pings.
 - **One ping per task** when it finishes, when it asks the user something, or when its agent replies to the user. A

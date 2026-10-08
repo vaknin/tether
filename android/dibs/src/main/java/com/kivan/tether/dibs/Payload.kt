@@ -440,6 +440,8 @@ data class BoardCard(
     val ask: AskEntry? = null,
     /** The recap's account of it (a dibs that sends them). */
     val brief: Brief? = null,
+    /** A running task's stage and rough time left ([progressLine], [barFill]). */
+    val progress: Progress? = null,
 ) {
     /** Its task's id, for a task card; null for an idea. */
     val task: Long? get() = key.removePrefix("task:").takeIf { key.startsWith("task:") }?.toLongOrNull()
@@ -756,7 +758,13 @@ data class DibsView(
             lane = o.str("lane"),
             ask = askEntry(o.optJSONObject("ask")),
             brief = o.optJSONObject("brief")?.let { brief(it, o.long("n")) },
+            progress = o.optJSONObject("progress")?.let(::progress),
         )
+
+        private fun progress(o: JSONObject): Progress? {
+            val from = o.long("from") ?: return null
+            return Progress(o.str("stage").orEmpty(), o.str("words").orEmpty(), from, o.long("eta"), o.long("lo"), o.long("hi"), o.optBoolean("guess"))
+        }
 
         private fun decision(o: JSONObject) =
             Decision(

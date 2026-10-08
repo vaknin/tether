@@ -344,7 +344,9 @@ class PayloadTest {
                      {"key": "now", "title": "Working now", "cards": [
                        {"key": "task:31", "n": 31, "title": "Recap: one entry per finished job", "state_words": "working",
                         "now": "Running the tests", "tags": ["work saved"], "story": {"state": "ready", "ts": 1791213000, "have": true},
-                        "actions": ["hold", "stop", "story"]}]},
+                        "actions": ["hold", "stop", "story"],
+                        "progress": {"stage": "build", "words": "building, step 2 of 5", "from": 1791210000, "eta": 1791214400,
+                                     "lo": 1791214000, "hi": 1791215400, "guess": false, "seen": 12}}]},
                      {"key": "next", "title": "Queue", "cards": [
                        {"key": "idea:7", "n": null, "title": "A widget for the board", "state_words": "an idea", "now": "",
                         "tags": [], "story": null, "actions": ["up", "down", "to_later", "delete"]}]},
@@ -371,10 +373,12 @@ class PayloadTest {
         // An old dibs sends no primary or lane.
         assertNull(c.primary)
         assertNull(c.lane)
+        assertEquals(Progress("build", "building, step 2 of 5", 1791210000, 1791214400, 1791214000, 1791215400, false), c.progress)
         val idea = b.columns[1].cards.single()
         assertNull("an idea has no number", idea.n)
         assertNull("nor a task page", idea.task)
         assertNull(idea.story)
+        assertNull("only a running task has progress", idea.progress)
         assertEquals("", idea.now)
         assertTrue(b.columns[2].cards.isEmpty())
         assertEquals(12, b.doneCount)

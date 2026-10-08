@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -35,16 +38,21 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.BoardCard
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Page
+import com.kivan.tether.dibs.Progress
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
+import com.kivan.tether.dibs.barFill
 import com.kivan.tether.dibs.dayOf
 import com.kivan.tether.dibs.forYouWords
+import com.kivan.tether.dibs.progressLine
 import com.kivan.tether.dibs.taskWords
 import com.kivan.tether.dibs.tasksList
 import com.kivan.tether.dibs.ui.theme.AppType
@@ -255,8 +263,30 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
                 }
             }
             if (c.now.isNotBlank()) Text(c.now, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
+            c.progress?.let { CardProgress(it) }
         }
         CardMenu(menu, c, acts, armed) { menu = false }
+    }
+}
+
+/**
+ * A running task's stage and rough time left, counted down on the phone's clock, over a thin bar: solid
+ * up to its latest finish, light up to its earliest (the unsure stretch).
+ */
+@Composable
+private fun CardProgress(p: Progress) {
+    val now by rememberNow()
+    val line = progressLine(p, now)
+    val fill = barFill(p, now)
+    if (line.isNotEmpty()) Text(line, style = AppType.small, color = Palette.Muted)
+    if (fill != null) {
+        Box(
+            Modifier.padding(top = 2.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Palette.SurfaceHigh)
+                .semantics { contentDescription = line },
+        ) {
+            Box(Modifier.fillMaxWidth(fill.maybe).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Palette.AccentDim))
+            Box(Modifier.fillMaxWidth(fill.sure).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Palette.Accent))
+        }
     }
 }
 
