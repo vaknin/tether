@@ -38,6 +38,8 @@ object Notifier {
     private const val TRANSFERS = "transfers"
     private const val RING = "ring"
     private const val PROBLEMS = "problems"
+    /** About the longest title the Pixel's notification shows on its one line uncut. */
+    const val TITLE_FITS = 34
     /** The transfer batch, also [TransferService]'s foreground notification. */
     const val TRANSFER_ID = 1
     private const val RING_ID = 2
@@ -378,6 +380,21 @@ object Notifier {
     }
 
     /**
+     * The expanded notification's title and text. Android draws a title on one line and cuts a
+     * long one with "…", so a [title] longer than [TITLE_FITS] moves whole to the top of the text
+     * and the channel's name ([channel]) titles it instead: nothing is cut once it's expanded (the
+     * user's rule, word 249). The collapsed one-liner is still the system's.
+     */
+    fun expandedParts(channel: String, title: String, text: String): Pair<String?, String> =
+        if (title.length <= TITLE_FITS) null to text
+        else channel to if (text.isBlank()) title else "$title\n$text"
+
+    private fun expanded(channel: String, title: String, text: String): NotificationCompat.BigTextStyle {
+        val (big, body) = expandedParts(channel, title, text)
+        return NotificationCompat.BigTextStyle().bigText(body).also { if (big != null) it.setBigContentTitle(big) }
+    }
+
+    /**
      * A channel's news (a view's `notify`, a thread post). Without [tag], one notification per
      * channel, replaced; with one (a post's `tag`), one per tag, so each keeps its own buttons. A
      * replaced notification doesn't alert again. [view]: the channel's newest view, where dibs's
@@ -404,7 +421,7 @@ object Notifier {
             .setLargeIcon(glyph(c, 192))
             .setContentTitle(title)
             .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setStyle(expanded(c.title, title, text))
             .setColor(c.accent ?: Palette.Accent.toArgb())
             .setShortcutId(Shortcuts.channelId(c.name))
             .setContentIntent(if (dibs) openDibs(context, tag, view) else openChannel(context, c.name))
@@ -442,7 +459,7 @@ object Notifier {
             .setLargeIcon(glyph(c, 192))
             .setContentTitle(title)
             .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setStyle(expanded(c.title, title, text))
             .setColor(c.accent ?: Palette.Accent.toArgb())
             .setContentIntent(openChannel(context, c.name))
             .setCategory(NotificationCompat.CATEGORY_STATUS)

@@ -86,7 +86,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
