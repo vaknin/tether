@@ -226,6 +226,8 @@ class ScreensTest {
         host.files["story-31-"] = storyFile()
         Dibs.pages += Page.Story(31)
         compose.waitForIdle()
+        // The story file loads off the main thread: wait for it, as a slow machine takes longer.
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Start a follow-up")).fetchSemanticsNodes().isNotEmpty() }
         for (b in listOf("Show the conversation", "Start a follow-up", "Ask dibs about this")) compose.onNodeWithText(b).assertIsDisplayed()
         shot("story-small")
     }
