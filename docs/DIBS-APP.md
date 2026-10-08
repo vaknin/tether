@@ -668,6 +668,10 @@ state just when dibs is working. A slim pinned bar gives the chat about 240 dp b
   long-press Reply and Select text (sheet with `SelectionContainer` and Copy all), swipe right to reply
   (`SwipeToReply`, `Composer.replyTo`, `ReplyChip`, `ReplyQuote`; one of about and reply at a time, `say` carries
   `reply: {n}`), icons added through `regen-look.sh` (`reply`, `text-cursor`).
+- Code in chat lines (task #258): text between triple-backtick fences becomes a small monospace block with a copy
+  button at its corner (tick for 1.5 s); the language word is dropped, an unclosed fence runs to the end, the rest
+  stays text with its links. `TextParts.kt` is the desktop's `chatText.ts` rule, so both apps agree; Copy and Select
+  text still take the line as written. A task line may carry `ask` too (a root step offers Review there).
 - Not as planned: the Tasks tab on an older dibs still reads "Up next" (the title is what dibs sends).
 
 ## The morning recap (design C, 2026-10-08; app 0.10.0)
