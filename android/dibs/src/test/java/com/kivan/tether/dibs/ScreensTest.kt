@@ -658,6 +658,28 @@ class ScreensTest {
         shot("tasks-queue-on-hold")
     }
 
+    @Test
+    fun aQueuedCardStartsNowFromItsMenu() {
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").put("yours", JSONArray())
+        v.getJSONObject("dibs").put("board", JSONObject()
+            .put("columns", JSONArray()
+                .put(JSONObject().put("key", "next").put("title", "Queue").put("cards", JSONArray().put(JSONObject().put("key", "task:8").put("n", 8).put("title", "Sort the photos")
+                    .put("state_words", "next in line").put("now", "").put("tags", JSONArray()).put("actions", JSONArray().put("start_now").put("to_later").put("delete"))))))
+            .put("done", JSONObject().put("count", 0).put("cards", JSONArray())))
+        show(v)
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText("Sort the photos").performTouchInput { longClick() }
+        compose.waitForIdle()
+        // No confirm step: the tap is the user's word for now.
+        compose.onNodeWithText("Start now").performClick()
+        compose.waitForIdle()
+        val (_, act) = host.acts.single { it.first == Dibs.TASK_ACT }
+        assertEquals("task:8", act!!.getString("key"))
+        assertEquals("start_now", act.getString("act"))
+    }
+
     private fun yours(id: Long, title: String, state: String, asked: String = title, unread: Boolean = false) = JSONObject()
         .put("id", id).put("title", title).put("name", "t$id").put("project", "tether").put("state", state)
         .put("ts", NOW - id * 60).put("started", NOW - 3600).put("asked", asked).put("unread", unread).put("line", "What it did last")

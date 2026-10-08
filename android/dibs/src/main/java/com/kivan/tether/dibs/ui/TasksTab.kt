@@ -66,6 +66,7 @@ private const val DONE = "fold:done"
 
 /** A board card's actions in plain words, in the order its menu would show them if dibs sent them so. */
 private val ACT_WORDS = mapOf(
+    "start_now" to "Start now",
     "hold" to "Put on hold",
     "resume" to "Resume",
     "stop" to "Stop",

@@ -393,7 +393,7 @@ data class YourTask(
  * One card on dibs's board (docs/DIBS-APP.md, "The board"): a task (`task:<id>`, [n] its number) or an
  * idea (`idea:<id>`, no number). Drawn as dibs sends it: [title] whole, [stateWords] its state in plain
  * words, [now] what it's doing (may be empty), [tags] "On hold" and "work saved", and [actions] what its
- * long press offers (hold, resume, stop, delete, up, down, to_next, to_later, story).
+ * long press offers (start_now, hold, resume, stop, delete, up, down, to_next, to_later, story).
  */
 data class BoardCard(
     val key: String,
