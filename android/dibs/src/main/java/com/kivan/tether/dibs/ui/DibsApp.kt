@@ -150,6 +150,7 @@ fun DibsApp() {
                     is Page.Ask -> AskPage(page.about, view)
                     is Page.Root -> RootPage(page.id, view)
                     Page.RootKey -> RootKeyPage()
+                    Page.Stories -> StoriesPage(view)
                     Page.Status -> StatusPage(view, link)
                 }
             }

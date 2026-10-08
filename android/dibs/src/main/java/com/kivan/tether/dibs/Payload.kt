@@ -335,6 +335,9 @@ data class SmallGroup(val project: String, val n: Int, val lines: List<String>)
 
 data class RecapSmall(val n: Int, val groups: List<SmallGroup>)
 
+/** One full story dibs keeps (the Stories list under Recap): its task, the task's title, when it was written. */
+data class StoryEntry(val task: Long, val title: String, val ts: Long, val project: String? = null)
+
 /**
  * One of the user's own tasks (docs/DIBS-APP.md, "Your tasks"): it waits in the Tasks tab from its
  * start until they tick it off. Its [talk] is the chat with its own agent (who: user, agent, note).
@@ -458,6 +461,8 @@ data class DibsView(
     val recapNeeds: Int = 0,
     /** The payload has `recap.items` (even an empty list): Recap draws the unread list, not the old tab. */
     val recapListed: Boolean = false,
+    /** Every full story kept, newest first (`recap.stories`). */
+    val recapStories: List<StoryEntry> = emptyList(),
 ) {
     fun task(id: Long): YourTask? = yours?.firstOrNull { it.id == id }
 
@@ -557,6 +562,9 @@ data class DibsView(
                 recapUnread = recap.optInt("unread"),
                 recapNeeds = recap.optInt("needs"),
                 recapListed = recap.has("items") && !recap.isNull("items"),
+                recapStories = recap.optJSONArray("stories").objects().mapNotNull { e ->
+                    e.long("task")?.let { StoryEntry(it, e.str("title").orEmpty(), e.optLong("ts"), e.str("project")) }
+                }.distinctBy { it.task },
             )
         }
 

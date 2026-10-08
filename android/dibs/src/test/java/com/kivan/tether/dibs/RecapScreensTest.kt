@@ -333,6 +333,32 @@ class RecapScreensTest {
         compose.onAllNodes(hasText("since", substring = true)).assertCountEquals(1)
     }
 
+    @Test
+    fun theStoriesRowOpensTheListAndATapOpensTheBrief() {
+        val v = recapView(three) {
+            getJSONObject("recap").put("stories", JSONArray()
+                .put(JSONObject().put("task", 189).put("title", "Terminal choice, in full").put("ts", NOW - 3600).put("project", "dibs"))
+                .put(JSONObject().put("task", 137).put("title", "More room for the chat, in full").put("ts", NOW - 86400 * 3)))
+        }
+        show(v)
+        compose.onNodeWithText("STORIES · 2").assertIsDisplayed()
+        compose.onNodeWithText("STORIES · 2").performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Stories, Dibs.pages.last())
+        compose.onNodeWithText("Terminal choice, in full").assertIsDisplayed()
+        compose.onNodeWithText("More room for the chat, in full").assertIsDisplayed()
+        compose.onNodeWithText("Terminal choice, in full").performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Brief(189, false), Dibs.pages.last())
+        compose.onNodeWithText("FULL STORY").assertIsDisplayed()
+    }
+
+    @Test
+    fun noStoriesNoRow() {
+        show(recapView(three))
+        compose.onAllNodes(hasText("STORIES", substring = true)).assertCountEquals(0)
+    }
+
     private companion object {
         val NOW = System.currentTimeMillis() / 1000
     }
