@@ -99,7 +99,8 @@ internal fun StatusPage(view: DibsView, link: Link) {
             if (laptop != null || room != null) {
                 Section("Laptop")
                 if (laptop != null) Text(laptop, style = AppType.small, color = Palette.Muted)
-                if (room != null && room.n == 0) Text(room.line, style = AppType.small, color = Palette.Warning)
+                // Amber with the clock when there is no room for another task; plain otherwise.
+                if (room != null) RoomLine(room.line, warn = room.n == 0)
             }
 
             Section("Tether")
@@ -144,7 +145,7 @@ internal const val NBSP = '\u00A0'
 @Composable
 internal fun LendBar(lend: Lend) {
     Row(
-        Modifier.padding(horizontal = Space.L).padding(bottom = Space.S).fillMaxWidth()
+        Modifier.fillMaxWidth()
             .background(Palette.AccentDim, MaterialTheme.shapes.medium)
             .padding(start = Space.M, end = Space.S, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -156,19 +157,6 @@ internal fun LendBar(lend: Lend) {
             if (lend.text.isNotBlank()) Text(lend.text, style = AppType.small, color = Palette.Text)
         }
         ActButton("Take it back", "primary") { Dibs.host.act("phone-back") }
-    }
-}
-
-/** Lend the phone and the laptop to dibs, or take them back (task #29): one tap each, above every tab. */
-@Composable
-internal fun LendToggles(lends: Lends) {
-    Row(
-        // Both as tall as the taller one, when one's words wrap.
-        Modifier.padding(horizontal = Space.L).padding(bottom = Space.S).fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(Space.S),
-    ) {
-        lends.phone?.let { LendToggleCard(it, "Phone", R.drawable.lucide_smartphone, Modifier.weight(1f).fillMaxHeight()) }
-        lends.laptop?.let { LendToggleCard(it, "Laptop", R.drawable.lucide_laptop, Modifier.weight(1f).fillMaxHeight()) }
     }
 }
 
@@ -205,5 +193,14 @@ private fun LendToggleCard(t: LendToggle, title: String, icon: Int, modifier: Mo
             Text(if (t.lent) "$title lent to dibs" else title, style = AppType.label, color = Palette.Text)
             Text(sub, style = AppType.small, color = if (t.lent) Palette.Text else Palette.Muted)
         }
+    }
+}
+
+/** The laptop's room for more tasks, in dibs's words: amber with a clock when there is none (never colour alone). */
+@Composable
+internal fun RoomLine(line: String, warn: Boolean, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (warn) Icon(painterResource(R.drawable.lucide_clock), null, Modifier.padding(top = 2.dp).size(14.dp), tint = Palette.Warning)
+        Text(line, style = AppType.small, color = if (warn) Palette.Warning else Palette.Muted)
     }
 }

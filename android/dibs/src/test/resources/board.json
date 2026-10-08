@@ -24,7 +24,7 @@
       },
       {
         "key": "next",
-        "title": "Up next",
+        "title": "Queue",
         "cards": [
           {
             "key": "task:3",

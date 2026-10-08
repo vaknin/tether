@@ -147,7 +147,11 @@ class Composer(val task: Long?, val thread: String? = null) {
     /** The next message answers [l] (or no line): it replaces an about chip. */
     fun replyIs(l: TalkLine?) {
         replyTo = l
-        if (l != null) about = null
+        if (l != null) {
+            // A follow-up's prefix goes with its chip: bare, it would start a task from nothing.
+            if (about?.kind == "follow") draft = draft.removePrefix(Dibs.FOLLOW_UP)
+            about = null
+        }
     }
 
     /**

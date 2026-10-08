@@ -103,7 +103,7 @@ internal fun TasksTab(view: DibsView) {
             val columns = board.columns.filter { it.cards.isNotEmpty() }
             for (c in columns) {
                 // The laptop has no room: say why the queue waits, right above it.
-                if (c.key == "next" && board.room?.n == 0) item(key = "_room") { RoomLine(board.room.line) }
+                if (c.key == "next" && board.room?.n == 0) item(key = "_room") { RoomLine(board.room.line, warn = true, Modifier.padding(top = Space.M)) }
                 item(key = "col-${c.key}") { Section("${c.title} · ${c.cards.size}") }
                 items(c.cards, key = { "c-${c.key}-${it.key}" }) { card -> BoardCardRow(card, view, armed, Modifier.animateItem()) }
             }
@@ -357,14 +357,5 @@ private fun TickedRow(t: YourTask, modifier: Modifier) {
             Text(listOfNotNull(t.project, day?.let { "ticked $it" }).joinToString(" · "), style = AppType.small, color = Palette.Muted)
         }
         ActButton("Untick", "plain") { Dibs.untick(t) }
-    }
-}
-
-/** "No room for another task": the laptop's reason, small and amber with an icon (never colour alone). */
-@Composable
-private fun RoomLine(line: String) {
-    Row(Modifier.padding(top = Space.M), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(painterResource(R.drawable.lucide_clock), null, Modifier.padding(top = 2.dp).size(14.dp), tint = Palette.Warning)
-        Text(line, style = AppType.small, color = Palette.Warning)
     }
 }

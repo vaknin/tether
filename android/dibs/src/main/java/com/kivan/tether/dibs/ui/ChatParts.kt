@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import com.kivan.tether.dibs.ReplyRef
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import androidx.compose.animation.core.RepeatMode
@@ -91,6 +92,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -305,17 +308,21 @@ internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, bus
     val scrolledUp by remember { derivedStateOf { state.firstVisibleItemIndex > 3 } }
     var selecting by remember { mutableStateOf<TalkLine?>(null) }
     var flash by remember { mutableStateOf<Long?>(null) }
+    var lit by remember { mutableStateOf<Job?>(null) }
     val actions = remember(look.replies, flash, reversed, busy) {
         LineActions(
             select = { selecting = it },
             reply = if (look.replies) { l -> Dibs.chat.replyIs(l) } else null,
             jump = { n ->
                 val at = reversed.indexOfFirst { it is LineRow && it.line.n == n || it is NoteRow && it.line.n == n }
-                if (at >= 0) scope.launch {
-                    state.animateScrollToItem(at + if (busy) 1 else 0)
-                    flash = n
-                    delay(1000)
-                    flash = null
+                if (at >= 0) {
+                    lit?.cancel()
+                    lit = scope.launch {
+                        state.animateScrollToItem(at + if (busy) 1 else 0)
+                        flash = n
+                        delay(1000)
+                        flash = null
+                    }
                 }
             },
             flash = flash,
@@ -353,6 +360,15 @@ internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, bus
         }
     }
     }
+}
+
+/** Select text for a chat that isn't a [Conversation] (a task's): provides the line actions without replies, and the sheet. */
+@Composable
+internal fun SelectHost(content: @Composable () -> Unit) {
+    var selecting by remember { mutableStateOf<TalkLine?>(null) }
+    val actions = remember { LineActions(select = { selecting = it }, reply = null, jump = {}, flash = null) }
+    selecting?.let { SelectSheet(it) { selecting = null } }
+    CompositionLocalProvider(LocalLineActions provides actions) { content() }
 }
 
 /** Select text: the line whole in a sheet, any part of it selectable, and Copy all. */
@@ -479,7 +495,7 @@ private fun LineMenu(expanded: Boolean, l: TalkLine, look: ChatLook, onDismiss: 
             }
         }
         if (l.text.isNotEmpty()) {
-            DropdownMenuItem(
+            if (actions != null) DropdownMenuItem(
                 text = { Text("Select text") },
                 leadingIcon = { Icon(painterResource(R.drawable.lucide_text_cursor), null, Modifier.size(18.dp)) },
                 onClick = {
@@ -539,6 +555,8 @@ private fun SwipeToReply(l: TalkLine, content: @Composable () -> Unit) {
     val haptics = LocalHapticFeedback.current
     var off by remember { mutableFloatStateOf(0f) }
     var past by remember { mutableStateOf(false) }
+    val back = remember { arrayOfNulls<Job>(1) }
+    val scope = rememberCoroutineScope()
     val drag = rememberDraggableState { d ->
         off = (off + d).coerceIn(0f, max)
         val now = off >= from
@@ -548,10 +566,11 @@ private fun SwipeToReply(l: TalkLine, content: @Composable () -> Unit) {
     Box(
         Modifier.draggable(
             drag, Orientation.Horizontal,
+            onDragStarted = { back[0]?.cancel() },
             onDragStopped = {
                 if (off >= from) reply(l)
                 past = false
-                animate(off, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { v, _ -> off = v }
+                back[0] = scope.launch { animate(off, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { v, _ -> off = v } }
             },
         ),
     ) {
@@ -928,6 +947,9 @@ internal fun Typing(line: String?, dots: Boolean = true) {
 internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = true, enabled: Boolean = true) {
     val draft = box.draft
     val canSend = box.canSend && enabled
+    // A reply picked (swipe or Reply) puts the cursor in the box and opens the keyboard.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(box.replyTo) { if (box.replyTo != null && enabled) focus.requestFocus() }
     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
         box.about?.let { AboutChip(it) }
         box.replyTo?.let { ReplyChip(it, box) }
@@ -945,7 +967,7 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
                 cursorBrush = SolidColor(Palette.Accent),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 maxLines = 6,
-                modifier = Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 9.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 9.dp).focusRequester(focus),
                 decorationBox = { inner ->
                     Box {
                         if (draft.isEmpty()) Text(placeholder, style = AppType.body, color = if (enabled) Palette.Muted else Palette.Muted.copy(alpha = 0.6f))

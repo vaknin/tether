@@ -97,6 +97,7 @@ internal fun TaskPage(id: Long, view: DibsView) {
     val newestNow by rememberUpdatedState(newest)
     DisposableEffect(id) { onDispose { newestNow?.let { Dibs.chatSeen[id] = it } } }
 
+    SelectHost {
     Column(Modifier.fillMaxSize()) {
         PageBar(t.label, t.project) { TaskActions(t, view, armed) }
         LazyColumn(
@@ -110,6 +111,7 @@ internal fun TaskPage(id: Long, view: DibsView) {
             if (t.busy) item(key = "_busy") { Typing("${t.label} is on it") }
         }
         AskDibs(t, view)
+    }
     }
 }
 

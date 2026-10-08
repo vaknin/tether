@@ -463,7 +463,7 @@ data class DibsView(
                 lends = o.optJSONObject("lends")?.let { l -> Lends(l.optJSONObject("phone")?.let(::lendToggle), l.optJSONObject("laptop")?.let(::lendToggle)) },
                 badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap"), b.optInt("tasks")),
                 yours = if (o.has("yours")) o.optJSONArray("yours").objects().map(::yourTask) else null,
-                board = o.optJSONObject("board")?.let(::board),
+                board = o.optJSONObject("board")?.let(::board)?.let { b -> if (b.room != null) b else b.copy(room = queueRoom(o.optJSONObject("queue"))) },
                 ideas = o.optJSONObject("ideas")?.let(com.kivan.tether.dibs.ideas.Ideas::parse),
                 asks = o.optJSONArray("threads").objects().mapNotNull(::asking).distinctBy { it.about },
             )
@@ -562,6 +562,13 @@ data class DibsView(
             )
         }
 
+        /** The phone view's cached `queue` block: its room count and the reason, when the board carries no `room` of its own. */
+        private fun queueRoom(q: JSONObject?): BoardRoom? {
+            val n = q?.takeIf { it.has("room") }?.optInt("room", -1)?.takeIf { it >= 0 } ?: return null
+            val why = q.str("why") ?: return null
+            return BoardRoom(n, if (n == 0) "No room for another task now: $why" else why)
+        }
+
         private fun cards(a: JSONArray?) = a.objects().map(::card).filter { it.key.isNotEmpty() }.distinctBy { it.key }
 
         private fun card(o: JSONObject) = BoardCard(
@@ -609,7 +616,7 @@ data class DibsView(
             open = o.optJSONObject("open")?.long("story"),
             thread = o.str("thread"),
             under = o.str("under"),
-            reply = o.optJSONObject("reply")?.let { r -> ReplyRef(r.optLong("n"), r.optString("who"), r.optString("text")) },
+            reply = o.optJSONObject("reply")?.let { r -> r.long("n")?.takeIf { it > 0 }?.let { n -> ReplyRef(n, r.str("who").orEmpty(), r.str("text").orEmpty()) } },
         )
 
         private fun question(o: JSONObject): Question {

@@ -271,6 +271,9 @@ class PayloadTest {
         assertEquals(BoardRoom(0, "No room for another task: 14 of 15.6 GB used"), board(""", "room": {"room": 0, "why": "memory", "line": "No room for another task: 14 of 15.6 GB used"}""").room)
         assertEquals(BoardRoom(2, "Room for 2 more"), board(""", "room": {"room": 2, "line": "Room for 2 more"}""").room)
         assertNull(board("").room)
+        // The phone view has no board room; its queue block's count and reason stand in.
+        val q = DibsView.parse(JSONObject("""{"now": 1, "yours": [], "board": {"columns": [], "done": {"count": 0, "cards": []}}, "queue": {"room": 0, "why": "2.0 GB free"}}""")).board!!
+        assertEquals(BoardRoom(0, "No room for another task now: 2.0 GB free"), q.room)
     }
 
     @Test
@@ -300,7 +303,7 @@ class PayloadTest {
                        {"key": "task:31", "n": 31, "title": "Recap: one entry per finished job", "state_words": "working",
                         "now": "Running the tests", "tags": ["work saved"], "story": {"state": "ready", "ts": 1791213000, "have": true},
                         "actions": ["hold", "stop", "story"]}]},
-                     {"key": "next", "title": "Up next", "cards": [
+                     {"key": "next", "title": "Queue", "cards": [
                        {"key": "idea:7", "n": null, "title": "A widget for the board", "state_words": "an idea", "now": "",
                         "tags": [], "story": null, "actions": ["up", "down", "to_later", "delete"]}]},
                      {"key": "later", "title": "Later", "cards": []}

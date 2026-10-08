@@ -235,7 +235,14 @@ private fun Header(link: Link, state: State?, lends: Lends?, oldLend: Lend?) {
             Row(
                 Modifier.weight(1f).clip(MaterialTheme.shapes.medium)
                     .clickable(role = Role.Button, onClickLabel = "Open the dibs page") { Dibs.open(Page.Status) }
-                    .semantics { contentDescription = "dibs, laptop and phone" }
+                    .semantics {
+                        // One reading for the whole button: its state and marks, since a description replaces the texts.
+                        contentDescription = listOfNotNull(
+                            "dibs, laptop and phone", words,
+                            "phone lent to dibs".takeIf { phone }, "laptop lent to dibs".takeIf { laptop },
+                            warn?.let { "Claude usage $it" },
+                        ).joinToString(", ")
+                    }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

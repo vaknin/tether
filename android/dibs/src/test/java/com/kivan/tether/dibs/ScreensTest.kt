@@ -507,7 +507,7 @@ class ScreensTest {
     @Test
     fun aTapOnTheBarOpensTheDibsPageWithBothLendCardsAndEveryUsageLine() {
         show(view(talk = longTalk()))
-        compose.onNodeWithContentDescription("dibs, laptop and phone").performClick()
+        compose.onNodeWithContentDescription("dibs, laptop and phone", substring = true).performClick()
         compose.waitForIdle()
         assertEquals(Page.Status, Dibs.pages.last())
         compose.onNodeWithText("Phone").assertIsDisplayed()
@@ -582,7 +582,19 @@ class ScreensTest {
         compose.onNodeWithText("You").assertIsDisplayed()
         compose.onNodeWithText("Line 3 from me").performClick()
         compose.waitForIdle()
+        // The tap scrolled the quoted line into view (it was far above the newest).
+        compose.onNodeWithText("Line 3 from me", useUnmergedTree = true).assertIsDisplayed()
         shot("chat-reply-quote")
+    }
+
+    @Test
+    fun aReplyAfterAFollowUpLeavesNoBareFollowUpInTheBox() {
+        show(view(talk = longTalk()))
+        Dibs.chat.draft = Dibs.FOLLOW_UP
+        Dibs.chat.aboutIs(About(31, "follow", "Recap"))
+        Dibs.chat.replyIs(TalkLine("s28", 28, false, "x", null, false, 0, emptyList(), null))
+        assertEquals("", Dibs.chat.draft)
+        assertTrue(!Dibs.chat.canSend)
     }
 
     @Test
