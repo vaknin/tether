@@ -74,7 +74,7 @@ private val ACT_WORDS = mapOf(
     "up" to "Move up",
     "down" to "Move down",
     "to_next" to "Move to the queue",
-    "to_later" to "Move to Later",
+    "to_later" to "Move to Backlog",
     "story" to "Full story",
 )
 

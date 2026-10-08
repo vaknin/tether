@@ -79,7 +79,6 @@ import com.kivan.tether.dibs.stateWords
 import com.kivan.tether.dibs.Limit
 import com.kivan.tether.dibs.ideas.Drafts
 import com.kivan.tether.dibs.limitWords
-import com.kivan.tether.dibs.wantsYou
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
@@ -168,7 +167,9 @@ fun DibsApp() {
         bottomBar = {
             if (view != null && !typing) {
                 // The Tasks badge counts what the tab says it does, and drops as soon as one is opened here.
-                val forYou = view.yours?.count { wantsYou(it, Dibs.ticked(it), Dibs.unread(it)) } ?: view.badges.work
+                // The Tasks badge counts what waits on the user (a question, or a task stopped on them),
+                // as dibs's own count does: unread reports show on their cards (the user, word 531).
+                val forYou = view.yours?.count { !Dibs.ticked(it) && it.state == "needs" } ?: view.badges.work
                 // Recap's number: what is unread (a read here counts at once); an older dibs: the old dot.
                 val recap = if (view.recapList) view.recapItems.count { Dibs.briefUnread(it) }.takeIf { view.recapItems.isNotEmpty() } ?: view.recapUnread else null
                 NavBar(tab, view.badges, forYou, view.yours != null, view.ideas?.total ?: 0, recap) {

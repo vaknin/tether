@@ -371,7 +371,7 @@ class ScreensTest {
         compose.onNodeWithText(LONG_TITLE).performTouchInput { longClick() }
         compose.waitForIdle()
         for (w in listOf("Put on hold", "Stop", "Full story", "Move to the queue")) compose.onAllNodes(hasText(w)).assertCountEquals(if (w == "Full story") 2 else 1)
-        for (w in listOf("Resume", "Delete", "Move up", "Move to Later")) compose.onAllNodes(hasText(w)).assertCountEquals(0)
+        for (w in listOf("Resume", "Delete", "Move up", "Move to Backlog")) compose.onAllNodes(hasText(w)).assertCountEquals(0)
         // Stop asks again; only the second tap sends it.
         compose.onNodeWithText("Stop").performClick()
         compose.waitForIdle()
