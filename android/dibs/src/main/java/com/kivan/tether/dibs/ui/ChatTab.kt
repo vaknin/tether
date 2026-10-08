@@ -15,11 +15,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
+import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
@@ -58,7 +61,7 @@ internal fun ChatTab(view: DibsView) {
                     modifier = Modifier.align(Alignment.Center).padding(Space.XL),
                 )
             }
-            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line, look = look, held = Dibs.hold(view)?.kind == "held")
+            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line, look = look)
         }
         HoldBar(view)
         InputArea(Dibs.chat, "Message dibs")
@@ -66,8 +69,9 @@ internal fun ChatTab(view: DibsView) {
 }
 
 /**
- * Over the box (task #69): dibs's Wait/Stop chip, words and all (`state.hold`): a note, if any,
- * beside its button.
+ * Over the box (task #69, #224): dibs's Wait/Go chip, words and all (`state.hold`): a one-line note
+ * and its button, with a pause icon for Wait and a play icon for Go. One merged node, so TalkBack
+ * reads the note and the button together.
  */
 @Composable
 private fun HoldBar(view: DibsView) {
@@ -78,16 +82,21 @@ private fun HoldBar(view: DibsView) {
         if (Dibs.holdTap == tap) Dibs.holdTap = null
     }
     val hold = Dibs.hold(view) ?: return
+    val icon = when (hold.kind) {
+        "wait" -> R.drawable.lucide_pause
+        "held" -> R.drawable.lucide_play
+        else -> null
+    }
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 4.dp),
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 4.dp).semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.S),
     ) {
         if (hold.note != null) {
-            Text(hold.note, style = AppType.small, color = Palette.Muted, modifier = Modifier.weight(1f))
+            Text(hold.note, style = AppType.small, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         } else {
             Spacer(Modifier.weight(1f))
         }
-        ActButton(hold.button, hold.style) { Dibs.tapHold(hold) }
+        ActButton(hold.button, hold.style, icon = icon) { Dibs.tapHold(hold) }
     }
 }

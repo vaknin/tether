@@ -242,8 +242,8 @@ data class Laptop(
 )
 
 /**
- * The chat's Wait/Stop chip (task #69), as dibs words it: [kind] `wait` (the user's lines wait for
- * dibs), `stop` (dibs is answering them) or `held` (it waits until they go on); [note] beside the
+ * The chat's Wait/Go chip (task #69, #224), as dibs words it: [kind] `wait` (dibs owes the user a
+ * reply; the button says Wait) or `held` (it keeps the reply back; the button says Go); [note] beside the
  * button; [action] sent on a tap; [tapped] the chip to show at once after it.
  */
 data class Hold(val kind: String, val note: String?, val button: String, val action: String, val style: String, val tapped: Hold?)

@@ -287,7 +287,7 @@ private fun PulseDot(modifier: Modifier = Modifier) {
  * (always after one of mine). Scrolled up, "↓ N new" goes back down.
  */
 @Composable
-internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, busy: Boolean, busyLine: String?, look: ChatLook = ChatLook(), held: Boolean = false) {
+internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, busy: Boolean, busyLine: String?, look: ChatLook = ChatLook()) {
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val reversed = remember(rows) { rows.asReversed() }
@@ -340,7 +340,7 @@ internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, bus
             reverseLayout = true,
             contentPadding = PaddingValues(horizontal = Space.L, vertical = Space.S),
         ) {
-            if (busy) item(key = "_busy") { Typing(busyLine, dots = !held) }
+            if (busy) item(key = "_busy") { Typing(busyLine) }
             chatItems(reversed, echoes, look)
         }
         AnimatedVisibility(
@@ -979,7 +979,7 @@ internal fun BubbleBox(mine: Boolean, first: Boolean, last: Boolean, lit: Boolea
     }
 }
 
-/** "dibs is on it": three calm dots under the newest line while dibs (or a task's agent) works; none while the user holds dibs ([dots] false), only the line. */
+/** "dibs is on it": three calm dots under the newest line while dibs (or a task's agent) works. A Wait doesn't change it: dibs works on, its reply is kept for Go. */
 @Composable
 internal fun Typing(line: String?, dots: Boolean = true) {
     val pulse = rememberInfiniteTransition(label = "typing")

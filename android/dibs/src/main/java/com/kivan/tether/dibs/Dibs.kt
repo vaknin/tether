@@ -271,7 +271,7 @@ sealed interface Page {
 
 /** The dibs screens' state that outlives a screen: the host, echoes, what's open. */
 object Dibs {
-    /** A Wait/Go ahead tap shows at once for this long, unless a view agrees first. */
+    /** A Wait/Go tap shows at once for this long, unless a view agrees first. */
     const val TAP_MS = 15_000L
 
     @Volatile lateinit var host: DibsHost
@@ -295,8 +295,8 @@ object Dibs {
     }
 
     /**
-     * A tap on the chip: Wait / Stop (dibs holds its answer, and stops a reply in progress, until the
-     * next line or Go ahead), or Go ahead (dibs answers what was written).
+     * A tap on the chip: Wait (dibs keeps its reply back until Go, the next line, or 10 min) or Go
+     * (dibs shows the reply it kept; it starts no work).
      */
     fun tapHold(chip: Hold) {
         holdTap = HoldTap(chip.tapped, chip.kind, System.currentTimeMillis())

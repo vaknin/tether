@@ -8,12 +8,18 @@ import org.junit.Test
 
 // Task #69: the user holds dibs's answer while they're still writing.
 class HoldTest {
-    private val held = JSONObject().put("kind", "held").put("note", "dibs waits for your next message")
-        .put("button", "Go ahead").put("action", "go-ahead").put("style", "primary")
+    private val keeping = JSONObject().put("kind", "held").put("note", "dibs keeps its reply until you tap Go")
+        .put("button", "Go").put("action", "go-ahead").put("style", "primary")
 
-    private fun chip(kind: String): JSONObject = if (kind == "held") held else
-        JSONObject().put("kind", kind).put("note", JSONObject.NULL).put("button", "$kind, I'm not done")
-            .put("action", "hold").put("style", "outline").put("tapped", held)
+    private val ready = JSONObject().put("kind", "held").put("note", "dibs's reply is ready")
+        .put("button", "Go").put("action", "go-ahead").put("style", "primary")
+
+    private fun chip(kind: String): JSONObject = when (kind) {
+        "held" -> keeping
+        "ready" -> ready
+        else -> JSONObject().put("kind", kind).put("note", JSONObject.NULL).put("button", "Wait")
+            .put("action", "hold").put("style", "outline").put("tapped", keeping)
+    }
 
     private fun view(hold: String?) = DibsView.parse(
         JSONObject().put("state", JSONObject().put("busy", true).put("hold", hold?.let(::chip) ?: JSONObject.NULL)),
@@ -43,12 +49,15 @@ class HoldTest {
 
     @Test
     fun stateHoldIsParsedAndAbsentFromAnOlderDibs() {
-        val stop = view("stop").state.hold!!
-        assertEquals("stop" to "stop, I'm not done", stop.kind to stop.button)
-        assertNull(stop.note)
-        assertEquals("hold", stop.action)
-        assertEquals("held", stop.tapped?.kind)
-        assertEquals("dibs waits for your next message", view("held").state.hold?.note)
+        val wait = view("wait").state.hold!!
+        assertEquals("wait" to "Wait", wait.kind to wait.button)
+        assertNull(wait.note)
+        assertEquals("hold", wait.action)
+        assertEquals("held", wait.tapped?.kind)
+        assertEquals("dibs keeps its reply until you tap Go", wait.tapped?.note)
+        assertEquals("Go" to "go-ahead", view("held").state.hold?.let { it.button to it.action })
+        assertEquals("dibs keeps its reply until you tap Go", view("held").state.hold?.note)
+        assertEquals("dibs's reply is ready", view("ready").state.hold?.note)
         assertNull(view("held").state.hold?.tapped)
         assertNull(view(null).state.hold)
         assertNull(DibsView.parse(JSONObject().put("state", JSONObject())).state.hold)
@@ -59,11 +68,11 @@ class HoldTest {
     fun aTapShowsAtOnceUntilTheViewAgrees() {
         val now = 100_000L
         assertEquals("wait", Dibs.hold(view("wait"), now)?.kind)
-        Dibs.holdTap = HoldTap(view("stop").state.hold!!.tapped, "stop", now)
-        assertEquals("held", Dibs.hold(view("stop"), now + 1)?.kind)
-        assertEquals("a stale tap gives way to the view", "stop", Dibs.hold(view("stop"), now + Dibs.TAP_MS)?.kind)
+        Dibs.holdTap = HoldTap(view("wait").state.hold!!.tapped, "wait", now)
+        assertEquals("held", Dibs.hold(view("wait"), now + 1)?.kind)
+        assertEquals("a stale tap gives way to the view", "wait", Dibs.hold(view("wait"), now + Dibs.TAP_MS)?.kind)
         Dibs.holdTap = HoldTap(null, "held", now)
-        assertNull("Go ahead hides the chip while the view still says held", Dibs.hold(view("held"), now + 1))
+        assertNull("Go hides the chip while the view still says held", Dibs.hold(view("held"), now + 1))
         assertEquals("wait", Dibs.hold(view("wait"), now + 1)?.kind)
     }
 

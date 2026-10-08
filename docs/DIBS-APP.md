@@ -172,14 +172,19 @@ seconds) and while the app says the user is typing; lines that reach it mid-repl
   Live messages are never stored or queued (`DibsHost.live`, ffi `send_app_live`); dibs reads them as the
   channel's subscribed client. dibs holds its wake for 15 s after a ping. A sent line clears the pings sent before it (by `ts`), so a ping for the next
   line, which can arrive before the queued line itself, still holds.
-- **The chip** over the box is `state.hold`, words and all (the app only draws it): `{"kind": "wait|stop|held",
-  "note": "…"?, "button": "…", "action": "hold|go-ahead", "style": "outline|danger|primary", "tapped": {…}?}`.
-  `wait`: the user's lines wait for dibs ("Wait, I'm not done"); `stop`: dibs is answering them ("Stop, I'm not
-  done"); both send `hold`, and `tapped` is the chip to show at once after the tap. `held`: "dibs waits for your
-  next message" and Go ahead (`go-ahead`). A tap shows at once, until a view agrees (15 s at most).
-- **dibs's side** (`src/hold.rs`): `hold` holds every wake of the brain and refuses its `dibs say` until the user's
-  next line, Go ahead, or 10 min without a sign of them. If the brain's turn is answering them, Stop interrupts it
-  (Escape in its tab) and types a short note telling it to wait.
+- **The chip** over the box is `state.hold`, words and all (the app only draws it): `{"kind": "wait|held",
+  "note": "…"?, "button": "…", "action": "hold|go-ahead", "style": "outline|primary", "tapped": {…}?}`.
+  Renamed and redone in task #224 (app 0.10.1, the user's word 497; it was "Wait, I'm not done" / "Stop, I'm not
+  done" / "Go ahead"). `wait`: the button "Wait" (pause icon, outline) while dibs owes the user a reply; it sends `hold`,
+  and `tapped` is the chip to show at once after the tap. `held`: the button "Go" (play icon, primary, `go-ahead`) with
+  the note "dibs keeps its reply until you tap Go" while dibs still writes, or "dibs's reply is ready" once it is kept.
+  A tap shows at once, until a view agrees (15 s at most). The note is one line (ellipsis) and the row reads as one node
+  for TalkBack. The typing dots follow `state.busy` only: Wait changes when the reply shows, not whether dibs works,
+  and Go starts no work, so it never brings them up (a kept reply that is ready has no dots).
+- **dibs's side** (`src/hold.rs`): Wait never stops dibs. Its `dibs say` succeeds but the reply is kept back, not shown;
+  Go shows it at once. If the user writes more first, the kept reply goes back to the brain with their lines. After
+  10 min without a sign of the user the Wait lapses and the reply shows. A Wait after dibs already answered does
+  nothing. Docs/PLAN.md in dibs ("Wait / Go").
 
 ### Files to dibs (Tether's core and daemon)
 - New body `Body::ChannelFile { channel, name, size, sha256 }`, appended to the enum (an older peer

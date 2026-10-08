@@ -135,24 +135,40 @@ class ScreensTest {
     @Test
     @Config(qualifiers = "w320dp-h568dp-280dpi")
     fun theHoldChipDrawsDibssWordsAndATapShowsAtOnce() {
-        val held = JSONObject().put("kind", "held").put("note", "dibs waits for your next message")
-            .put("button", "Go ahead").put("action", "go-ahead").put("style", "primary")
-        val stop = JSONObject().put("kind", "stop").put("note", JSONObject.NULL).put("button", "Stop, I'm not done")
-            .put("action", "hold").put("style", "danger").put("tapped", held)
+        val keeping = holdChip("held", "dibs keeps its reply until you tap Go", "Go", "go-ahead", "primary")
+        val wait = holdChip("wait", null, "Wait", "hold", "outline").put("tapped", keeping)
         val v = view(talk = longTalk())
-        v.getJSONObject("dibs").getJSONObject("state").put("busy", true).put("hold", stop)
+        v.getJSONObject("dibs").getJSONObject("state").put("busy", true).put("hold", wait)
         show(v)
-        compose.onNodeWithText("Stop, I'm not done").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Wait").assertIsDisplayed()
+        shot("chat-wait-small")
+        compose.onNodeWithText("Wait").performClick()
         compose.waitForIdle()
         assertTrue(host.acts.any { it.first == "hold" })
-        compose.onNodeWithText("dibs waits for your next message").assertIsDisplayed()
-        compose.onNodeWithText("Go ahead").assertIsDisplayed()
+        compose.onNodeWithText("dibs keeps its reply until you tap Go").assertIsDisplayed()
+        compose.onNodeWithText("Go").assertIsDisplayed()
         compose.onNodeWithText("Message dibs").assertIsDisplayed()
         shot("chat-hold-small")
-        compose.onNodeWithText("Go ahead").performClick()
+        compose.onNodeWithText("Go").performClick()
         compose.waitForIdle()
         assertTrue(host.acts.any { it.first == "go-ahead" })
     }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun aReadyReplyAsksForGoWithoutTheDots() {
+        val ready = holdChip("held", "dibs's reply is ready", "Go", "go-ahead", "primary")
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").getJSONObject("state").put("hold", ready)
+        show(v)
+        compose.onNodeWithText("dibs's reply is ready").assertIsDisplayed()
+        compose.onNodeWithText("Go").assertIsDisplayed()
+        compose.onAllNodesWithTag("typing-dots").assertCountEquals(0)
+        shot("chat-go-ready")
+    }
+
+    private fun holdChip(kind: String, note: String?, button: String, action: String, style: String) =
+        JSONObject().put("kind", kind).put("note", note ?: JSONObject.NULL).put("button", button).put("action", action).put("style", style)
 
     @Test
     @Config(qualifiers = "w320dp-h568dp-280dpi")
@@ -530,9 +546,9 @@ class ScreensTest {
     }
 
     @Test
-    fun heldDibsShowsItsLineWithoutTheDots() {
-        val held = JSONObject().put("kind", "held").put("note", "dibs waits for your next message")
-            .put("button", "Go ahead").put("action", "go-ahead").put("style", "primary")
+    fun aHeldDibsStillShowsTheDotsWhileItWorks() {
+        val held = JSONObject().put("kind", "held").put("note", "dibs keeps its reply until you tap Go")
+            .put("button", "Go").put("action", "go-ahead").put("style", "primary")
         val v = view(talk = longTalk())
         v.getJSONObject("dibs").getJSONObject("state").put("busy", true).put("line", "Reading the board")
         show(v)
@@ -540,8 +556,13 @@ class ScreensTest {
         v.getJSONObject("dibs").getJSONObject("state").put("hold", held)
         host.view.value = JSONObject(v.toString())
         compose.waitForIdle()
-        compose.onAllNodesWithTag("typing-dots").assertCountEquals(0)
+        compose.onAllNodesWithTag("typing-dots").assertCountEquals(1)
         compose.onNodeWithText("Reading the board").assertIsDisplayed()
+        // Its reply is ready (not busy any more): nothing is going on.
+        v.getJSONObject("dibs").getJSONObject("state").put("busy", false)
+        host.view.value = JSONObject(v.toString())
+        compose.waitForIdle()
+        compose.onAllNodesWithTag("typing-dots").assertCountEquals(0)
     }
 
     @Test
