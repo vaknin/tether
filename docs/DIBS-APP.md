@@ -600,3 +600,49 @@ the wire formats both sides build byte for byte are the task's SPEC.md (dibs tas
 - Tests: `RootTest` (the vector, sorting, binary hashes, refusals, warnings, hidden characters, codes),
   `PayloadTest.aRootStepCarriesItsRequest`, `RootScreensTest` (card, page, approve and what it sends, a closed
   prompt, expired, invalidated, deny, setup, the chat's Review, 320 dp).
+
+## Screen space: one slim bar, one dibs page (task #137, 2026-10-08; app 0.9.0)
+
+**The problem** (the user, words 313 and 314, screenshots of 2026-10-07): on every tab the header (state, name,
+mark, two usage lines, ⋮) and the two lend cards took about 290 of the screen's 915 dp before any content. With
+a few lines typed and the keyboard closed, the chat got under 40 % of the screen; the Tasks tab added a two-line
+"Laptop" block on top of that.
+
+**What good chat apps do** (researched for this task):
+- WhatsApp, Signal, Telegram and Google Messages all keep **one slim fixed bar** in a conversation: avatar, name,
+  a one-line status under it ("online", "typing"), one or two icons and ⋮. Everything else about the other
+  side (settings, media, toggles) is **behind a tap on the name**, on its own page. None of them collapse the
+  bar on scroll in a conversation: the reverse-scrolled list and the keyboard make a sliding bar jump, and the
+  status line is what you look at while waiting.
+- Material 3: a small top app bar is 64 dp; `pinned` is for screens whose bar carries live state and actions,
+  `enterAlways` for long reading lists. Nav bars hide while the keyboard is up (this app already does).
+- A header holds one or two kinds of things, not logo + status + settings + gauges (common chat UI guidance).
+  The keyboard must never cover the box or the newest lines (also already handled here: `imePadding`).
+
+**The decision:**
+- **One slim bar on every tab, pinned** (about 52 dp under the status bar): dibs's mark (32 dp), "dibs" with its
+  state as a small coloured line under it (the old eyebrow, now a subtitle), then **marks that only appear when
+  they matter**: a phone and/or laptop icon in an accent pill while lent to dibs (filled, so it reads without
+  colour), and "5h 88%" in amber when a usage window passes 80 %. Then ⋮. It does not hide on scroll or while
+  typing: once slim it costs little, and the state is what the user watches while dibs works.
+- **The dibs page** (`Page.Status`, opened by a tap on the bar's mark, name or marks, and from ⋮ "Laptop and
+  phone"): the state in words, the two lend switches as full cards, Claude usage (every window, its reset time),
+  the laptop's load (memory, cores, builds, agents; moved off the Tasks tab) and its room for more tasks, Start
+  dibs when the brain is down, Open Tether. This is the one place for all of it; no tab shows lend cards or usage
+  lines any more. "Start dibs" also stays in the bar while the brain is down (it blocks everything).
+- **Tasks**: each board section shows its count ("Working now · 2", "Queue · 5"); dibs renames "Up next" to
+  **Queue** in its board (phone, desktop app and the brain's own words match). When the laptop has no room, the
+  board's `room.line` shows above Queue, so a waiting queue explains itself.
+- **Ideas** gets a badge with the number of active ideas (not in the trash).
+- **Waiting**: a tap on a card's text opens the task it's about (agent questions name their task; dibs now also
+  links a brain question that names one, "#104"). Card text is never cut (dibs stopped cutting `why` on
+  2026-10-08).
+- **Chat** (tasks #135, #154 and Capture note #67 folded in): while the user holds dibs ("dibs waits until
+  you're done") the line shows without the animated dots; "Ask dibs about it" puts the task's number in the
+  text ("About #144 Agents run while memory allows: "); a long press offers **Select text** (the message whole
+  in a sheet, any part selectable) beside Copy and Hide; **swipe right to reply** quotes a message in the box and
+  sends dibs which line was answered (plan: Capture note #67's, copied into this task).
+
+**Why not the user's other ideas:** lend cards on one specific tab would still cost that tab the room and split
+"what dibs may use" from "how dibs is doing"; a header that collapses on scroll makes the chat jump and hides the
+state just when dibs is working. A slim pinned bar gives the chat about 240 dp back on every tab without either.
