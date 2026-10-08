@@ -489,6 +489,11 @@ class PayloadTest {
         assertEquals("tmux on the server", b.answer)
         assertNull(b.card)
         assertEquals(2, d.recapUnread)
+        assertTrue(d.recapStories.isEmpty())
+        assertEquals(
+            listOf(StoryEntry(189, "Terminal", 1760000000, "dibs"), StoryEntry(5, "", 0, null)),
+            DibsView.parse(JSONObject("""{"recap": {"items": [], "stories": [{"task": 189, "title": "Terminal", "ts": 1760000000, "project": "dibs"}, {"task": 5}, {"title": "no task"}]}}""")).recapStories,
+        )
         assertEquals(1, d.recapNeeds)
         assertEquals(RecapSmall(47, listOf(SmallGroup("dibs", 21, listOf("one", "two")), SmallGroup("tether", 3, emptyList()))), d.recapSmall)
         // A task's own brief and a board card's take their number from the task when the brief has none.

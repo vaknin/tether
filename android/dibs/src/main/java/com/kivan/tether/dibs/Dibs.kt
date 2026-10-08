@@ -259,6 +259,8 @@ sealed interface Page {
     data class Idea(val id: String) : Page
     /** An Ask about conversation, by its subject (`task:85`, `note:41`): it opens before dibs lists it. */
     data class Ask(val about: String) : Page
+    /** Every full story dibs keeps, newest first (opened from Recap's "Stories" row). */
+    data object Stories : Page
     /** A root step's request, by its question's id: the script word for word, and Approve with a fingerprint. */
     data class Root(val id: Long) : Page
     /** Setting up the phone's key for root steps: its code, sent to the laptop. */

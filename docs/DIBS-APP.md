@@ -128,7 +128,8 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
             "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …, "undo": true,
                          "project": "Tether", "plain": true, "raw": "the agent's whole text"}]?,
             "items": [<Brief>]?, "unread": 3?, "needs": 1?,          // the morning recap, below (0.10.0)
-            "small": {"n": 47, "groups": [{"project": "dibs", "n": 21, "lines": ["…"]}]}?},
+            "small": {"n": 47, "groups": [{"project": "dibs", "n": 21, "lines": ["…"]}]}?,
+            "stories": [{"task": 189, "title": "…", "ts": …, "project": "dibs"?}]?},   // every full story kept, newest first
   "badges": {"waiting": 3, "work": 1, "recap": 1}       // recap: the unread count with `items`, else 0/1
 }
 ```
@@ -689,7 +690,9 @@ none and the old tab shows).
   (while any is unread); one row per brief (unread dot or blank space, tag chip: needs/urgent amber, asked/talked
   accent, answer blue; the time at the right; the headline; the line in muted; a read row dimmed). Under "The rest":
   the fold "Small fixes · N" (each project and its count; open, the groups with their lines and "n more" when fewer
-  lines than `n`) and "Decided for you". The tab's badge is the unread number (a read here counts at once).
+  lines than `n`), a row "Stories · N" (`recap.stories`, hidden when empty) that opens `Page.Stories`
+  (`ui/StoriesPage.kt`: a list of every full story dibs keeps, newest first, title and project · when; a tap opens
+  the task's story screen, whose Full story section reads it), and "Decided for you". The tab's badge is the unread number (a read here counts at once).
 - **Story screen** (`Page.Brief(task, fromRecap)`, `ui/BriefPage.kt`): top bar with back, "k of N" (from Recap, its
   place in `recap.items`) or "Story", and previous/next arrows. A swipe over 60 dp or the arrows replace the top page
   (back still returns to the list). Content: tag, big title, meta ("#id · project · Kind · when", and in amber "since

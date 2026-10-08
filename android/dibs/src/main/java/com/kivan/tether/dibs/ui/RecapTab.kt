@@ -116,8 +116,9 @@ private fun UnreadRecap(view: DibsView) {
         }
         if (items.isEmpty()) item(key = "_caught_up") { Quiet("You're caught up") }
         items(items, key = { "b${it.task}" }) { b -> BriefRow(b, Modifier.animateItem()) }
-        if (small != null || view.recapDecided.isNotEmpty()) item(key = "_rest") { Section("The rest") }
+        if (small != null || view.recapStories.isNotEmpty() || view.recapDecided.isNotEmpty()) item(key = "_rest") { Section("The rest") }
         if (small != null) item(key = "_small") { SmallFixes(small) }
+        if (view.recapStories.isNotEmpty()) item(key = "_stories") { StoriesRow(view.recapStories.size) }
         decidedItems(view, now, armed)
     }
 }
@@ -191,6 +192,24 @@ private fun SmallFixes(small: RecapSmall) {
                 if (g.n > g.lines.size) Text("${g.n - g.lines.size} more", Modifier.padding(vertical = 2.dp), style = AppType.small, color = Palette.Accent)
             }
         }
+    }
+}
+
+/** "Stories · N": every full story dibs keeps, on a page of its own. */
+@Composable
+private fun StoriesRow(n: Int) {
+    Row(
+        Modifier.card().clip(MaterialTheme.shapes.medium).clickable(role = Role.Button, onClickLabel = "Open the stories") { Dibs.open(Page.Stories) }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(painterResource(R.drawable.lucide_book_open), null, Modifier.size(18.dp), tint = Palette.Muted)
+        Column(Modifier.weight(1f)) {
+            Eyebrow("Stories · $n")
+            Text("Every full story dibs kept, newest first", style = AppType.small, color = Palette.Muted)
+        }
+        Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.size(18.dp), tint = Palette.Muted)
     }
 }
 
