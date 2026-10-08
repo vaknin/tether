@@ -20,14 +20,16 @@ class PayloadTest {
             {"id": "u-1", "n": 63, "who": "user", "text": "Is it ready?", "ts": 1791212000},
             {"id": "s64", "n": 64, "who": "dibs", "text": "Started task x, as you said (\"long quote\").", "short": "Started task x.", "note": true, "ts": 1791212701},
             {"id": "s65", "n": 65, "who": "dibs", "text": "Inside Tether?", "ts": 1791212800,
-             "ask": {"q": 249, "actions": [{"id": "y249", "label": "Yes", "style": "primary"}, {"id": "x249", "label": "Drop this question", "style": "plain"}], "reply": "r249", "hint": "Answer in your own words…"}},
+             "ask": {"q": 249, "actions": [{"id": "y249", "label": "Yes", "style": "primary"}, {"id": "x249", "label": "Drop this question", "style": "plain"}], "reply": "r249", "hint": "Answer in your own words…",
+                     "read": {"label": "Read it in full", "task": 42, "url": null}}},
             {"id": "s66", "n": 66, "who": "dibs", "text": "Separate app?", "ts": 1791212900, "ask": {"q": 250, "outcome": "Answered: Inside Tether"}},
             {"id": "u-2", "n": 67, "who": "user", "text": "look", "ts": 1791213000,
              "files": [{"id": "f1", "name": "a.jpg", "size": 1234, "image": true}, {"id": "f2", "name": "log.txt", "size": 9, "image": false}]}
           ],
           "questions": [{"id": 249, "title": "Inside Tether?", "why": "The plan", "details": "Longer", "from": "dibs", "repo": "tether",
                          "ts": 1791212800, "blocking": false, "kind": "phone", "phone": {"secs": 1800, "unlock": true},
-                         "actions": [{"id": "y249", "label": "Lend it", "style": "primary"}], "reply": "r249", "hint": "Add a comment…"}],
+                         "actions": [{"id": "y249", "label": "Lend it", "style": "primary"}], "reply": "r249", "hint": "Add a comment…",
+                         "read": {"task": 42, "url": "https://example.com/plan"}}],
           "decided": [{"id": 250, "text": "Shipped", "why": "2 commits", "from": "dibs", "ts": 1791213100, "undo": true, "ack": "k250"}],
           "tasks": [{"id": 16, "name": "build-it", "state": "running", "repo": "tether", "minutes": 112, "text": "Build", "doing": "Writing", "status": "busy", "dir": "~/x"}],
           "sessions": [{"name": "dibs-brain", "repo": "dibs", "branch": "brain-2b", "status": "idle", "task": null, "holds": ["repo:dibs:master", "phone"]}],
@@ -117,6 +119,18 @@ class PayloadTest {
         assertTrue("an update's technical line is behind the tap", update.opens)
         assertFalse("an older dibs's bare line has nothing behind it", bare.opens)
         assertNull(bare.why)
+    }
+
+    @Test
+    fun readItInFullComesOnAnAskAndACardAndIsOptional() {
+        val d = DibsView.ofView(view)!!
+        assertEquals(ReadInFull("Read it in full", 42, null), d.talk[2].ask!!.read)
+        assertNull("a closed ask has none", d.talk[3].ask!!.read)
+        assertEquals("the label has a default", ReadInFull("Read it in full", 42, "https://example.com/plan"), d.questions.single().read)
+        fun read(r: String) = DibsView.parse(JSONObject("""{"questions": [{"id": 1, "title": "x", "read": $r}]}""")).questions.single().read
+        assertNull("only a secure link opens", read("""{"task": 7, "url": "http://example.com"}""")!!.url)
+        assertNull("no task, nothing to read", read("""{"url": "https://example.com"}"""))
+        assertNull(read("\"yes\""))
     }
 
     @Test

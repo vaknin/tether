@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.kivan.tether.dibs.Action
@@ -34,6 +35,7 @@ import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.Question
 import com.kivan.tether.dibs.R
+import com.kivan.tether.dibs.ReadInFull
 import com.kivan.tether.dibs.age
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
@@ -89,7 +91,7 @@ internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long
         if (q.why.isNotBlank()) Text(q.why, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
         }
         q.details?.let { Details(q.id, it) }
-        QuestionControls(q.id, "q/${q.id}", q.actions, q.reply, q.hint, Modifier.padding(top = 4.dp))
+        QuestionControls(q.id, "q/${q.id}", q.actions, q.reply, q.hint, Modifier.padding(top = 4.dp), read = q.read)
         if (task != null) {
             Row(
                 Modifier.clip(MaterialTheme.shapes.small).clickable { Dibs.open(Page.Task(task)) }.padding(vertical = 4.dp),
@@ -108,7 +110,8 @@ internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long
  * each place's draft). Sent alone, the words are the answer (on a question that runs something,
  * dibs reads them and settles it); typed before a tap, they go with it as a comment (the user's
  * rule: a yes/no question also takes a free comment). Either place answers the one question, so
- * both close.
+ * both close. [read] (a finished plan or research) is a button above them that opens the whole
+ * thing and does not answer.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -120,9 +123,17 @@ internal fun QuestionControls(
     hint: String?,
     modifier: Modifier = Modifier,
     background: Color = Palette.SurfaceLow,
+    read: ReadInFull? = null,
 ) {
     val key = "q$id"
+    val uri = LocalUriHandler.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        read?.let { r ->
+            ActButton(r.label, "") {
+                // The published page in the browser; the task's own page when there is none or it won't open.
+                if (r.url == null || runCatching { uri.openUri(r.url) }.isFailure) Dibs.open(Page.Task(r.task))
+            }
+        }
         if (actions.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (a in actions) {

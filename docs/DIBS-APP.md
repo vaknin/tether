@@ -108,12 +108,14 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
             "laptop": {"lent": true, "text": "Until you take it back · rami-0f is on it", "until": 1791240000, "action": "laptop-back"}}?,
   "talk": [{"id": "64", "who": "user|dibs", "text": "full text", "short": "…"?, "ts": 1791212701,
             "note": true?, "ask": {"q": 249, "actions": [{"id","label","style"}], "reply": "r249"?,
-                                   "hint": "Add a comment…"?, "outcome": "Inside Tether"?}?,
+                                   "hint": "Add a comment…"?, "outcome": "Inside Tether"?,
+                                   "read": {"label": "Read it in full", "task": 42, "url": "https://…" | null}?}?,
             "files": [{"id": "<tether file id>", "name": "a.jpg", "size": 123, "image": true}]?}],
   "questions": [{"id": 249, "title": "…", "why": "…", "details": "…"?, "from": "dibs", "repo": "tether"?,
                  "ts": …, "blocking": false, "phone": {"secs": 1800, "unlock": true}?,
                  "actions": [{"id": "y249", "label": "Yes", "style": "primary"}], "reply": "r249"?,
-                 "hint": "Answer in your own words…"?}],
+                 "hint": "Answer in your own words…"?,
+                 "read": {"label": "Read it in full", "task": 42, "url": "https://…" | null}?}],
   "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …}],
   "tasks": [{"id": 16, "name": "…", "state": "running", "repo": "dibs", "minutes": 46,
              "text": "…", "doing": "last line", "background": false}],
@@ -153,6 +155,12 @@ words sent alone are `r<id>` as before; typed and then a button tapped (not `x`)
 them as `value.comment`, which dibs hands to its brain (the tap still answers).
 `hold` and `go-ahead` (task #69, below). `recap-seen` (0.10.0): `{"task": 223}` when a brief is opened (or swiped onto),
 `{"all": true}` for "Mark all read".
+
+**Read it in full (task #264, from #262).** A finished plan or research question carries `read` (on its
+chat `ask` and on its Waiting card; absent on other questions and on closed ones). It draws as an outline
+button above the question's buttons. A tap opens `url` in the browser (only `https://` is taken; if it
+won't open, the task's page), or the task's page (`Page.Task(task)`) when `url` is null. It does not answer
+the question. `label` defaults to "Read it in full"; a `read` without a task is ignored.
 
 ### Hold dibs's answer while the user is still writing (task #69, 2026-10-06)
 The user asked (word 145) to add, clarify or correct before dibs answers; each line used to wake dibs's brain at

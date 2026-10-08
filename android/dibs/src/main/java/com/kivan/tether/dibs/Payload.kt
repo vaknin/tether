@@ -11,10 +11,23 @@ data class Action(val id: String, val label: String, val style: String = "")
 data class FileRef(val id: String, val name: String, val size: Long, val image: Boolean)
 
 /**
+ * "Read it in full" on a finished plan or research question: the [task] whose page holds the whole
+ * thing, or its [url] (https only) when dibs has it published.
+ */
+data class ReadInFull(val label: String, val task: Long, val url: String?)
+
+/**
  * A question in the chat: its buttons while open (and a box for words, [hint] its placeholder),
  * then how it ended.
  */
-data class Ask(val q: Long, val actions: List<Action>, val reply: String?, val outcome: String?, val hint: String? = null) {
+data class Ask(
+    val q: Long,
+    val actions: List<Action>,
+    val reply: String?,
+    val outcome: String?,
+    val hint: String? = null,
+    val read: ReadInFull? = null,
+) {
     val open: Boolean get() = outcome == null
 }
 
@@ -119,6 +132,8 @@ data class Question(
     val task: Long? = null,
     /** A root step's request (kind `root`): what the page shows and the phone signs. */
     val root: RootRequest? = null,
+    /** A finished plan or research question: a button to read the whole of it before answering. */
+    val read: ReadInFull? = null,
 )
 
 /**
@@ -739,7 +754,7 @@ data class DibsView(
             ts = o.optLong("ts"),
             files = files(o.optJSONArray("files")),
             ask = o.optJSONObject("ask")?.let { a ->
-                Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"), a.str("hint"))
+                Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"), a.str("hint"), readInFull(a.optJSONObject("read")))
             },
             open = o.optJSONObject("open")?.long("story"),
             thread = o.str("thread"),
@@ -766,7 +781,13 @@ data class DibsView(
                 phoneUnlock = phone?.optBoolean("unlock") == true,
                 task = o.long("task"),
                 root = o.optJSONObject("root")?.let(RootRequest::parse),
+                read = readInFull(o.optJSONObject("read")),
             )
+        }
+
+        private fun readInFull(o: JSONObject?): ReadInFull? {
+            val task = o?.long("task")?.takeIf { it > 0 } ?: return null
+            return ReadInFull(o.str("label") ?: "Read it in full", task, o.str("url")?.takeIf { it.startsWith("https://") })
         }
 
         private fun actions(a: JSONArray?) = a.objects().map { Action(it.optString("id"), it.optString("label"), it.optString("style")) }

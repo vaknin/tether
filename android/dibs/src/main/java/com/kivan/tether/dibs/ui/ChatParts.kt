@@ -705,7 +705,7 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
 @Composable
 private fun AskButtons(ask: Ask, look: ChatLook) {
     look.roots[ask.q]?.let { return RootActions(it, Modifier.padding(top = 3.dp)) }
-    QuestionControls(ask.q, "ask/${ask.q}", ask.actions, ask.reply, ask.hint, Modifier.padding(top = 3.dp))
+    QuestionControls(ask.q, "ask/${ask.q}", ask.actions, ask.reply, ask.hint, Modifier.padding(top = 3.dp), read = ask.read)
 }
 
 /** A message of mine not in a view yet: what was picked for it, its text, a clock (and how far its files got). */

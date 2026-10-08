@@ -623,6 +623,23 @@ class ScreensTest {
     }
 
     @Test
+    fun aWaitingCardReadsItInFullWithoutAnsweringIt() {
+        val v = view(talk = longTalk(), questions = listOf(JSONObject().put("id", 9).put("title", "Research done: Memory").put("why", "What to buy")
+            .put("from", "dibs").put("ts", NOW - 60).put("kind", "question")
+            .put("actions", JSONArray().put(JSONObject().put("id", "approve").put("label", "Got it")))
+            .put("read", JSONObject().put("label", "Read it in full").put("task", 42).put("url", JSONObject.NULL))))
+        show(v)
+        Dibs.tab = "waiting"
+        compose.waitForIdle()
+        compose.onNodeWithText("Read it in full").assertIsDisplayed()
+        shot("waiting-read-it-in-full")
+        compose.onNodeWithText("Read it in full").performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Task(42), Dibs.pages.last())
+        assertTrue(Dibs.answered.isEmpty())
+    }
+
+    @Test
     fun theTasksTabCountsItsSectionsAndExplainsAFullLaptop() {
         val v = view(talk = longTalk())
         v.getJSONObject("dibs").put("yours", JSONArray().put(yours(1, "Cleanup", "working")))
