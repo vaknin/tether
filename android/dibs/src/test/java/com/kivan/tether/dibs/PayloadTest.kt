@@ -457,4 +457,64 @@ class PayloadTest {
         assertNull(d.questions[2].root)
         assertNull("an ordinary question has no root", DibsView.ofView(view)!!.questions[0].root)
     }
+
+    @Test
+    fun theMorningRecapParses() {
+        val d = DibsView.parse(
+            JSONObject(
+                """
+                {"recap": {"feed": [], "unread": 2, "needs": 1,
+                  "items": [
+                    {"key": "t210", "task": 210, "tier": "needs", "title": "The plan is ready", "lede": "Routine work moves to plain code.",
+                     "what": "A plan.", "why": "You asked.", "means": "Nothing changes yet.", "next": "Choose.", "project": "dibs", "kind": "plan",
+                     "state": "done", "ts": 1760000000, "unread": true, "card": 1093, "story": {"state": "ready", "ts": 1760000100, "have": true}},
+                    {"key": "t189", "task": 189, "tier": "asked", "title": "Terminal", "lede": "", "answer": "tmux on the server", "unread": false, "writing": true}
+                  ],
+                  "small": {"n": 47, "groups": [{"project": "dibs", "n": 21, "lines": ["one", "two"]}, {"project": "tether", "n": 3, "lines": []}]}},
+                 "badges": {"recap": 2},
+                 "yours": [{"id": 5, "title": "x", "state": "done", "brief": {"tier": "talked", "title": "Five", "unread": true}}],
+                 "board": {"columns": [{"key": "now", "title": "Now", "cards": [{"key": "task:6", "n": 6, "title": "Six", "brief": {"task": 6, "tier": "asked", "title": "Six"}}]}]}}
+                """,
+            ),
+        )
+        assertTrue(d.recapList)
+        val (a, b) = d.recapItems
+        assertEquals(Brief("t210", 210, "needs", "The plan is ready", "Routine work moves to plain code.", "A plan.", "You asked.", "Nothing changes yet.", "Choose.",
+            null, "dibs", "plan", "done", 1760000000, true, false, 1093, Story("ready", 1760000100, false, true)), a)
+        assertEquals("Needs you", a.tag)
+        assertTrue(a.needsYou)
+        assertEquals("Answers your question", b.tag)
+        assertTrue(b.writing)
+        assertFalse(b.hasParts)
+        assertEquals("tmux on the server", b.answer)
+        assertNull(b.card)
+        assertEquals(2, d.recapUnread)
+        assertEquals(1, d.recapNeeds)
+        assertEquals(RecapSmall(47, listOf(SmallGroup("dibs", 21, listOf("one", "two")), SmallGroup("tether", 3, emptyList()))), d.recapSmall)
+        // A task's own brief and a board card's take their number from the task when the brief has none.
+        assertEquals(5L, d.task(5)!!.brief!!.task)
+        assertEquals("Six", d.card(6)!!.brief!!.title)
+        assertEquals("the recap's own first", 210L, d.brief(210)!!.task)
+        assertEquals("Five", d.brief(5)!!.title)
+        assertEquals("Six", d.brief(6)!!.title)
+        assertNull(d.brief(7))
+    }
+
+    @Test
+    fun anOlderDibsHasNoItemsAndAnEmptyListIsStillTheNewRecap() {
+        val old = DibsView.parse(JSONObject("""{"recap": {"feed": [], "decided": []}, "badges": {"recap": 1}}"""))
+        assertFalse(old.recapList)
+        assertTrue(old.recapItems.isEmpty())
+        assertNull(old.recapSmall)
+        assertNull(old.yours)
+        val caughtUp = DibsView.parse(JSONObject("""{"recap": {"items": [], "unread": 0, "needs": 0}}"""))
+        assertTrue("an empty list is \"caught up\", not the old tab", caughtUp.recapList)
+        assertTrue(caughtUp.recapItems.isEmpty())
+        assertFalse(DibsView.parse(JSONObject("""{"v": 1}""")).recapList)
+        // A brief without its task is dropped; no card or story is fine.
+        val odd = DibsView.parse(JSONObject("""{"recap": {"items": [{"title": "no task"}, {"task": 3, "tier": "talked", "title": "T"}]}}"""))
+        assertEquals(listOf(3L), odd.recapItems.map { it.task })
+        assertEquals("t3", odd.recapItems[0].key)
+        assertEquals("You talked it over", odd.recapItems[0].tag)
+    }
 }
