@@ -108,12 +108,13 @@ internal fun ActButton(label: String, style: String, modifier: Modifier = Modifi
     }
 }
 
-/** A small pill: a repo, a hold. [warn] is amber with a ⚠, for a state that needs a look (never colour alone). */
+/** A small pill: a repo, a hold. [warn] is amber with a ⚠, for a state that needs a look (never colour alone); [success] blue. */
 @Composable
-internal fun Chip(text: String, modifier: Modifier = Modifier, accent: Boolean = false, warn: Boolean = false) {
+internal fun Chip(text: String, modifier: Modifier = Modifier, accent: Boolean = false, warn: Boolean = false, success: Boolean = false) {
     val (bg, fg) = when {
         warn -> Palette.Warning.copy(alpha = 0.16f) to Palette.Warning
         accent -> Palette.AccentDim to Palette.Accent
+        success -> Palette.Success.copy(alpha = 0.16f) to Palette.Success
         else -> Palette.SurfaceHigh to Palette.Muted
     }
     Row(

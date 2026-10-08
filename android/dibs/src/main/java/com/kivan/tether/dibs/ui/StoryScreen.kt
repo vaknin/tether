@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -24,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -48,10 +50,10 @@ import com.kivan.tether.dibs.MdBlock
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.Story
-import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.askQuote
 import com.kivan.tether.dibs.markdownBlocks
 import com.kivan.tether.dibs.ui.theme.AppType
+import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
@@ -76,13 +78,28 @@ private val StoryLook = ReadLook(
     gap = Space.M,
 )
 
+/**
+ * A task's full story as the screens read it: its [fetch] of the file, what the file says ([blocks]), and whether it
+ * is being written ([writing]: also from a "write it again" tapped here, until dibs's view moves on).
+ */
+@Stable
+internal class StoryState(
+    val story: Story?,
+    val fetch: Fetch,
+    val blocks: List<MdBlock>?,
+    val bad: Boolean,
+    val writing: Boolean,
+    val writeAgain: () -> Unit,
+)
+
+/**
+ * Reads task [id]'s full story from its file, asking dibs for the file when a ready one isn't here. [autoAsk]: opening
+ * also asks for one never written (dibs then writes it, which costs); without it that waits for the user's tap
+ * ([Fetch.refresh]). While one is written, or after a failure, it never asks: each ask could start a paid write.
+ */
 @Composable
-internal fun StoryScreen(id: Long, view: DibsView) {
-    val t = view.task(id) ?: return Gone()
-    val s = t.story
-    // Opening asks for it only when it was never asked for (dibs writes one) or one is ready to get.
-    // While one is written, or after a failure, it never asks: each ask could start a paid write.
-    val fetch = rememberFetch(id, "story", since = s?.ts ?: 0, ask = s == null || s.state == "ready")
+internal fun rememberStory(id: Long, s: Story?, autoAsk: Boolean): StoryState {
+    val fetch = rememberFetch(id, "story", since = s?.ts ?: 0, ask = s?.state == "ready" || (autoAsk && s == null))
     // Asked to write it again here: it shows as being written until dibs's view moves on.
     var again by remember(id, s?.state, s?.since) { mutableStateOf(false) }
     val writeAgain = {
@@ -111,27 +128,104 @@ internal fun StoryScreen(id: Long, view: DibsView) {
         bad = read == null
         if (read != null) value = read
     }
+    return StoryState(s, fetch, blocks, bad, writing, writeAgain)
+}
+
+@Composable
+internal fun StoryScreen(id: Long, view: DibsView) {
+    val label = view.labelOf(id) ?: return Gone()
+    val st = rememberStory(id, view.storyOf(id), autoAsk = true)
+    val s = st.story
+    val fetch = st.fetch
     val link by Dibs.host.link.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize()) {
-        PageBar("Full story", t.label)
+        PageBar("Full story", label)
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            val b = blocks
+            val b = st.blocks
             when {
-                b != null -> StoryText(b, t, view, s, writing, writeAgain)
-                bad && !fetch.waiting -> Calm("It couldn't be read", null) {
+                b != null -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.XS, bottom = Space.XXL),
+                    verticalArrangement = Arrangement.spacedBy(StoryLook.gap),
+                ) { storyItems(b, st, id, label, view) }
+                st.bad && !fetch.waiting -> Calm("It couldn't be read", null) {
                     ActButton("Get it again", "primary", Modifier.padding(top = Space.L)) { fetch.refresh() }
                 }
-                writing -> Writing(s)
+                st.writing -> Writing(s)
                 s?.state == "failed" -> Calm("It couldn't be written", "Something went wrong while it was written.") {
-                    ActButton("Try again", "primary", Modifier.padding(top = Space.L)) { writeAgain() }
+                    ActButton("Try again", "primary", Modifier.padding(top = Space.L)) { st.writeAgain() }
                 }
                 // Just asked: dibs starts writing; its view says so shortly.
                 s == null && link == Link.CONNECTED && !fetch.timedOut -> Writing(null)
                 else -> Waiting(fetch, "full story")
             }
         }
-        StoryBar(t, view, blocks != null)
+        StoryBar(id, label, view, st.blocks != null)
+    }
+}
+
+/**
+ * The full story inside a brief page's scrolling list, under its "Full story" eyebrow. Nothing is asked for that costs: a
+ * story never written waits for a tap on "Read the full story" ([Fetch.refresh]), and one being written or failed is
+ * never fetched. The same states as the story screen, said small.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+internal fun LazyListScope.fullStoryItems(st: StoryState, id: Long, label: String, view: DibsView, connected: Boolean) {
+    item(key = "_full") { Eyebrow("Full story", Modifier.padding(top = Space.XL)) }
+    val s = st.story
+    val fetch = st.fetch
+    val b = st.blocks
+    when {
+        b != null -> {
+            storyItems(b, st, id, label, view)
+            item(key = "_full_acts") {
+                FlowRow(
+                    Modifier.fillMaxWidth().padding(top = Space.S),
+                    horizontalArrangement = Arrangement.spacedBy(Space.S),
+                    verticalArrangement = Arrangement.spacedBy(Space.S),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (view.task(id) != null) ActButton("Show the conversation", "plain") { Dibs.open(Page.Transcript(id)) }
+                    ActButton("Start a follow-up", "") { Dibs.chatAboutStory(id, label, "follow") }
+                }
+            }
+        }
+        st.bad && !fetch.waiting -> item(key = "_full_bad") {
+            QuietBlock("It couldn't be read.") { ActButton("Get it again", "primary") { fetch.refresh() } }
+        }
+        st.writing -> item(key = "_full_writing") { QuietBlock(writingLine(s)) }
+        s?.state == "failed" -> item(key = "_full_failed") {
+            QuietBlock("It couldn't be written. Something went wrong while it was written.") { ActButton("Try again", "primary") { st.writeAgain() } }
+        }
+        // Never written and not asked for yet: a tap asks (dibs then writes it, a few minutes).
+        s == null && fetch.askedAt == 0L -> item(key = "_full_ask") {
+            QuietBlock("The full story is written only when you ask. It takes a few minutes.") {
+                ActButton("Read the full story", "primary") { fetch.refresh() }
+            }
+        }
+        s == null && connected && !fetch.timedOut -> item(key = "_full_asked") { QuietBlock(writingLine(null)) }
+        fetch.timedOut -> item(key = "_full_late") {
+            QuietBlock("It hasn't come. dibs didn't send the full story.") { ActButton("Try again", "primary") { fetch.refresh() } }
+        }
+        else -> item(key = "_full_wait") {
+            QuietBlock(if (connected) "Getting the full story. dibs is sending it." else "Getting the full story. It comes once the laptop is reachable.")
+        }
+    }
+}
+
+private fun writingLine(s: Story?): String {
+    val agent = s?.by == "agent"
+    return (if (agent) "Its agent is writing it" else "dibs is writing it") +
+        ". It takes a few minutes; you can leave: dibs tells you in the chat when it's ready."
+}
+
+/** A muted line with what can be done about it. */
+@Composable
+private fun QuietBlock(text: String, more: @Composable () -> Unit = {}) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        Text(text, style = AppType.body, color = Palette.Muted)
+        more()
     }
 }
 
@@ -163,17 +257,10 @@ private fun Calm(title: String, line: String?, more: @Composable () -> Unit = {}
 }
 
 /** When and by whom it was written, whether the task moved on since, then the story itself. */
-@Composable
-private fun StoryText(blocks: List<MdBlock>, t: YourTask, view: DibsView, s: Story?, writing: Boolean, writeAgain: () -> Unit) {
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.XS, bottom = Space.XXL),
-        verticalArrangement = Arrangement.spacedBy(StoryLook.gap),
-    ) {
-        item(key = "_meta") { Meta(s, writing, writeAgain) }
-        if (s != null && s.stale && !writing) item(key = "_stale") { Stale(writeAgain) }
-        itemsIndexed(blocks) { _, b -> StoryBlock(b, t, view) }
-    }
+internal fun LazyListScope.storyItems(blocks: List<MdBlock>, st: StoryState, id: Long, label: String, view: DibsView) {
+    item(key = "_meta") { Meta(st.story, st.writing, st.writeAgain) }
+    if (st.story != null && st.story.stale && !st.writing) item(key = "_stale") { Stale(st.writeAgain) }
+    itemsIndexed(blocks) { _, b -> StoryBlock(b, id, label, view) }
 }
 
 /** "Written 21:40 by dibs's writer"; "A new version is being written" while one is. */
@@ -221,7 +308,7 @@ private fun Stale(writeAgain: () -> Unit) {
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun StoryBlock(b: MdBlock, t: YourTask, view: DibsView) {
+private fun StoryBlock(b: MdBlock, id: Long, label: String, view: DibsView) {
     val text = when (b) {
         is MdBlock.Para -> b.text
         is MdBlock.Item -> b.text
@@ -253,7 +340,7 @@ private fun StoryBlock(b: MdBlock, t: YourTask, view: DibsView) {
                 ),
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            val ask = view.askFor(t)
+            val ask = view.askFor(id)
             DropdownMenuItem(
                 text = { Text(if (ask != null) "Ask about this part" else "Ask dibs about this part") },
                 leadingIcon = {
@@ -261,7 +348,7 @@ private fun StoryBlock(b: MdBlock, t: YourTask, view: DibsView) {
                 },
                 onClick = {
                     menu = false
-                    if (ask != null) Dibs.askAbout(view, ask.about, t.label, draft = askQuote(plain)) else Dibs.chatAboutStory(t, "ask", plain)
+                    if (ask != null) Dibs.askAbout(view, ask.about, label, draft = askQuote(plain)) else Dibs.chatAboutStory(id, label, "ask", plain)
                 },
             )
             DropdownMenuItem(
@@ -282,21 +369,22 @@ private fun StoryBlock(b: MdBlock, t: YourTask, view: DibsView) {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StoryBar(t: YourTask, view: DibsView, shown: Boolean) {
+private fun StoryBar(id: Long, label: String, view: DibsView, shown: Boolean) {
     FlowRow(
         Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(Space.S, Alignment.End),
         verticalArrangement = Arrangement.spacedBy(Space.S),
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        ActButton("Show the conversation", "plain") { Dibs.open(Page.Transcript(t.id)) }
+        // The conversation is the task's own page: only a task of the user's has one.
+        if (view.task(id) != null) ActButton("Show the conversation", "plain") { Dibs.open(Page.Transcript(id)) }
         if (shown) {
-            ActButton("Start a follow-up", "") { Dibs.chatAboutStory(t, "follow") }
-            val ask = view.askFor(t)
+            ActButton("Start a follow-up", "") { Dibs.chatAboutStory(id, label, "follow") }
+            val ask = view.askFor(id)
             if (ask != null) {
-                ActButton(ask.label, "primary", icon = R.drawable.lucide_message_circle_question) { Dibs.askAbout(view, ask.about, t.label) }
+                ActButton(ask.label, "primary", icon = R.drawable.lucide_message_circle_question) { Dibs.askAbout(view, ask.about, label) }
             } else {
-                ActButton("Ask dibs about this", "primary") { Dibs.chatAboutStory(t, "ask") }
+                ActButton("Ask dibs about this", "primary") { Dibs.chatAboutStory(id, label, "ask") }
             }
         }
     }

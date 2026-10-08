@@ -250,6 +250,11 @@ sealed interface Page {
     data class Transcript(val id: Long) : Page
     data class Report(val id: Long) : Page
     data class Story(val id: Long) : Page
+    /**
+     * A task's account (the merged story screen): the recap's four parts, its actions and the full story. [fromRecap]: opened
+     * from the Recap list, so it says "k of N" and swiping goes to the next brief; else it says "Story".
+     */
+    data class Brief(val task: Long, val fromRecap: Boolean) : Page
     /** A note of the Ideas tab, by its id. */
     data class Idea(val id: String) : Page
     /** An Ask about conversation, by its subject (`task:85`, `note:41`): it opens before dibs lists it. */
@@ -345,6 +350,25 @@ object Dibs {
         host.act("untick", JSONObject().put("task", t.id))
     }
 
+    /** A brief is unread: dibs says so, and neither a tap here nor "Mark all read" has shown it read yet. */
+    fun briefUnread(b: Brief): Boolean = b.unread && "rs:${b.task}" !in answered && ALL_READ !in answered
+
+    /** The recap's brief for [task] is on screen: it's read (shown at once, until the view agrees), and dibs is told once. */
+    fun briefSeen(task: Long) {
+        answered["rs:$task"] = "seen"
+        host.act(RECAP_SEEN, JSONObject().put("task", task))
+    }
+
+    /** "Mark all read" in Recap. */
+    fun recapSeenAll() {
+        answered[ALL_READ] = "seen"
+        host.act(RECAP_SEEN, JSONObject().put("all", true))
+    }
+
+    /** The phone action that marks recap briefs read (docs/DIBS-APP.md, "The morning recap"). */
+    const val RECAP_SEEN = "recap-seen"
+    private const val ALL_READ = "rs:all"
+
     /** Its page is open: it's read, and its ping goes. */
     fun seenTask(t: YourTask) {
         if (t.unread) answered["seen:${t.id}"] = "seen"
@@ -397,10 +421,13 @@ object Dibs {
      * message carries it ([About]). A follow-up starts its draft with "Follow-up: ", so the line
      * reads right in the chat later.
      */
-    fun chatAboutStory(t: YourTask, kind: String, quote: String? = null) {
+    fun chatAboutStory(t: YourTask, kind: String, quote: String? = null) = chatAboutStory(t.id, t.label, kind, quote)
+
+    /** As above for any task by its number and name (a board card's, a brief's). */
+    fun chatAboutStory(id: Long, label: String, kind: String, quote: String? = null) {
         chat.draft = chat.draft.removePrefix(FOLLOW_UP)
         if (kind == "follow") chat.draft = FOLLOW_UP + chat.draft
-        chat.aboutIs(About(t.id, kind, t.label, quote))
+        chat.aboutIs(About(id, kind, label, quote))
         pages.clear()
         tab = DibsActivity.TAB_CHAT
     }
@@ -587,6 +614,10 @@ object Dibs {
         // Recap's Undo shows "Undo asked" until dibs lists it without Undo.
         view.recapDecided.forEach { if (it.undo) asked += it.ack }
         view.away?.let { asked += "w${it.id}" }
+        // A brief read here shows read until the view agrees; Mark all read, until none is unread.
+        listOf(view.recapItems, view.yours.orEmpty().mapNotNull { it.brief }, view.board?.let { b -> (b.columns.flatMap { it.cards } + b.done).mapNotNull { it.brief } }.orEmpty())
+            .forEach { l -> l.forEach { b -> if (b.unread) asked += "rs:${b.task}" } }
+        if (view.recapItems.any { it.unread }) asked += ALL_READ
         answered.keys.retainAll(asked)
         hidden.keys.retainAll(ids)
     }

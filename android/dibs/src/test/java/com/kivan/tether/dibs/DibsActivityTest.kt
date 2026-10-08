@@ -60,4 +60,13 @@ class DibsActivityTest {
         launch(DibsActivity.task(context, 3))
         assertEquals(listOf<Page>(Page.Task(3)), Dibs.pages.toList())
     }
+
+    @Test
+    fun theMorningRecapsNotificationOpensTheRecapTab() {
+        assertEquals("recap", DibsActivity.tabFor("recap"))
+        assertEquals("chat", DibsActivity.tabFor(null))
+        assertEquals("chat", DibsActivity.tabFor("ask:7"))
+        launch(DibsActivity.intent(context, DibsActivity.tabFor("recap")))
+        assertEquals("recap", Dibs.tab)
+    }
 }

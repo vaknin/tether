@@ -103,6 +103,13 @@ class DibsActivity : ComponentActivity() {
         const val TAB_IDEAS = "ideas"
         const val TAB_WAITING = "waiting"
         const val TAB_TASKS = "tasks"
+        const val TAB_RECAP = "recap"
+
+        /** The morning recap's notification tag: a tap opens the Recap tab. */
+        const val RECAP_TAG = "recap"
+
+        /** The tab a dibs notification (by its tag) opens: Recap for the morning recap, else the chat. */
+        fun tabFor(tag: String?): String = if (tag == RECAP_TAG) TAB_RECAP else TAB_CHAT
 
         /** Opens dibs, on [tab] if given. */
         fun intent(context: Context, tab: String? = null): Intent =

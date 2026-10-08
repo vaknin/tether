@@ -31,6 +31,9 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
      sentence, "Why: …", and Undo. dibs's writer (a cheap Claude call in `dibs watch`) writes these from the
      agent's text; until it has, the agent's words show, marked so. The agent's whole text folds behind
      "Agent's words". Bookkeeping ("Started task X") is left out.
+     **Since 0.10.0 (the morning recap, below), a dibs that sends `recap.items` gets an unread list instead:**
+     "Unread N" with "M need you · K small fixes folded", one row per brief, "The rest" (small fixes folded,
+     Decided for you). This older "while you were away" and feed tab stays for a dibs that sends no `items`.
 - Above the tabs, two lend toggles, **Phone** and **Laptop** (task #29, the user's word 48): each says "Yours" or
   "lent to dibs" with dibs's line (until when, who is on it), and one tap lends it or takes it back. A dibs
   without `lends` gets the older bar, **"dibs has your phone · Take it back"** (task #19).
@@ -86,7 +89,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -123,8 +126,10 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
                       "more": ["its other lines, whole"]?, "report": "the task's report, whole"?,
                       "reopen": "<claude session id>"?}],
             "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …, "undo": true,
-                         "project": "Tether", "plain": true, "raw": "the agent's whole text"}]?},
-  "badges": {"waiting": 3, "work": 1, "recap": 1}
+                         "project": "Tether", "plain": true, "raw": "the agent's whole text"}]?,
+            "items": [<Brief>]?, "unread": 3?, "needs": 1?,          // the morning recap, below (0.10.0)
+            "small": {"n": 47, "groups": [{"project": "dibs", "n": 21, "lines": ["…"]}]}?},
+  "badges": {"waiting": 3, "work": 1, "recap": 1}       // recap: the unread count with `items`, else 0/1
 }
 ```
 
@@ -145,7 +150,8 @@ question", "Never offer it") comes only where it differs from the second one, so
 three. Every question but the weekly retro's has `reply` and a `hint` (its box's placeholder): the
 words sent alone are `r<id>` as before; typed and then a button tapped (not `x`), the tap carries
 them as `value.comment`, which dibs hands to its brain (the tap still answers).
-`hold` and `go-ahead` (task #69, below).
+`hold` and `go-ahead` (task #69, below). `recap-seen` (0.10.0): `{"task": 223}` when a brief is opened (or swiped onto),
+`{"all": true}` for "Mark all read".
 
 ### Hold dibs's answer while the user is still writing (task #69, 2026-10-06)
 The user asked (word 145) to add, clarify or correct before dibs answers; each line used to wake dibs's brain at
@@ -662,3 +668,46 @@ state just when dibs is working. A slim pinned bar gives the chat about 240 dp b
   (`SwipeToReply`, `Composer.replyTo`, `ReplyChip`, `ReplyQuote`; one of about and reply at a time, `say` carries
   `reply: {n}`), icons added through `regen-look.sh` (`reply`, `text-cursor`).
 - Not as planned: the Tasks tab on an older dibs still reads "Up next" (the title is what dibs sends).
+
+## The morning recap (design C, 2026-10-08; app 0.10.0)
+
+The Recap tab is a short **unread list**, like an inbox; a tap opens one **story screen** that merges the recap, the
+full story and the Tasks card. Contract with dibs: `CONTRACT.md` of the task (all fields optional; an older dibs sends
+none and the old tab shows).
+
+- **Payload.** `recap.items` is a list of `Brief`: `key`, `task`, `tier` (`needs|urgent|asked|talked`), `title`,
+  `lede` (one line), the four parts `what`, `why`, `means`, `next` (any may be ""), `answer`? (to a question the user
+  asked), `project`?, `kind` (`build|plan|research|design`), `state`, `ts`, `unread`, `writing`? (parts not written
+  yet: `what`/`lede` hold the plain summary), `card`? (an open question id in `questions`: its buttons act), `story`?
+  (the same Story object as on cards). Also `recap.unread`, `recap.needs`, `recap.small` (`n`, `groups` of
+  `project`, `n`, `lines`). `badges.recap` is the unread count. Board task cards (`board.columns[].cards[]`,
+  `board.done.cards[]`) may carry `brief` (no `story`, no `unread`); a task in `recap.items` has none on its card and
+  `yours[]` carries none (payload size). A task's brief is looked up in `recap.items`, then its board card.
+  The tags: needs "Needs you", urgent "Urgent", asked "You asked", talked "You talked it over", with an `answer`
+  "Answers your question". `items: []` (the key present) means "You're caught up", not the old tab.
+- **Recap tab** (`ui/RecapTab.kt`): a hero "Unread N" with "M need you · K small fixes folded" and "Mark all read"
+  (while any is unread); one row per brief (unread dot or blank space, tag chip: needs/urgent amber, asked/talked
+  accent, answer blue; the time at the right; the headline; the line in muted; a read row dimmed). Under "The rest":
+  the fold "Small fixes · N" (each project and its count; open, the groups with their lines and "n more" when fewer
+  lines than `n`) and "Decided for you". The tab's badge is the unread number (a read here counts at once).
+- **Story screen** (`Page.Brief(task, fromRecap)`, `ui/BriefPage.kt`): top bar with back, "k of N" (from Recap, its
+  place in `recap.items`) or "Story", and previous/next arrows. A swipe over 60 dp or the arrows replace the top page
+  (back still returns to the list). Content: tag, big title, meta ("#id · project · Kind · when", and in amber "since
+  yesterday" for an unread one from before today), the parts under eyebrows (empty ones skipped; `writing`: a muted
+  "The full write-up is being written" and the summary), then the actions (the named question's buttons as Waiting
+  draws them, "Ask dibs about this", "Open the task" for a task of the user's), then the **Full story**
+  (`rememberStory`/`fullStoryItems` in `ui/StoryScreen.kt`, shared with `Page.Story`). Nothing paid starts by
+  itself: a story never written shows "Read the full story" (it sends `fetch` `{task, what: "story"}`); one being
+  written or failed is never fetched. Showing an unread brief sends `recap-seen` once and marks it read here at once
+  (`Dibs.answered["rs:<task>"]`). A task with no brief shows its title, state words, "Nothing written up yet", the
+  yours task's report if any, the actions and the full story.
+- **Tasks tab:** every task card (board card, task row, ticked row) opens `Page.Brief(task, false)`, also a task that
+  is not one of the user's; a long press still opens the menu, an idea keeps its menu on a tap.
+- **Notification:** tag `recap` (one a morning) opens the Recap tab (`DibsActivity.tabFor`).
+- Icon added through `regen-look.sh`: `chevron-left`.
+
+### As built (app 0.10.0, 2026-10-08)
+- `Brief`, `RecapSmall` in `Payload.kt` (`DibsView.recapItems`, `recapSmall`, `recapUnread`, `recapNeeds`,
+  `recapListed`, `brief(id)`, `storyOf(id)`, `labelOf(id)`); screen tests in `RecapScreensTest`.
+- Deviations from the contract text: a brief's `answer` is shown under "The answer" before the four parts (the contract
+  gives it no place); `yours[].brief` is still read if a dibs sends one, after the board card's.

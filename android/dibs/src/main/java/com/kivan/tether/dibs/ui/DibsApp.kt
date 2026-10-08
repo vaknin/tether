@@ -145,6 +145,7 @@ fun DibsApp() {
                     is Page.Transcript -> TranscriptScreen(page.id, view)
                     is Page.Report -> ReportScreen(page.id, view)
                     is Page.Story -> StoryScreen(page.id, view)
+                    is Page.Brief -> BriefPage(page, view)
                     is Page.Idea -> IdeaPage(page.id, view)
                     is Page.Ask -> AskPage(page.about, view)
                     is Page.Root -> RootPage(page.id, view)
@@ -167,7 +168,9 @@ fun DibsApp() {
             if (view != null && !typing) {
                 // The Tasks badge counts what the tab says it does, and drops as soon as one is opened here.
                 val forYou = view.yours?.count { wantsYou(it, Dibs.ticked(it), Dibs.unread(it)) } ?: view.badges.work
-                NavBar(tab, view.badges, forYou, view.yours != null, view.ideas?.total ?: 0) {
+                // Recap's number: what is unread (a read here counts at once); an older dibs: the old dot.
+                val recap = if (view.recapList) view.recapItems.count { Dibs.briefUnread(it) }.takeIf { view.recapItems.isNotEmpty() } ?: view.recapUnread else null
+                NavBar(tab, view.badges, forYou, view.yours != null, view.ideas?.total ?: 0, recap) {
                     tab = it
                     // Gone elsewhere: a notification's conversation not listed yet no longer opens.
                     Dibs.forgetAsk()
@@ -316,18 +319,19 @@ internal fun usageWarning(limits: List<Limit>, now: Long, ctx: android.content.C
     ).firstOrNull { it.warn }?.text?.substringBefore(" · ")
 
 @Composable
-private fun NavBar(tab: Tab, badges: Badges, tasks: Int, yours: Boolean, ideas: Int, onTab: (Tab) -> Unit) {
+private fun NavBar(tab: Tab, badges: Badges, tasks: Int, yours: Boolean, ideas: Int, recap: Int?, onTab: (Tab) -> Unit) {
     NavigationBar(containerColor = Palette.SurfaceLow, tonalElevation = 0.dp) {
         for (t in Tab.entries) {
             val count = when (t) {
                 Tab.WAITING -> badges.waiting
                 Tab.TASKS -> tasks
                 Tab.IDEAS -> ideas
+                Tab.RECAP -> recap ?: 0
                 else -> 0
             }
             // An older dibs: the old Work tab.
             val (label, icon) = if (t == Tab.TASKS && !yours) "Work" to R.drawable.lucide_hammer else t.label to t.icon
-            val dot = t == Tab.RECAP && badges.recap > 0
+            val dot = t == Tab.RECAP && recap == null && badges.recap > 0
             NavigationBarItem(
                 selected = t == tab,
                 onClick = { onTab(t) },

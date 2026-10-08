@@ -376,7 +376,7 @@ data class YourTask(
     val story: Story? = null,
     /** Ask about it (a dibs that offers it). */
     val ask: AskEntry? = null,
-    /** The recap's account of it (a dibs that sends them). */
+    /** The recap's account of it (a dibs that sends them; the current one sends none here: the recap's items and the board card carry it). */
     val brief: Brief? = null,
 ) {
     /** Its name as the screens show it. */
@@ -468,8 +468,17 @@ data class DibsView(
     /** The board card of a task. */
     fun card(id: Long): BoardCard? = board?.let { b -> (b.columns.flatMap { it.cards } + b.done).firstOrNull { it.task == id } }
 
-    /** A task's account: the recap's, else its own task's, else its board card's. */
-    fun brief(id: Long): Brief? = recapItems.firstOrNull { it.task == id } ?: task(id)?.brief ?: card(id)?.brief
+    /** A task's full story state: its own task's, else its board card's, else its brief's; null when it was never asked for. */
+    fun storyOf(id: Long): Story? = task(id)?.story ?: card(id)?.story ?: brief(id)?.story
+
+    /** A task's name as the screens show it: its own task's, else its board card's, else its brief's title. */
+    fun labelOf(id: Long): String? = task(id)?.label ?: card(id)?.title?.takeIf { it.isNotBlank() } ?: brief(id)?.title?.takeIf { it.isNotBlank() }
+
+    /** The Ask about button of a task: its own, else its board card's (a dibs that offers it). */
+    fun askFor(id: Long): AskEntry? = task(id)?.ask ?: card(id)?.ask
+
+    /** A task's account: the recap's, else its board card's (dibs sends none on a task of the user's, but one that does is read). */
+    fun brief(id: Long): Brief? = recapItems.firstOrNull { it.task == id } ?: card(id)?.brief ?: task(id)?.brief
 
     /** A task's Ask about button: its own, else its board card's (a dibs that offers it). */
     fun askFor(t: YourTask): AskEntry? = t.ask ?: board?.let { b -> (b.columns.flatMap { it.cards } + b.done).firstOrNull { it.task == t.id }?.ask }
