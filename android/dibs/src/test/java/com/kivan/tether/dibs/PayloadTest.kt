@@ -170,6 +170,21 @@ class PayloadTest {
         assertNull(q.task)
     }
 
+    @Test
+    fun aTaskLineCanCarryItsQuestion() {
+        val d = DibsView.parse(
+            JSONObject(
+                """{"now": 1, "yours": [{"id": 5, "state": "working", "talk": [
+                  {"id": "t5-1", "who": "agent", "text": "plain", "ts": 1},
+                  {"id": "t5-2", "who": "agent", "text": "Root step", "ts": 2, "ask": {"q": 77, "actions": [{"id": "d77", "label": "Deny", "style": "danger"}]}}]}]}""",
+            ),
+        )
+        val talk = d.yours!!.single().talk
+        assertNull(talk[0].ask)
+        assertEquals(77L, talk[1].ask!!.q)
+        assertEquals("Deny", talk[1].ask!!.actions.single().label)
+    }
+
     // As dibs's src/yours.rs writes it (app 0.5.0 and newer).
     @Test
     fun yourTasks() {

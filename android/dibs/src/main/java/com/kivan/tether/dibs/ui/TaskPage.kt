@@ -72,7 +72,15 @@ internal fun TaskPage(id: Long, view: DibsView) {
 
     val all by Dibs.pending.collectAsStateWithLifecycle()
     val pending = remember(all, id) { all.filter { it.task == id } }
-    val look = remember(id, t.label) { ChatLook(name = t.label, hide = false, days = "day:t$id:") }
+    // A root step's line offers Review, as on its card (the same rule as the dibs chat).
+    val look = remember(id, t.label, view.questions) {
+        ChatLook(
+            name = t.label,
+            hide = false,
+            days = "day:t$id:",
+            roots = view.questions.filter { (it.kind == "root" && it.root != null) || it.kind == "rootkey" }.associateBy { it.id },
+        )
+    }
     val rows = rememberChatRows(t.talk, pending, look)
     val echoes = remember(pending) { pending.associateBy { it.uid } }
 

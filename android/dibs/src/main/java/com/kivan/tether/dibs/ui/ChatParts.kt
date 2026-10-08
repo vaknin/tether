@@ -27,6 +27,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import com.kivan.tether.dibs.ReplyRef
+import com.kivan.tether.dibs.TextPart
+import com.kivan.tether.dibs.textParts
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -683,7 +685,7 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                 l.reply?.let { ReplyQuote(it, l.mine, look) }
                 for (f in l.files) FileView(f, l.mine)
                 if (l.text.isNotEmpty() || row.last) {
-                    LineText(l.id, l.text, if (row.last) time(l.ts) else null, meta)
+                    LineText(l.id, l.text, if (row.last) time(l.ts) else null, meta, l.mine)
                 }
                 // Where it came from: "From your conversation about the home server".
                 l.under?.let { Text(it, style = AppType.small, color = Palette.Muted) }
@@ -732,7 +734,9 @@ private fun ColumnScope.EchoText(text: String, meta: @Composable () -> Unit) {
     if (text.isEmpty()) {
         Box(Modifier.align(Alignment.End)) { meta() }
     } else {
-        TextWithMeta(remember(text) { linkified(text) }, Palette.Text, bodyStyle, CLAMP_NONE, {}, meta)
+        val parts = remember(text) { textParts(text) }
+        if (parts.any { it.code }) CodeParts(parts, mine = true, MineMeta, meta)
+        else TextWithMeta(remember(text) { linkified(text) }, Palette.Text, bodyStyle, CLAMP_NONE, {}, meta)
     }
 }
 
@@ -800,11 +804,16 @@ private fun FileChip(name: String, size: String?, mine: Boolean) {
  * soft fade and "More", which opens it in place ([Dibs.open] by [id]).
  */
 @Composable
-private fun LineText(id: String, text: String, time: String?, metaColor: Color) {
+private fun LineText(id: String, text: String, time: String?, metaColor: Color, mine: Boolean) {
     val open = Dibs.open[id] == true
     var long by remember(text) { mutableStateOf(false) }
     val annotated = remember(text) { linkified(text) }
     val meta: @Composable () -> Unit = { if (time != null) Text(time, style = AppType.mono, color = metaColor) }
+    val parts = remember(text) { textParts(text) }
+    if (parts.any { it.code }) {
+        CodeParts(parts, mine, metaColor, meta)
+        return
+    }
     if (!long) {
         TextWithMeta(annotated, Palette.Text, bodyStyle, CLAMP, { long = true }, meta)
         return
@@ -833,6 +842,63 @@ private fun LineText(id: String, text: String, time: String?, metaColor: Color) 
             }
             Spacer(Modifier.weight(1f).width(Space.S))
             meta()
+        }
+    }
+}
+
+/**
+ * A line with code in it: its text parts as plain text with their links, its code as small
+ * blocks with a copy button, the meta tucked into the last text (or alone under a last block).
+ */
+@Composable
+private fun CodeParts(parts: List<TextPart>, mine: Boolean, metaColor: Color, meta: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        parts.forEachIndexed { i, p ->
+            val last = i == parts.lastIndex
+            when {
+                p.code -> {
+                    CodeBlock(p.text, mine)
+                    if (last) Box(Modifier.align(Alignment.End)) { meta() }
+                }
+                last -> TextWithMeta(remember(p.text) { linkified(p.text) }, Palette.Text, bodyStyle, CLAMP_NONE, {}, meta)
+                else -> Text(remember(p.text) { linkified(p.text) }, color = Palette.Text, style = bodyStyle)
+            }
+        }
+    }
+}
+
+/** Code in a small monospace block; the button at its corner copies just that text and shows a tick for a moment. */
+@Composable
+private fun CodeBlock(code: String, mine: Boolean) {
+    val ctx = LocalContext.current
+    var ticked by remember { mutableStateOf(false) }
+    LaunchedEffect(ticked) {
+        if (ticked) {
+            delay(1500)
+            ticked = false
+        }
+    }
+    Box(Modifier.background(if (mine) Palette.Bg.copy(alpha = 0.35f) else Palette.SurfaceHigh, MaterialTheme.shapes.small)) {
+        Text(
+            code,
+            Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())
+                .padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 36.dp),
+            style = AppType.mono,
+            color = Palette.Text,
+        )
+        Box(
+            Modifier.align(Alignment.TopEnd).size(32.dp).clip(MaterialTheme.shapes.small).clickable(onClickLabel = "Copy code") {
+                copy(ctx, code)
+                ticked = true
+            },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(if (ticked) R.drawable.lucide_check else R.drawable.lucide_copy),
+                if (ticked) "Copied" else "Copy code",
+                Modifier.size(16.dp),
+                tint = if (ticked) Palette.Success else Palette.Muted,
+            )
         }
     }
 }

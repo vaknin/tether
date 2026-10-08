@@ -653,7 +653,7 @@ data class DibsView(
                     val who = l.optString("who")
                     TalkLine(
                         id = l.optString("id"), n = 0, mine = who == "user", text = l.optString("text"), short = l.str("short"),
-                        note = who == "note", ts = l.optLong("ts"), files = files(l.optJSONArray("files")), ask = null,
+                        note = who == "note", ts = l.optLong("ts"), files = files(l.optJSONArray("files")), ask = ask(l.optJSONObject("ask")),
                     )
                 },
                 story = o.optJSONObject("story")?.let(::story),
@@ -744,6 +744,9 @@ data class DibsView(
             return Hold(kind, o.str("note"), button, o.optString("action"), o.optString("style"), o.optJSONObject("tapped")?.let(::hold))
         }
 
+        /** A line's question (its buttons, or how it ended), in the dibs chat and in a task's. */
+        private fun ask(a: JSONObject?) = a?.let { Ask(it.optLong("q"), actions(it.optJSONArray("actions")), it.str("reply"), it.str("outcome"), it.str("hint"), readInFull(it.optJSONObject("read"))) }
+
         private fun talkLine(o: JSONObject) = TalkLine(
             id = o.optString("id"),
             n = o.optLong("n"),
@@ -753,9 +756,7 @@ data class DibsView(
             note = o.optBoolean("note"),
             ts = o.optLong("ts"),
             files = files(o.optJSONArray("files")),
-            ask = o.optJSONObject("ask")?.let { a ->
-                Ask(a.optLong("q"), actions(a.optJSONArray("actions")), a.str("reply"), a.str("outcome"), a.str("hint"), readInFull(a.optJSONObject("read")))
-            },
+            ask = ask(o.optJSONObject("ask")),
             open = o.optJSONObject("open")?.long("story"),
             thread = o.str("thread"),
             under = o.str("under"),
