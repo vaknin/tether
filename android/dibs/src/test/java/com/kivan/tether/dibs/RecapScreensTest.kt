@@ -91,7 +91,7 @@ class RecapScreensTest {
     fun theUnreadListDraws() {
         show(recapView(three))
         compose.onNodeWithText("UNREAD").assertIsDisplayed()
-        compose.onNodeWithText("1 need you · 47 small fixes folded").assertIsDisplayed()
+        compose.onNodeWithText("1 needs you · 47 small fixes folded").assertIsDisplayed()
         compose.onNodeWithText("Mark all read").assertIsDisplayed()
         for (t in listOf("The plan is ready", "Terminal choice", "More room for the chat")) compose.onNodeWithText(t).assertIsDisplayed()
         compose.onNodeWithText("The line under The plan is ready.").assertIsDisplayed()
@@ -146,7 +146,7 @@ class RecapScreensTest {
         // Back to the list: that row has no dot now, so Mark all read counts one fewer.
         Dibs.back()
         compose.waitForIdle()
-        compose.onNodeWithText("1 need you · 47 small fixes folded").assertIsDisplayed()
+        compose.onNodeWithText("1 needs you · 47 small fixes folded").assertIsDisplayed()
     }
 
     @Test
@@ -284,6 +284,53 @@ class RecapScreensTest {
         compose.onNodeWithText("DONE TODAY").assertIsDisplayed()
         compose.onNodeWithText("Shipped the fix").assertIsDisplayed()
         compose.onAllNodes(hasText("UNREAD")).assertCountEquals(0)
+    }
+
+    @Test
+    fun aTasksQuestionShowsOnItsStoryScreen() {
+        val v = recapView(emptyList())
+        val d = v.getJSONObject("dibs")
+        d.put("yours", JSONArray().put(JSONObject().put("id", 60).put("title", "Sort the photos").put("name", "t60").put("project", "tether")
+            .put("state", "needs").put("ts", NOW).put("started", NOW - 3600).put("asked", "Sort the photos").put("questions", JSONArray().put(77))))
+        d.put("questions", JSONArray().put(JSONObject().put("id", 77).put("title", "Delete the duplicates?").put("why", "There are 40")
+            .put("from", "agent").put("ts", NOW - 60).put("kind", "question").put("task", 60).put("actions", JSONArray()
+                .put(JSONObject().put("id", "y77").put("label", "Delete them").put("style", "primary"))
+                .put(JSONObject().put("id", "n77").put("label", "Keep them").put("style", "")))))
+        d.put("board", JSONObject().put("columns", JSONArray().put(JSONObject().put("key", "now").put("title", "Working now").put("cards", JSONArray()
+            .put(JSONObject().put("key", "task:60").put("n", 60).put("title", "Sort the photos").put("state_words", "Needs you")
+                .put("now", "").put("tags", JSONArray()).put("actions", JSONArray()))))))
+        show(v, tab = "tasks")
+        compose.onNodeWithText("Sort the photos").performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Brief(60, false), Dibs.pages.last())
+        compose.onNodeWithText("Delete the duplicates?").assertIsDisplayed()
+        compose.onNodeWithText("Delete them").assertIsDisplayed()
+        compose.onNodeWithText("Keep them").performClick()
+        compose.waitForIdle()
+        assertTrue(host.acts.any { it.first == "n77" })
+    }
+
+    @Test
+    fun markAllReadDoesNotMaskABriefThatArrivesLater() {
+        show(recapView(three))
+        compose.onNodeWithText("Mark all read").performClick()
+        compose.waitForIdle()
+        compose.onAllNodes(hasText("Mark all read")).assertCountEquals(0)
+        // dibs hasn't caught up yet and a new one arrives: it is unread.
+        host.view.value = recapView(three + brief(300, "asked", "A new one"))
+        compose.waitForIdle()
+        compose.onNodeWithText("A new one").assertIsDisplayed()
+        compose.onNodeWithText("Mark all read").assertIsDisplayed()
+    }
+
+    @Test
+    fun anUnreadBriefFromBeforeTodayKeepsItsSinceWhileItIsOpen() {
+        show(recapView(listOf(brief(210, "urgent", "Firewall tightened", extra = { put("ts", NOW - 2 * 86400) }))))
+        compose.onNodeWithText("Firewall tightened").performClick()
+        compose.waitForIdle()
+        // Opening it sent recap-seen and cleared its dot, but the line still says how long it waited.
+        assertEquals(1, host.acts.count { it.first == "recap-seen" })
+        compose.onAllNodes(hasText("since", substring = true)).assertCountEquals(1)
     }
 
     private companion object {

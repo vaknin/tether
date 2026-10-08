@@ -351,7 +351,7 @@ object Dibs {
     }
 
     /** A brief is unread: dibs says so, and neither a tap here nor "Mark all read" has shown it read yet. */
-    fun briefUnread(b: Brief): Boolean = b.unread && "rs:${b.task}" !in answered && ALL_READ !in answered
+    fun briefUnread(b: Brief): Boolean = b.unread && "rs:${b.task}" !in answered
 
     /** The recap's brief for [task] is on screen: it's read (shown at once, until the view agrees), and dibs is told once. */
     fun briefSeen(task: Long) {
@@ -359,15 +359,14 @@ object Dibs {
         host.act(RECAP_SEEN, JSONObject().put("task", task))
     }
 
-    /** "Mark all read" in Recap. */
-    fun recapSeenAll() {
-        answered[ALL_READ] = "seen"
+    /** "Mark all read" in Recap: the briefs unread now show read at once; one that arrives later is not masked. */
+    fun recapSeenAll(items: List<Brief>) {
+        items.forEach { if (briefUnread(it)) answered["rs:${it.task}"] = "seen" }
         host.act(RECAP_SEEN, JSONObject().put("all", true))
     }
 
     /** The phone action that marks recap briefs read (docs/DIBS-APP.md, "The morning recap"). */
     const val RECAP_SEEN = "recap-seen"
-    private const val ALL_READ = "rs:all"
 
     /** Its page is open: it's read, and its ping goes. */
     fun seenTask(t: YourTask) {
@@ -614,10 +613,9 @@ object Dibs {
         // Recap's Undo shows "Undo asked" until dibs lists it without Undo.
         view.recapDecided.forEach { if (it.undo) asked += it.ack }
         view.away?.let { asked += "w${it.id}" }
-        // A brief read here shows read until the view agrees; Mark all read, until none is unread.
+        // A brief read here (also by Mark all read) shows read until the view agrees.
         listOf(view.recapItems, view.yours.orEmpty().mapNotNull { it.brief }, view.board?.let { b -> (b.columns.flatMap { it.cards } + b.done).mapNotNull { it.brief } }.orEmpty())
             .forEach { l -> l.forEach { b -> if (b.unread) asked += "rs:${b.task}" } }
-        if (view.recapItems.any { it.unread }) asked += ALL_READ
         answered.keys.retainAll(asked)
         hidden.keys.retainAll(ids)
     }
