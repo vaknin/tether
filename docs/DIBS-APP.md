@@ -174,7 +174,7 @@ seconds) and while the app says the user is typing; lines that reach it mid-repl
   line, which can arrive before the queued line itself, still holds.
 - **The chip** over the box is `state.hold`, words and all (the app only draws it): `{"kind": "wait|held",
   "note": "…"?, "button": "…", "action": "hold|go-ahead", "style": "outline|primary", "tapped": {…}?}`.
-  Renamed and redone in task #224 (app 0.10.1, the user's word 497; it was "Wait, I'm not done" / "Stop, I'm not
+  Renamed and redone in task #224 (app 0.10.2, the user's word 497; it was "Wait, I'm not done" / "Stop, I'm not
   done" / "Go ahead"). `wait`: the button "Wait" (pause icon, outline) while dibs owes the user a reply; it sends `hold`,
   and `tapped` is the chip to show at once after the tap. `held`: the button "Go" (play icon, primary, `go-ahead`) with
   the note "dibs keeps its reply until you tap Go" while dibs still writes, or "dibs's reply is ready" once it is kept.
