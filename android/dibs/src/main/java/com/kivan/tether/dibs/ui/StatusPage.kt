@@ -78,10 +78,11 @@ internal fun StatusPage(view: DibsView, link: Link) {
 
             Section("Lend to dibs")
             val lends = view.lends
-            if (lends != null && (lends.phone != null || lends.laptop != null)) {
+            if (lends != null && (lends.phone != null || lends.laptop != null || lends.compute != null)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
                     lends.phone?.let { LendToggleCard(it, "Phone", R.drawable.lucide_smartphone, Modifier.fillMaxWidth()) }
                     lends.laptop?.let { LendToggleCard(it, "Laptop", R.drawable.lucide_laptop, Modifier.fillMaxWidth()) }
+                    lends.compute?.let { LendToggleCard(it, "Laptop's memory and processor", R.drawable.lucide_cpu, Modifier.fillMaxWidth()) }
                 }
             } else if (view.lend != null) {
                 LendBar(view.lend)

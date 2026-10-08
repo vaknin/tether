@@ -140,6 +140,10 @@ class PayloadTest {
           "laptop": {"lent": true, "text": "Until you take it back · rami-0f is on it", "until": 1791240000, "action": "laptop-back"}}}"""))
         assertEquals(LendToggle(false, "", "phone-lend"), d.lends?.phone)
         assertEquals(LendToggle(true, "Until you take it back · rami-0f is on it", "laptop-back"), d.lends?.laptop)
+        assertNull("an older dibs sends no compute card", d.lends?.compute)
+        val c = DibsView.parse(JSONObject("""{"lends": {"compute": {"lent": true, "text": "2 tasks running there", "action": "compute-back", "busy": 2}}}""")).lends?.compute
+        assertEquals(LendToggle(true, "2 tasks running there", "compute-back", 2), c)
+        assertEquals("busy defaults to none", 0, DibsView.parse(JSONObject("""{"lends": {"compute": {"lent": false, "action": "compute-lend"}}}""")).lends?.compute?.busy)
         assertNull("an older dibs sends no toggles", DibsView.parse(JSONObject("""{"v": 1}""")).lends)
         assertNull("a toggle without an action isn't drawn", DibsView.parse(JSONObject("""{"lends": {"phone": {"lent": true}}}""")).lends?.phone)
     }

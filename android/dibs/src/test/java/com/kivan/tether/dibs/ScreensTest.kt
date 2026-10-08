@@ -531,6 +531,7 @@ class ScreensTest {
         compose.onNodeWithText("Phone").assertIsDisplayed()
         compose.onNodeWithText("Laptop lent to dibs").assertIsDisplayed()
         compose.onNodeWithText("Until 15:40").assertIsDisplayed()
+        compose.onNodeWithText("Laptop's memory and processor").assertIsDisplayed()
         compose.onNodeWithText("5h\u00A087%", substring = true).assertIsDisplayed()
         compose.onNodeWithText("7d\u00A063%", substring = true).assertIsDisplayed()
         shot("dibs-page")
@@ -750,7 +751,8 @@ class ScreensTest {
             .put("questions", JSONArray(questions))
             .put("lends", JSONObject()
                 .put("phone", JSONObject().put("lent", false).put("text", "").put("action", "phone-lend"))
-                .put("laptop", JSONObject().put("lent", true).put("text", "Until 15:40").put("action", "laptop-back")))
+                .put("laptop", JSONObject().put("lent", true).put("text", "Until 15:40").put("action", "laptop-back"))
+                .put("compute", JSONObject().put("lent", false).put("text", "").put("action", "compute-lend").put("busy", 2)))
             .put("yours", JSONArray())
             .put("badges", JSONObject().put("waiting", questions.size)),
     )
