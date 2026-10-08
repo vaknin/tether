@@ -535,6 +535,18 @@ object Dibs {
         host.act("thread-open", JSONObject().put("about", about))
     }
 
+    private var chatSent = 0L
+
+    /**
+     * The Chat tab is on screen with its newest line [newest] (dibs's line number): dibs clears the
+     * count it shows on the laptop's bar. Sent once for each newer line.
+     */
+    fun chatSeen(newest: Long) {
+        if (newest <= chatSent) return
+        chatSent = newest
+        host.act("chat-seen", JSONObject().put("n", newest))
+    }
+
     /**
      * The page shows [n] lines, the newest [newest] (and the overview, [overview]): dibs clears "New
      * answer", once for each. Keyed on the newest line, not the count: dibs sends at most 40 lines, so
@@ -576,6 +588,7 @@ object Dibs {
     internal fun resetAsks() {
         askBoxes.clear()
         askSeen.clear()
+        chatSent = 0L
         askTitles.clear()
         askWanted = null
         clock = System::currentTimeMillis

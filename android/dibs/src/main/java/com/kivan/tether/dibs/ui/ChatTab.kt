@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
@@ -49,6 +50,12 @@ internal fun ChatTab(view: DibsView) {
         )
     }
     val rows = rememberChatRows(talk, pending, look)
+    // The chat is on screen with the app in front: its newest line is read (the laptop's bar count follows).
+    val newest = talk.maxOfOrNull { it.n } ?: 0L
+    LifecycleResumeEffect(newest) {
+        Dibs.chatSeen(newest)
+        onPauseOrDispose { }
+    }
     val echoes = remember(pending) { pending.associateBy { it.uid } }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
