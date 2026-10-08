@@ -155,7 +155,7 @@ private fun FoldRow(label: String, key: String) {
 
 /**
  * A task: its plain title (bold while done and unread), its state in words, one line. A tap opens
- * its page; a long press offers Tick off (once finished) and Open on laptop.
+ * its story screen; a long press offers Tick off (once finished) and Open on laptop.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -167,7 +167,7 @@ private fun TaskRow(t: YourTask, view: DibsView, now: Long, modifier: Modifier) 
         Column(
             Modifier.card().clip(MaterialTheme.shapes.medium)
                 .combinedClickable(
-                    onClick = { Dibs.open(Page.Task(t.id)) },
+                    onClick = { Dibs.open(Page.Brief(t.id, false)) },
                     onLongClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         menu = true
@@ -193,7 +193,7 @@ private fun TaskRow(t: YourTask, view: DibsView, now: Long, modifier: Modifier) 
 /**
  * A card of dibs's board, drawn as sent: "#31" (a task's number), its title whole, its state in
  * dibs's words (a working one with the busy dot), its tags, a "Full story" mark once one is ready or
- * being written, and what it's doing. A tap opens a task's page (an idea has none: its menu); a long
+ * being written, and what it's doing. A tap opens a task's story screen (an idea has none: its menu); a long
  * press, the menu of what dibs lets it do ([BoardCard.actions]).
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
@@ -201,9 +201,11 @@ private fun TaskRow(t: YourTask, view: DibsView, now: Long, modifier: Modifier) 
 private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: Modifier) {
     val haptics = LocalHapticFeedback.current
     var menu by remember { mutableStateOf(false) }
-    // Its page needs the task in `yours`; one dibs no longer lists there opens its menu instead.
-    val t = c.task?.let(view::task)
-    val acts = c.actions.filter { it in ACT_WORDS && (it != "story" || t != null) }
+    // A task opens its story screen (the recap's account, then the full story), also when it isn't one of the user's;
+    // an idea has none: its tap opens the menu.
+    val tid = c.task
+    val t = tid?.let(view::task)
+    val acts = c.actions.filter { it in ACT_WORDS && (it != "story" || tid != null) }
     val openMenu = {
         if (acts.isNotEmpty()) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -213,7 +215,7 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
     Box(modifier) {
         Column(
             Modifier.card().clip(MaterialTheme.shapes.medium)
-                .combinedClickable(onClick = { if (t != null) Dibs.open(Page.Task(t.id)) else openMenu() }, onLongClick = openMenu)
+                .combinedClickable(onClick = { if (tid != null) Dibs.open(Page.Brief(tid, false)) else openMenu() }, onLongClick = openMenu)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -242,7 +244,7 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
 
 /** dibs's state words: a working one with the busy dot (filled while its session works), the rest muted. */
 @Composable
-private fun CardState(words: String, busy: Boolean) {
+internal fun CardState(words: String, busy: Boolean) {
     if (words.startsWith("working", ignoreCase = true)) StateWord(words, busy = busy) else Text(words, style = AppType.small, color = Palette.Muted)
 }
 
@@ -345,7 +347,7 @@ internal fun TaskState(t: YourTask, now: Long) {
 private fun TickedRow(t: YourTask, modifier: Modifier) {
     val zone = ZoneId.systemDefault()
     Row(
-        modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { Dibs.open(Page.Task(t.id)) }.padding(vertical = 4.dp),
+        modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { Dibs.open(Page.Brief(t.id, false)) }.padding(vertical = 4.dp),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

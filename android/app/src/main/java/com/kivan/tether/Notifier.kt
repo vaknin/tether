@@ -532,7 +532,8 @@ object Notifier {
      * dibs's own screen, the chat: everything for the user is a line there, a question with its
      * buttons, a task's report too (the user, words 217 and 221: they talk only to dibs). An Ask about
      * conversation's (tag `ask:<thread id>`, task #102) opens that conversation's page, by its subject
-     * as [view] lists it (the screen may start before its views are loaded).
+     * as [view] lists it (the screen may start before its views are loaded). The morning recap's (tag
+     * `recap`) opens the Recap tab.
      */
     private fun openDibs(context: Context, tag: String? = null, view: JSONObject? = null): PendingIntent {
         DibsActivity.askId(tag)?.let { id ->
@@ -542,7 +543,7 @@ object Notifier {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
         }
-        val tab = DibsActivity.TAB_CHAT
+        val tab = DibsActivity.tabFor(tag)
         // One request code per tab: the extras aren't part of a PendingIntent's identity.
         return PendingIntent.getActivity(context, "dibs:$tab".hashCode(), DibsActivity.intent(context, tab), PendingIntent.FLAG_IMMUTABLE)
     }
