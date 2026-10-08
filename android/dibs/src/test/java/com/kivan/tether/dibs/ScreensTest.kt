@@ -337,12 +337,14 @@ class ScreensTest {
         show(boardView())
         Dibs.tab = "tasks"
         compose.waitForIdle()
-        for (h in listOf("WORKING NOW · 1", "QUEUE · 1", "LATER · 1")) compose.onNodeWithText(h).assertIsDisplayed()
+        for (h in listOf("ACTIVE · 1", "BACKLOG · 2")) compose.onNodeWithText(h).assertIsDisplayed()
         compose.onNodeWithText("DONE · 12").assertIsDisplayed()
         compose.onNodeWithText(LONG_TITLE).assertIsDisplayed()
         compose.onNodeWithText("#31").assertIsDisplayed()
-        compose.onNodeWithText("On hold").assertIsDisplayed()
         compose.onNodeWithText("Full story").assertIsDisplayed()
+        // One button on each card's face: Park on the Active card, Start on both Backlog cards.
+        compose.onAllNodes(hasText("Park")).assertCountEquals(1)
+        compose.onAllNodes(hasText("Start")).assertCountEquals(2)
         // Done is folded, and the old project groups aren't drawn.
         compose.onAllNodes(hasText("Lend toggles")).assertCountEquals(0)
         compose.onAllNodes(hasText("TETHER")).assertCountEquals(0)
@@ -370,8 +372,10 @@ class ScreensTest {
         compose.waitForIdle()
         compose.onNodeWithText(LONG_TITLE).performTouchInput { longClick() }
         compose.waitForIdle()
-        for (w in listOf("Put on hold", "Stop", "Full story", "Move to the queue")) compose.onAllNodes(hasText(w)).assertCountEquals(if (w == "Full story") 2 else 1)
-        for (w in listOf("Resume", "Delete", "Move up", "Move to Backlog")) compose.onAllNodes(hasText(w)).assertCountEquals(0)
+        for (w in listOf("Stop", "Full story", "Move down")) compose.onAllNodes(hasText(w)).assertCountEquals(if (w == "Full story") 2 else 1)
+        for (w in listOf("Resume", "Put on hold", "Delete", "Move up", "Move to Backlog", "Start now")) compose.onAllNodes(hasText(w)).assertCountEquals(0)
+        // Its primary (Park) stays on the face only, once; the menu does not repeat it.
+        compose.onAllNodes(hasText("Park")).assertCountEquals(1)
         // Stop asks again; only the second tap sends it.
         compose.onNodeWithText("Stop").performClick()
         compose.waitForIdle()
@@ -413,7 +417,7 @@ class ScreensTest {
         assertTrue("dibs applies a delete only with its confirm", del.getBoolean("confirm"))
     }
 
-    /** A board as dibs sends it: one card per column (the first with a long title, tags and a story), Done folded. */
+    /** A board as dibs sends it: Active with one card (a long title, tags and a story), Backlog with an idea and a parked task, Done folded. */
     private fun boardView(): JSONObject {
         val v = view(talk = longTalk())
         val d = v.getJSONObject("dibs")
@@ -423,17 +427,15 @@ class ScreensTest {
                 .put("tags", JSONArray(tags)).put("story", story ?: JSONObject.NULL).put("actions", JSONArray(actions))
         d.put("board", JSONObject()
             .put("columns", JSONArray()
-                .put(JSONObject().put("key", "now").put("title", "Working now").put("cards", JSONArray().put(
+                .put(JSONObject().put("key", "active").put("title", "Active").put("cards", JSONArray().put(
                     card("task:31", 31, LONG_TITLE, "working", "Running the screen tests again after the header change",
-                        listOf("work saved"), listOf("hold", "stop", "story", "to_next"), JSONObject().put("state", "ready").put("have", true)),
+                        listOf("work saved"), listOf("park", "stop", "story", "down"), JSONObject().put("state", "ready").put("have", true))
+                        .put("primary", "park").put("lane", "running"),
                 )))
-                .put(JSONObject().put("key", "next").put("title", "Queue").put("cards", JSONArray().put(
-                    card("idea:7", null, "A widget that shows the board on the home screen", "an idea", actions = listOf("up", "down", "to_later", "delete")),
-                )))
-                .put(JSONObject().put("key", "later").put("title", "Later").put("cards", JSONArray().put(
-                    card("task:30", 30, "Pick the phone's notification sound", "on hold (you held it)", tags = listOf("On hold", "work saved"), actions = listOf("resume", "to_next", "delete"))
-                        .put("delete_text", LOSES),
-                ))))
+                .put(JSONObject().put("key", "backlog").put("title", "Backlog").put("cards", JSONArray()
+                    .put(card("idea:7", null, "A widget that shows the board on the home screen", "an idea", actions = listOf("start", "up", "down", "delete")).put("primary", "start"))
+                    .put(card("task:30", 30, "Pick the phone's notification sound", "you parked it", tags = listOf("work saved"), actions = listOf("start", "start_now", "delete"))
+                        .put("primary", "start").put("delete_text", LOSES)))))
             .put("done", JSONObject().put("count", 12).put("cards", JSONArray().put(card("task:29", 29, "Lend toggles", "done", actions = emptyList())))))
         return v
     }
@@ -666,14 +668,14 @@ class ScreensTest {
         v.getJSONObject("dibs").put("yours", JSONArray().put(yours(1, "Cleanup", "working")))
         v.getJSONObject("dibs").put("board", JSONObject()
             .put("columns", JSONArray()
-                .put(JSONObject().put("key", "next").put("title", "Queue").put("cards", JSONArray().put(JSONObject().put("key", "task:1").put("n", 1).put("title", "Cleanup")
-                    .put("state_words", "Waiting its turn").put("now", "").put("tags", JSONArray()).put("actions", JSONArray())))))
+                .put(JSONObject().put("key", "active").put("title", "Active").put("cards", JSONArray().put(JSONObject().put("key", "task:1").put("n", 1).put("title", "Cleanup")
+                    .put("state_words", "Waiting its turn").put("now", "").put("tags", JSONArray()).put("actions", JSONArray()).put("primary", "park").put("lane", "waiting")))))
             .put("done", JSONObject().put("count", 0).put("cards", JSONArray()))
             .put("room", JSONObject().put("room", 0).put("line", "No room for another task: the laptop is at 14 of 15.6 GB")))
         show(v)
         Dibs.tab = "tasks"
         compose.waitForIdle()
-        compose.onNodeWithText("QUEUE · 1").assertIsDisplayed()
+        compose.onNodeWithText("ACTIVE · 1").assertIsDisplayed()
         compose.onNodeWithText("No room for another task", substring = true).assertIsDisplayed()
         shot("tasks-queue")
     }
@@ -716,6 +718,45 @@ class ScreensTest {
         val (_, act) = host.acts.single { it.first == Dibs.TASK_ACT }
         assertEquals("task:8", act!!.getString("key"))
         assertEquals("start_now", act.getString("act"))
+    }
+
+    /** A dibs that still sends now/next/later reads and draws too, the room line over its "next" column. */
+    @Test
+    fun anOldDibsBoardWithThreeColumnsStillDraws() {
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").put("yours", JSONArray().put(yours(1, "Cleanup", "working")))
+        fun col(key: String, title: String, title1: String) = JSONObject().put("key", key).put("title", title).put("cards", JSONArray().put(JSONObject().put("key", "task:$title1").put("n", title1.toInt())
+            .put("title", "Task $title1").put("state_words", "x").put("now", "").put("tags", JSONArray()).put("actions", JSONArray().put("to_later").put("resume"))))
+        v.getJSONObject("dibs").put("board", JSONObject()
+            .put("columns", JSONArray().put(col("now", "Working now", "1")).put(col("next", "Queue", "2")).put(col("later", "Later", "3")))
+            .put("done", JSONObject().put("count", 0).put("cards", JSONArray()))
+            .put("room", JSONObject().put("room", 0).put("line", "No room for another task: the laptop is at 14 of 15.6 GB")))
+        show(v)
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        for (h in listOf("WORKING NOW · 1", "QUEUE · 1", "LATER · 1")) compose.onNodeWithText(h).assertIsDisplayed()
+        compose.onNodeWithText("No room for another task", substring = true).assertIsDisplayed()
+        // No primary from an old dibs: no button on the face.
+        compose.onAllNodes(hasText("Start")).assertCountEquals(0)
+        compose.onAllNodes(hasText("Park")).assertCountEquals(0)
+    }
+
+    /** The Start button on a Backlog card's face sends task-act start for that card, and Park the same for an Active one. */
+    @Test
+    fun theButtonOnACardsFaceSendsItsPrimary() {
+        show(boardView())
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onAllNodes(hasText("Start"))[1].performClick()
+        compose.waitForIdle()
+        val (_, start) = host.acts.single { it.first == Dibs.TASK_ACT }
+        assertEquals("task:30", start!!.getString("key"))
+        assertEquals("start", start.getString("act"))
+        compose.onNodeWithText("Park").performClick()
+        compose.waitForIdle()
+        val (_, park) = host.acts.last { it.first == Dibs.TASK_ACT }
+        assertEquals("task:31", park!!.getString("key"))
+        assertEquals("park", park.getString("act"))
     }
 
     private fun yours(id: Long, title: String, state: String, asked: String = title, unread: Boolean = false) = JSONObject()

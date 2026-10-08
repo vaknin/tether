@@ -408,7 +408,7 @@ data class YourTask(
  * One card on dibs's board (docs/DIBS-APP.md, "The board"): a task (`task:<id>`, [n] its number) or an
  * idea (`idea:<id>`, no number). Drawn as dibs sends it: [title] whole, [stateWords] its state in plain
  * words, [now] what it's doing (may be empty), [tags] "On hold" and "work saved", and [actions] what its
- * long press offers (start_now, hold, resume, stop, delete, up, down, to_next, to_later, story).
+ * long press offers (start, park, start_now, up, down, stop, delete, story; an old dibs: hold, resume, to_next, to_later).
  */
 data class BoardCard(
     val key: String,
@@ -421,6 +421,10 @@ data class BoardCard(
     val actions: List<String> = emptyList(),
     /** What Delete loses, in plain words ("Delete removes this idea. No work is lost."), shown at its confirm step. */
     val deleteText: String? = null,
+    /** The one action dibs puts on the card's face: "park" (Active cards) or "start" (Backlog cards); null on Done and from an old dibs. */
+    val primary: String? = null,
+    /** An Active card's lane: "running" or "waiting"; null elsewhere and from an old dibs. */
+    val lane: String? = null,
     /** Ask about it (tasks only, a dibs that offers it). */
     val ask: AskEntry? = null,
     /** The recap's account of it (a dibs that sends them). */
@@ -430,7 +434,7 @@ data class BoardCard(
     val task: Long? get() = key.removePrefix("task:").takeIf { key.startsWith("task:") }?.toLongOrNull()
 }
 
-/** A column of the board: now, next or later, its title ("Working now") and its cards, in dibs's order. */
+/** A column of the board: active or backlog (an old dibs: now, next or later), its title ("Active") and its cards, in dibs's order. */
 data class BoardColumn(val key: String, val title: String, val cards: List<BoardCard>)
 
 /**
@@ -723,6 +727,8 @@ data class DibsView(
             story = o.optJSONObject("story")?.let(::story),
             actions = o.optJSONArray("actions").strings(),
             deleteText = o.str("delete_text"),
+            primary = o.str("primary"),
+            lane = o.str("lane"),
             ask = askEntry(o.optJSONObject("ask")),
             brief = o.optJSONObject("brief")?.let { brief(it, o.long("n")) },
         )

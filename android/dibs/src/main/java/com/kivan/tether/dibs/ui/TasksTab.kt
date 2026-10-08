@@ -22,6 +22,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,8 +65,14 @@ private const val OWN_WORK = "fold:own-work"
 private const val TICKED = "fold:ticked"
 private const val DONE = "fold:done"
 
-/** A board card's actions in plain words, in the order its menu would show them if dibs sent them so. */
+/**
+ * A board card's actions in plain words, in the order its menu would show them if dibs sent them so. Start and Park
+ * are the cards' faces ([BoardCard.primary]), not menu entries. dibs's "move" is never offered. The old names
+ * (hold, resume, to_next, to_later) are for a dibs that has not moved to Active and Backlog yet.
+ */
 private val ACT_WORDS = mapOf(
+    "start" to "Start",
+    "park" to "Park",
     "start_now" to "Start now",
     "hold" to "Put on hold",
     "resume" to "Resume",
@@ -105,8 +112,8 @@ internal fun TasksTab(view: DibsView) {
             // dibs's board as it sent it: no grouping or sorting here.
             val columns = board.columns.filter { it.cards.isNotEmpty() }
             for (c in columns) {
-                // The laptop has no room: say why the queue waits, right above it.
-                if (c.key == "next" && board.room?.n == 0) item(key = "_room") { RoomLine(board.room.line, warn = true, Modifier.padding(top = Space.M)) }
+                // The laptop has no room: say why the waiting ones wait, right above them (an old dibs: the "next" column).
+                if ((c.key == "active" || c.key == "next") && board.room?.n == 0) item(key = "_room") { RoomLine(board.room.line, warn = true, Modifier.padding(top = Space.M)) }
                 item(key = "col-${c.key}") { Section("${c.title} · ${c.cards.size}") }
                 items(c.cards, key = { "c-${c.key}-${it.key}" }) { card -> BoardCardRow(card, view, armed, Modifier.animateItem()) }
             }
@@ -208,7 +215,9 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
     // an idea has none: its tap opens the menu.
     val tid = c.task
     val t = tid?.let(view::task)
-    val acts = c.actions.filter { it in ACT_WORDS && (it != "story" || tid != null) }
+    // The primary action is the button on the card's face, so the menu lists the rest.
+    val primary = c.primary?.takeIf { it in ACT_WORDS }
+    val acts = c.actions.filter { it in ACT_WORDS && it != primary && (it != "story" || tid != null) }
     val openMenu = {
         if (acts.isNotEmpty()) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -222,14 +231,20 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                c.n?.let { Text("#$it", Modifier.alignByBaseline(), style = AppType.mono, color = Palette.Muted) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                c.n?.let { Text("#$it", style = AppType.mono, color = Palette.Muted) }
                 Text(
                     c.title,
-                    Modifier.weight(1f).alignByBaseline(),
+                    Modifier.weight(1f),
                     style = AppType.body.copy(fontWeight = if (t != null && Dibs.unread(t)) FontWeight.W600 else FontWeight.W400),
                     color = Palette.Text,
                 )
+                if (primary != null) {
+                    TextButton(
+                        onClick = { Dibs.taskAct(c.key, primary) },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    ) { Text(ACT_WORDS.getValue(primary), style = AppType.body, color = Palette.Accent) }
+                }
             }
             if (c.stateWords.isNotBlank()) CardState(c.stateWords, busy = t?.busy == true)
             val story = c.story?.takeIf { it.state == "ready" || it.writing }
