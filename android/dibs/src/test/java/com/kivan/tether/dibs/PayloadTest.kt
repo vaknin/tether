@@ -601,4 +601,34 @@ class PayloadTest {
         assertEquals("t3", odd.recapItems[0].key)
         assertEquals("You talked it over", odd.recapItems[0].tag)
     }
+    @Test
+    fun linksStateWordsAndTheIndexRevAreRead() {
+        val v = DibsView.parse(
+            JSONObject(
+                """{"now": 1, "index_rev": "ab12", "yours": [
+                  {"id": 5, "title": "T", "state": "working", "state_words": "Working", "links": [
+                    {"kind": "idea", "n": 45, "title": "Chat buttons", "state": "Idea", "why": "Made from"},
+                    {"kind": "task", "n": 230, "title": "Wait and Go", "state": "Done 8 Oct", "why": "Related"},
+                    {"kind": "task", "n": 0, "title": "no number"}]},
+                  {"id": 6, "title": "Old", "state": "done"}]}""",
+            ),
+        )
+        assertEquals("ab12", v.indexRev)
+        val t = v.task(5)!!
+        assertEquals("Working", t.stateWords)
+        assertEquals(listOf(RefKind.IDEA to 45, RefKind.TASK to 230), t.links.map { it.kind to it.n })
+        assertEquals("Made from", t.links[0].why)
+        // An older dibs: nothing of it, nothing breaks.
+        assertEquals(emptyList<RefLink>(), v.task(6)!!.links)
+        assertEquals("", v.task(6)!!.stateWords)
+        assertNull(DibsView.parse(JSONObject("{}")).indexRev)
+    }
+
+    @Test
+    fun aFetchedPageIsATaskWithItsGroupAndWhoseItIs() {
+        val t = DibsView.yourTask(JSONObject("""{"id": 9, "title": "Theirs", "state": "done", "group": "done", "mine": false, "state_words": "Done 8 Oct"}"""))
+        assertEquals("done", t.group)
+        assertFalse(t.mine)
+        assertTrue(DibsView.yourTask(JSONObject("""{"id": 9}""")).mine)
+    }
 }

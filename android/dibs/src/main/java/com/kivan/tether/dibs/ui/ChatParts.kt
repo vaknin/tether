@@ -26,6 +26,17 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import com.kivan.tether.dibs.insertPick
+import com.kivan.tether.dibs.pickQuery
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.withTimeoutOrNull
 import com.kivan.tether.dibs.ReplyRef
 import com.kivan.tether.dibs.TextPart
 import com.kivan.tether.dibs.textParts
@@ -66,6 +77,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -136,6 +148,9 @@ import com.kivan.tether.dibs.ChatRow
 import com.kivan.tether.dibs.Composer
 import com.kivan.tether.dibs.DayRow
 import com.kivan.tether.dibs.Dibs
+import com.kivan.tether.dibs.RefIndex
+import com.kivan.tether.dibs.RefKind
+import com.kivan.tether.dibs.findRefs
 import com.kivan.tether.dibs.Echo
 import com.kivan.tether.dibs.EchoRow
 import com.kivan.tether.dibs.FileRef
@@ -287,8 +302,15 @@ private fun PulseDot(modifier: Modifier = Modifier) {
  * (always after one of mine). Scrolled up, "↓ N new" goes back down.
  */
 @Composable
-internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, busy: Boolean, busyLine: String?, look: ChatLook = ChatLook()) {
-    val state = rememberLazyListState()
+internal fun Conversation(
+    rows: List<ChatRow>,
+    echoes: Map<String, Pending>,
+    busy: Boolean,
+    busyLine: String?,
+    look: ChatLook = ChatLook(),
+    /** The list's place; the dibs chat passes [Dibs.chatList], which outlives the page that replaces the tabs. */
+    state: LazyListState = rememberLazyListState(),
+) {
     val scope = rememberCoroutineScope()
     val reversed = remember(rows) { rows.asReversed() }
     val newest = rows.lastOrNull()?.key
@@ -297,8 +319,11 @@ internal fun Conversation(rows: List<ChatRow>, echoes: Map<String, Pending>, bus
         is LineRow -> r.line.mine
         else -> false
     }
+    // Back from a page the list is where it was left: only a line that came since moves it (not my own newest line on return).
+    var started by remember { mutableStateOf(false) }
     LaunchedEffect(newest, busy) {
-        if (newest != null && (state.firstVisibleItemIndex <= 2 || newestMine)) state.animateScrollToItem(0)
+        if (newest != null && (state.firstVisibleItemIndex <= 2 || (newestMine && started))) state.animateScrollToItem(0)
+        started = true
     }
     val atBottom by remember { derivedStateOf { state.firstVisibleItemIndex <= 1 } }
     var seen by remember { mutableStateOf(newest) }
@@ -673,8 +698,11 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                 Modifier.combinedClickable(
                     onClick = { if (ask != null && outcome != null) Dibs.open.remove(ASK + l.id) },
                     onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menu = true
+                        // A long press on a link opens its card ([LinkedText]), not this menu.
+                        if (!refPressed) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menu = true
+                        }
                     },
                 ).padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -736,7 +764,7 @@ private fun ColumnScope.EchoText(text: String, meta: @Composable () -> Unit) {
     } else {
         val parts = remember(text) { textParts(text) }
         if (parts.any { it.code }) CodeParts(parts, mine = true, MineMeta, meta)
-        else TextWithMeta(remember(text) { linkified(text) }, Palette.Text, bodyStyle, CLAMP_NONE, {}, meta)
+        else TextWithMeta(rememberLinked(text), Palette.Text, bodyStyle, CLAMP_NONE, {}, meta)
     }
 }
 
@@ -807,7 +835,7 @@ private fun FileChip(name: String, size: String?, mine: Boolean) {
 private fun LineText(id: String, text: String, time: String?, metaColor: Color, mine: Boolean) {
     val open = Dibs.open[id] == true
     var long by remember(text) { mutableStateOf(false) }
-    val annotated = remember(text) { linkified(text) }
+    val annotated = rememberLinked(text)
     val meta: @Composable () -> Unit = { if (time != null) Text(time, style = AppType.mono, color = metaColor) }
     val parts = remember(text) { textParts(text) }
     if (parts.any { it.code }) {
@@ -819,10 +847,10 @@ private fun LineText(id: String, text: String, time: String?, metaColor: Color, 
         return
     }
     Column {
-        Text(
+        LinkedText(
             annotated,
-            color = Palette.Text,
-            style = bodyStyle,
+            Palette.Text,
+            bodyStyle,
             maxLines = if (open) Int.MAX_VALUE else CLAMP,
             modifier = if (open) Modifier else Modifier.fadeOut(),
         )
@@ -860,8 +888,8 @@ private fun CodeParts(parts: List<TextPart>, mine: Boolean, metaColor: Color, me
                     CodeBlock(p.text, mine)
                     if (last) Box(Modifier.align(Alignment.End)) { meta() }
                 }
-                last -> TextWithMeta(remember(p.text) { linkified(p.text) }, Palette.Text, bodyStyle, CLAMP_NONE, {}, meta)
-                else -> Text(remember(p.text) { linkified(p.text) }, color = Palette.Text, style = bodyStyle)
+                last -> TextWithMeta(rememberLinked(p.text), Palette.Text, bodyStyle, CLAMP_NONE, {}, meta)
+                else -> LinkedText(rememberLinked(p.text), Palette.Text, bodyStyle)
             }
         }
     }
@@ -905,6 +933,82 @@ private fun CodeBlock(code: String, mine: Boolean) {
 
 private const val CLAMP_NONE = Int.MAX_VALUE
 
+/** A finger is down on a link in a message: the bubble's own long press stands aside for the link's card. */
+private var refPressed = false
+
+private class RefHit(val kind: RefKind, val n: Int, val at: IntOffset)
+
+/** The link under [pos] in a laid-out [text]: only where the glyph itself is, not the space after a line. */
+private fun refAt(l: TextLayoutResult, text: AnnotatedString, pos: Offset): Pair<RefKind, Int>? {
+    val off = l.getOffsetForPosition(pos)
+    if (off !in 0 until text.length || !l.getBoundingBox(off).contains(pos)) return null
+    val tag = text.getStringAnnotations("ref", off, off + 1).firstOrNull()?.item ?: return null
+    val (kind, n) = tag.split(':').let { it[0] to it[1].toIntOrNull() }
+    return if (n == null) null else (if (kind == "task") RefKind.TASK else RefKind.IDEA) to n
+}
+
+/**
+ * [Text] whose links also answer a long press with a small card ([RefCardPopup]): the link overlay
+ * eats presses, so this watches them first ([PointerEventPass.Initial]) and, on a link held for the
+ * long-press time, shows the card and consumes the rest of the gesture (no click, no bubble menu).
+ * Elsewhere in the text nothing is touched. Text and popup share one Box: one layout child.
+ */
+@Composable
+private fun LinkedText(
+    text: AnnotatedString,
+    color: Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    maxLines: Int = CLAMP_NONE,
+    onTextLayout: (TextLayoutResult) -> Unit = {},
+) {
+    val layout = remember { arrayOfNulls<TextLayoutResult>(1) }
+    var card by remember(text) { mutableStateOf<RefHit?>(null) }
+    val haptics = LocalHapticFeedback.current
+    val linked = text.getStringAnnotations("ref", 0, text.length).isNotEmpty()
+    Box(modifier) {
+        Text(
+            text,
+            color = color,
+            style = style,
+            maxLines = maxLines,
+            onTextLayout = {
+                layout[0] = it
+                onTextLayout(it)
+            },
+            modifier = if (!linked) Modifier else Modifier.pointerInput(text) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val hit = layout[0]?.let { refAt(it, text, down.position) } ?: return@awaitEachGesture
+                    refPressed = true
+                    try {
+                        val held = withTimeoutOrNull<Boolean>(viewConfiguration.longPressTimeoutMillis) {
+                            var over = false
+                            while (!over) {
+                                val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                                over = c == null || c.changedToUpIgnoreConsumed() || (c.position - down.position).getDistance() > viewConfiguration.touchSlop
+                            }
+                            false
+                        } == null
+                        if (!held) return@awaitEachGesture
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        card = RefHit(hit.first, hit.second, IntOffset(down.position.x.roundToInt(), down.position.y.roundToInt()))
+                        // The rest of this press is the card's: neither the link's click nor the bubble sees it.
+                        while (true) {
+                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                            ev.changes.forEach { it.consume() }
+                            if (ev.changes.none { it.pressed }) break
+                        }
+                    } finally {
+                        refPressed = false
+                    }
+                }
+            },
+        )
+        card?.let { RefCardPopup(it.kind, it.n, it.at) { card = null } }
+    }
+}
+
 internal val bodyStyle = AppType.body.merge(TextStyle(textDirection = TextDirection.Content))
 
 /** The time on my bubbles: the accent toned down toward muted, as the mockup has it. */
@@ -926,7 +1030,7 @@ private fun TextWithMeta(text: AnnotatedString, color: Color, style: TextStyle, 
     // Not state: the layout is read in the same measure pass that produces it.
     val layout = remember { arrayOfNulls<TextLayoutResult>(1) }
     Layout(content = {
-        Text(text, color = color, style = style, maxLines = maxLines, onTextLayout = {
+        LinkedText(text, color, style, maxLines = maxLines, onTextLayout = {
             layout[0] = it
             if (it.hasVisualOverflow) onLong()
         })
@@ -1016,18 +1120,36 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
     // A reply picked (swipe or Reply) puts the cursor in the box and opens the keyboard.
     val focus = remember { FocusRequester() }
     LaunchedEffect(box.replyTo) { if (box.replyTo != null && enabled) focus.requestFocus() }
+    // The field's value with its caret and selection, mirroring the draft: a draft changed from outside (a share, a send) puts the caret at its end.
+    var held by remember { mutableStateOf(TextFieldValue(draft, TextRange(draft.length))) }
+    val tf = if (held.text == draft) held else TextFieldValue(draft, TextRange(draft.length))
+    // The `#…` being typed, and the one the user closed the list for.
+    val query = pickQuery(tf.text, tf.selection.start)
+    var closed by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(query?.start) { closed = null }
+    val index = Dibs.index
     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
         box.about?.let { AboutChip(it) }
         box.replyTo?.let { ReplyChip(it, box) }
         if (box.picked.isNotEmpty()) Strip(box)
+        if (query != null && index != null && enabled && closed != query.start) {
+            RefPicker(index, query.q, onPick = { p ->
+                val (text, caret) = insertPick(tf.text, query.start, tf.selection.start, p.kind, p.n)
+                box.typed(text)
+                held = TextFieldValue(text, TextRange(caret))
+            }, onClose = { closed = query.start })
+        }
         Row(
             Modifier.fillMaxWidth().background(Palette.Surface, MaterialTheme.shapes.large).padding(6.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             if (attach) Attach(box) else Spacer(Modifier.width(8.dp))
             BasicTextField(
-                value = draft,
-                onValueChange = { box.typed(it) },
+                value = tf,
+                onValueChange = {
+                    held = it
+                    box.typed(it.text)
+                },
                 enabled = enabled,
                 textStyle = bodyStyle.merge(TextStyle(color = Palette.Text)),
                 cursorBrush = SolidColor(Palette.Accent),
@@ -1200,14 +1322,29 @@ private fun Strip(box: Composer) {
 
 private val urlPattern = Regex("""\b(?:https?://|www\.)[^\s<>"]+[^\s<>".,;:!?)\]']""")
 
-/** The text with its links tappable. */
-internal fun linkified(text: String): AnnotatedString = buildAnnotatedString {
+/** The text with its links tappable: web addresses, and `#230` / `idea 45` where the index knows that task or idea. */
+internal fun linkified(text: String, index: RefIndex? = null): AnnotatedString = buildAnnotatedString {
     append(text)
     val style = TextLinkStyles(SpanStyle(color = Palette.Accent, textDecoration = TextDecoration.Underline))
-    for (match in urlPattern.findAll(text)) {
-        val url = match.value.let { if (it.startsWith("www.")) "https://$it" else it }
-        addLink(LinkAnnotation.Url(url, style), match.range.first, match.range.last + 1)
+    val urls = urlPattern.findAll(text).map { it.range }.toList()
+    for (range in urls) {
+        val url = text.substring(range).let { if (it.startsWith("www.")) "https://$it" else it }
+        addLink(LinkAnnotation.Url(url, style), range.first, range.last + 1)
     }
+    if (index == null) return@buildAnnotatedString
+    for (r in findRefs(text)) {
+        if (!index.knows(r.kind, r.n) || urls.any { r.start <= it.last && it.first < r.end }) continue
+        val tag = "${if (r.kind == RefKind.TASK) "task" else "idea"}:${r.n}"
+        addLink(LinkAnnotation.Clickable("ref:$tag", style) { Dibs.openRef(r.kind, r.n) }, r.start, r.end)
+        addStringAnnotation("ref", tag, r.start, r.end)
+    }
+}
+
+/** [linkified], kept while the text and the index are the same. */
+@Composable
+internal fun rememberLinked(text: String): AnnotatedString {
+    val index = Dibs.index
+    return remember(text, index) { linkified(text, index) }
 }
 
 /** A line's time, as the phone's clock shows times (12 or 24 hours). */

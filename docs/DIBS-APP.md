@@ -89,7 +89,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -743,3 +743,38 @@ none and the old tab shows).
   `recapListed`, `brief(id)`, `storyOf(id)`, `labelOf(id)`); screen tests in `RecapScreensTest`.
 - Deviations from the contract text: a brief's `answer` is shown under "The answer" before the four parts (the contract
   gives it no place); `yours[].brief` is still read if a dibs sends one, after the board card's.
+
+## Links (task #261; app 0.11.0, versionCode 42)
+
+`#230` in text is task 230 and `idea 45` is idea 45 (the idea's number in the Ideas tab). The app draws them as
+links where it knows the task or idea, opens them on a tap, and offers them while typing.
+
+### Data (dibs → phone)
+- **The index.** The payload carries `index_rev`. When it has no file on the phone yet, the app sends `fetch`
+  `{"what": "index"}` (once per rev) and dibs answers with the channel file `index-<rev>.json.gz`:
+  `{"tasks": [{n, t, s, g, p, a, f}], "ideas": [{n, t, s}]}`. Tasks: `n` number, `t` title, `s` state in words
+  ("Queued, 3rd in line"), `g` group (`needs|working|queued|later|done|stopped`), `p` project, `a` the ask's first words,
+  `f` when it finished (or null). Ideas: `s` is `active|ticked|deleted`. The newest file read is `Dibs.index`
+  (`Refs.kt`, `IndexLoader.kt`); until one is read no text has links. Older dibs: no `index_rev`, nothing asked, no links.
+- **A task's page.** `fetch` `{"task": id, "what": "page"}` brings `page-<id>-<rev>.json.gz`: one `yours`-shaped entry
+  plus `state_words`, `group`, `links` and `mine` (false: dibs's own work, shown read-only), so any task opens as a page
+  (`Page.Task`), not only the user's own.
+- **`links`.** Each `yours` entry and each idea note carries `links`: `[{kind: "task"|"idea", n, title, state, why}]`
+  (`why`: "Made from", "Waits for"…). A task page shows "Linked ideas" and "Related tasks", an idea page "Linked".
+
+### What the user sees
+- **Tap** a link in a chat line (or the ask on a task page) opens that task's page or idea's page (`Dibs.openRef`);
+  an idea not in the Ideas tab opens nothing. Back returns to the chat where it was (`Dibs.chatList` outlives the page
+  that replaces the tabs).
+- **Long press** on a link shows a small card (`RefCard`): `#230 · project` (ideas: `idea 45`), the title, the state in
+  words with a dot coloured by group, and **Open**. A long press elsewhere on the line keeps the bubble menu
+  (Select text, Reply…). Compose's link overlay eats presses, so `LinkedText` (`ChatParts.kt`) watches them first
+  (`PointerEventPass.Initial`) and consumes the rest of a gesture that became a card.
+- **The `#` picker.** Typing `#` (after a space or at the start) with the index loaded lists tasks and ideas above the
+  box (`pickQuery`, `pick`, at most 30): digits match the number then numbers starting with them, words must each start
+  a word of the title or ask. A tap puts `#230 ` (or `idea 45 `) in; × closes the list for that `#`.
+
+### The shared cases
+`links-cases.json` (`android/dibs/src/test/resources/`, a copy of dibs's `docs/links-cases.json`) holds the rule for
+what is a link: `RefsTest` runs it here, dibs's `refs::find` and the desktop app's `refs.ts` run the same file, so the
+three agree. Screen tests: `ScreensTest` (`links-chat`, `links-card`, `links-task-page`, `links-picker`).

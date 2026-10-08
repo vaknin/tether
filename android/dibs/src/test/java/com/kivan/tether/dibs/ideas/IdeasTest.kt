@@ -77,7 +77,7 @@ class IdeasTest {
         assertTrue(long.loadPrefix.matches(Regex("idea-${long.id}-[0-9a-f]{10}")))
         assertEquals(1L, ideas.notes[2].task)
         assertEquals(setOf("eeeeeeeeeeeeeeee0000000000000005"), ideas.notes[3].adds)
-        assertEquals("Trash · 1", ideas.trashTitle)
+        assertEquals("Ticked off · 1", ideas.trashTitle)
         assertEquals("Restore", ideas.trash.single().actions.single().label)
         assertTrue("dddddddddddddddd0000000000000004" in ideas.known)
         // And through the whole payload.

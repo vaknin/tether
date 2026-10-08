@@ -99,10 +99,10 @@ fun seamWords(how: String, ts: Long, clock: (Long) -> String): String =
 
 /**
  * The task id and kind a fetched file is for: "transcript-31-ab12.json.gz" → ("transcript", 31);
- * a report or full story the same ("story-31-ab12.md").
+ * a report or full story the same ("story-31-ab12.md"), and any task page ("page-31-ab12.json.gz").
  */
 fun fetchedOf(name: String): Pair<String, Long>? {
-    val m = Regex("""^(transcript|report|story)-(\d+)-""").find(name) ?: return null
+    val m = Regex("""^(transcript|report|story|page)-(\d+)-""").find(name) ?: return null
     return m.groupValues[1] to m.groupValues[2].toLong()
 }
 

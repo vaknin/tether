@@ -34,6 +34,8 @@ data class IdeaNote(
     val adds: Set<String>,
     /** Ask about this note (a dibs that offers it). */
     val ask: com.kivan.tether.dibs.AskEntry? = null,
+    /** The tasks and ideas it is linked to (a dibs that sends them). */
+    val links: List<com.kivan.tether.dibs.RefLink> = emptyList(),
 ) {
     /**
      * The start of the name of the file a Load brings: `idea-<id>-<hash>`, the hash naming this
@@ -96,6 +98,7 @@ data class Ideas(
                     val label = a.optString("label").takeIf { it.isNotEmpty() && !a.isNull("label") }
                     if (about != null && label != null) com.kivan.tether.dibs.AskEntry(about, label) else null
                 },
+                links = com.kivan.tether.dibs.DibsView.links(o.optJSONArray("links")),
             )
         }
 

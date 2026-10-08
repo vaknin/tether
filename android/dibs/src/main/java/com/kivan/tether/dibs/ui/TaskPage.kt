@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -45,6 +46,7 @@ import com.kivan.tether.dibs.EchoRow
 import com.kivan.tether.dibs.LineRow
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
+import com.kivan.tether.dibs.RefKind
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.duration
 import com.kivan.tether.dibs.ranMinutes
@@ -53,7 +55,10 @@ import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Pill
 import com.kivan.tether.dibs.ui.theme.Space
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 // A task's page (docs/DIBS-APP.md, "Your tasks"): its state and times, its open questions, what it
 // did, its result, its full story, what was asked, the transcript, and the earlier messages with its
@@ -63,12 +68,55 @@ import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun TaskPage(id: Long, view: DibsView) {
-    val t = view.task(id) ?: return Gone()
+    // One of the user's own tasks is in the view; any other is fetched, and shown read-only.
+    val own = view.task(id)
+    if (own != null) TaskBody(own, view, mine = true) else OtherTask(id, view)
+}
+
+/** A task the view doesn't list (a link names it): its page as dibs sends it (`what: page`), read-only. */
+@Composable
+private fun OtherTask(id: Long, view: DibsView) {
+    // Asked again each time it is opened, so the page isn't old; the one on the phone shows meanwhile.
+    val since = remember(id) { System.currentTimeMillis() / 1000 }
+    val fetch = rememberFetch(id, "page", since)
+    var bad by remember(id) { mutableStateOf(false) }
+    val page by produceState<YourTask?>(null, fetch.file) {
+        val f = fetch.file ?: return@produceState
+        val read = withContext(Dispatchers.IO) { runCatching { DibsView.yourTask(JSONObject(readFetched(f))) }.getOrNull() }
+        bad = read == null
+        if (read != null) value = read
+    }
+    val t = page
+    if (t != null) return TaskBody(t, view, mine = false)
+    val known = Dibs.index?.task(id.toInt())
+    Column(Modifier.fillMaxSize()) {
+        PageBar(known?.t?.ifBlank { null } ?: "Task #$id")
+        Column(Modifier.padding(horizontal = Space.L, vertical = Space.S), verticalArrangement = Arrangement.spacedBy(Space.XS)) {
+            known?.s?.takeIf { it.isNotBlank() }?.let { CardState(it, busy = false) }
+            when {
+                bad && !fetch.waiting -> {
+                    Text("It couldn't be read.", style = AppType.body, color = Palette.Muted)
+                    ActButton("Get it again", "primary") { fetch.refresh() }
+                }
+                fetch.timedOut -> {
+                    Text("dibs didn't send this page.", style = AppType.body, color = Palette.Muted)
+                    ActButton("Try again", "primary") { fetch.refresh() }
+                }
+                else -> Text("Loading…", style = AppType.body, color = Palette.Muted)
+            }
+        }
+    }
+}
+
+/** [mine]: one of the user's own tasks (Tick, Stop, its transcript, story and report); else a fetched page, read-only. */
+@Composable
+private fun TaskBody(t: YourTask, view: DibsView, mine: Boolean) {
+    val id = t.id
     val now by rememberNow()
     val armed = rememberArmed()
     // Open: it's read, and its ping goes (again whenever new lines arrive while it's open).
     val newest = t.talk.lastOrNull()?.id
-    LaunchedEffect(id, newest) { Dibs.seenTask(t) }
+    LaunchedEffect(id, newest) { if (mine) Dibs.seenTask(t) }
 
     val all by Dibs.pending.collectAsStateWithLifecycle()
     val pending = remember(all, id) { all.filter { it.task == id } }
@@ -107,13 +155,13 @@ internal fun TaskPage(id: Long, view: DibsView) {
 
     SelectHost {
     Column(Modifier.fillMaxSize()) {
-        PageBar(t.label, t.project) { TaskActions(t, view, armed) }
+        PageBar(t.label, t.project) { TaskActions(t, view, armed, mine) }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
             state = state,
             contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.S),
         ) {
-            summary(t, view, now)
+            summary(t, view, now, mine)
             if (rows.isNotEmpty()) item(key = "_chat") { Section("Earlier messages") }
             chatItems(rows, echoes, look)
             if (t.busy) item(key = "_busy") { Typing("${t.label} is on it") }
@@ -151,9 +199,10 @@ private fun AskDibs(t: YourTask, view: DibsView) {
 
 /** Tick off once it's finished (Untick once ticked), Stop while it runs, and ⋮ Open on laptop. */
 @Composable
-private fun TaskActions(t: YourTask, view: DibsView, armed: Armed) {
+private fun TaskActions(t: YourTask, view: DibsView, armed: Armed, mine: Boolean) {
     var menu by remember { mutableStateOf(false) }
     when {
+        !mine -> {}
         t.finishedState && Dibs.ticked(t) -> IconButton(onClick = { Dibs.untick(t) }) {
             Icon(painterResource(R.drawable.lucide_undo_2), "Untick", Modifier.size(22.dp), tint = Palette.Muted)
         }
@@ -184,9 +233,9 @@ private fun TaskActions(t: YourTask, view: DibsView, armed: Armed) {
 }
 
 /** Top to bottom: state and times, open questions, what it did, result, the full story, what was asked, the transcript. */
-private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
-    item(key = "_state") { StateBlock(t, now) }
-    val questions = view.questions.filter { it.id in t.questions && "q${it.id}" !in Dibs.answered }
+private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long, mine: Boolean) {
+    item(key = "_state") { StateBlock(t, now, mine) }
+    val questions = if (!mine) emptyList() else view.questions.filter { it.id in t.questions && "q${it.id}" !in Dibs.answered }
     items(questions, key = { "q${it.id}" }) { q -> QuestionCard(q, now, Modifier.animateItem().padding(top = Space.S)) }
 
     item(key = "_did") {
@@ -194,7 +243,7 @@ private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
             Section(if (t.finishedState) "What it did" else "What it's doing")
             val text = t.report ?: t.line
             if (text.isNotBlank()) {
-                SelectionContainer { Text(remember(text) { linkified(text) }, style = bodyStyle, color = Palette.Text) }
+                SelectionContainer { Text(rememberLinked(text), style = bodyStyle, color = Palette.Text) }
             } else {
                 Text("Nothing to say yet.", style = AppType.body, color = Palette.Muted)
             }
@@ -202,25 +251,30 @@ private fun LazyListScope.summary(t: YourTask, view: DibsView, now: Long) {
     }
     val result = t.result
     if (result != null && (result.reportMd || result.shipped.isNotEmpty())) {
-        item(key = "_result") { ResultBlock(t) }
+        item(key = "_result") { ResultBlock(t, mine) }
     }
-    item(key = "_story") { StoryLink(t) }
+    if (mine) item(key = "_story") { StoryLink(t) }
     if (t.asked.isNotBlank()) {
         item(key = "_asked") {
             Column(verticalArrangement = Arrangement.spacedBy(Space.XS)) {
                 Section("You asked")
-                Text(t.asked, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
+                Text(rememberLinked(t.asked), style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
             }
         }
     }
-    item(key = "_transcript") { TranscriptLink(t) }
+    val tasks = t.links.filter { it.kind == RefKind.TASK }
+    val ideas = t.links.filter { it.kind == RefKind.IDEA }
+    if (ideas.isNotEmpty()) item(key = "_ideas") { RefSection("Linked ideas", ideas) }
+    if (tasks.isNotEmpty()) item(key = "_tasks") { RefSection("Related tasks", tasks) }
+    if (mine) item(key = "_transcript") { TranscriptLink(t) }
 }
 
 /** Its state in words, then when it started, how long it ran, when it finished. */
 @Composable
-private fun StateBlock(t: YourTask, now: Long) {
+private fun StateBlock(t: YourTask, now: Long, mine: Boolean) {
     Column(Modifier.padding(top = Space.XS), verticalArrangement = Arrangement.spacedBy(Space.XS)) {
-        TaskState(t, now)
+        // A fetched page has no live state of its own: dibs's words say it.
+        if (!mine && t.stateWords.isNotBlank()) CardState(t.stateWords, t.busy) else TaskState(t, now)
         val ran = ranMinutes(t, now)
         val times = listOfNotNull(
             if (t.started > 0) "Started ${whenWords(t.started)}" else null,
@@ -233,11 +287,11 @@ private fun StateBlock(t: YourTask, now: Long) {
 
 /** "Report" (its REPORT.md, in the reader) and where it shipped, with the For you lines. */
 @Composable
-private fun ResultBlock(t: YourTask) {
+private fun ResultBlock(t: YourTask, mine: Boolean) {
     val result = t.result ?: return
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         Section("Result")
-        if (result.reportMd) {
+        if (result.reportMd && mine) {
             Row(
                 Modifier.clip(Pill).background(Palette.AccentDim).clickable { Dibs.open(Page.Report(t.id)) }
                     .padding(horizontal = 12.dp, vertical = 7.dp),

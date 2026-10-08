@@ -2,6 +2,12 @@ package com.kivan.tether.dibs
 
 import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -24,6 +30,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kivan.tether.dibs.ui.DibsApp
+import com.kivan.tether.dibs.ui.RefCard
 import com.kivan.tether.dibs.ui.theme.AppTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +40,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -93,6 +101,22 @@ class ScreensTest {
         Dibs.chat.replyTo = null
         Dibs.holdTap = null
     }
+
+    @After
+    fun putTheSingletonsBack() {
+        Dibs.index = null
+        Dibs.chat.draft = ""
+        Dibs.chatList.requestScrollToItem(0)
+    }
+
+    /** A small index: tasks 230 (working), 231 (needs you), 232 (done) and ideas 23 and 45. */
+    private fun linkIndex() = RefIndex.parse(
+        """{"tasks":[
+          {"n":230,"t":"Make links tappable in the dibs chat","s":"Working","g":"working","p":"tether","a":"links in the chat","f":null},
+          {"n":231,"t":"Pick the colour of the launcher tile","s":"Needs you: 1 question","g":"needs","p":"design","a":"launcher tile colour","f":null},
+          {"n":232,"t":"Rename the picker rows","s":"Done 2 hours ago","g":"done","p":"tether","a":"rename the rows","f":1700000000}],
+          "ideas":[{"n":23,"t":"Groceries by aisle","s":"active"},{"n":45,"t":"A calmer colour for the chat bar","s":"active"}]}""",
+    )
 
     private fun show(view: JSONObject) {
         host = FakeHost(view)
@@ -758,6 +782,91 @@ class ScreensTest {
         val (_, park) = host.acts.last { it.first == Dibs.TASK_ACT }
         assertEquals("task:31", park!!.getString("key"))
         assertEquals("park", park.getString("act"))
+    }
+
+    @Test
+    fun linksInTheChatAreDrawnAsLinks() {
+        Dibs.index = linkIndex()
+        val talk = longTalk().dropLast(3) + listOf(
+            JSONObject().put("id", "s90").put("n", 90).put("who", "dibs").put("ts", NOW - 300)
+                .put("text", "That was made from #230 and idea 45. #999 is not one I know."),
+            JSONObject().put("id", "u-91").put("n", 91).put("who", "user").put("ts", NOW - 200)
+                .put("text", "Is #231 waiting on me?"),
+            JSONObject().put("id", "s92").put("n", 92).put("who", "dibs").put("ts", NOW - 100)
+                .put("text", "Yes, it needs a colour. Hold a link for a card."),
+        )
+        show(view(talk = talk))
+        compose.onNodeWithText("Is #231 waiting on me?").assertIsDisplayed()
+        compose.onNodeWithText("That was made from #230", substring = true).assertIsDisplayed()
+        shot("links-chat")
+    }
+
+    @Test
+    fun theLinkCardSaysWhatItIsAndOffersOpen() {
+        Dibs.index = linkIndex()
+        var opened = 0
+        compose.setContent {
+            AppTheme {
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.fillMaxSize().background(com.kivan.tether.dibs.ui.theme.Palette.Bg).padding(24.dp),
+                ) { RefCard(RefKind.TASK, 231, onOpen = { opened++ }, onDismiss = {}) }
+            }
+        }
+        compose.onNodeWithText("#231 · design").assertIsDisplayed()
+        compose.onNodeWithText("Pick the colour of the launcher tile").assertIsDisplayed()
+        compose.onNodeWithText("Needs you: 1 question").assertIsDisplayed()
+        shot("links-card")
+        compose.onNodeWithText("Open").performClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun aTaskPageListsItsLinkedIdeasAndRelatedTasks() {
+        Dibs.index = linkIndex()
+        val v = view(talk = longTalk())
+        val t = yours(31, "Make links tappable", "working")
+            .put("state_words", "Working").put("group", "working")
+            .put("links", JSONArray()
+                .put(JSONObject().put("kind", "idea").put("n", 45).put("title", "A calmer colour for the chat bar").put("state", "Idea").put("why", "Made from"))
+                .put(JSONObject().put("kind", "task").put("n", 230).put("title", "Make links tappable in the dibs chat").put("state", "Working").put("why", "Waits for"))
+                .put(JSONObject().put("kind", "task").put("n", 232).put("title", "Rename the picker rows").put("state", "Done 2 hours ago").put("why", "Related")))
+        v.getJSONObject("dibs").put("yours", JSONArray().put(t))
+        show(v)
+        Dibs.pages += Page.Task(31)
+        compose.waitForIdle()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Related tasks", ignoreCase = true))
+        compose.onNodeWithText("Linked ideas", ignoreCase = true).assertIsDisplayed()
+        compose.onNodeWithText("Related tasks", ignoreCase = true).assertIsDisplayed()
+        compose.onNodeWithText("A calmer colour for the chat bar").assertIsDisplayed()
+        shot("links-task-page")
+    }
+
+    @Test
+    fun hashInTheBoxOpensThePickerWithWhatMatches() {
+        Dibs.index = linkIndex()
+        show(view(talk = longTalk()))
+        Dibs.chat.draft = "#23"
+        compose.waitForIdle()
+        compose.onNodeWithTag("ref-picker").assertIsDisplayed()
+        compose.onNodeWithText("Pick the colour of the launcher tile").assertIsDisplayed()
+        compose.onNodeWithText("Groceries by aisle").assertIsDisplayed()
+        shot("links-picker")
+        compose.onNodeWithText("Rename the picker rows").performClick()
+        compose.waitForIdle()
+        assertEquals("#232 ", Dibs.chat.draft)
+        compose.onAllNodesWithTag("ref-picker").assertCountEquals(0)
+    }
+
+    @Test
+    fun thePickerSaysSoWhenNothingMatchesAndItsCrossClosesIt() {
+        Dibs.index = linkIndex()
+        show(view(talk = longTalk()))
+        Dibs.chat.draft = "#zzz"
+        compose.waitForIdle()
+        compose.onNodeWithText("No task or idea matches").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Close the list").performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithText("No task or idea matches").assertCountEquals(0)
     }
 
     private fun yours(id: Long, title: String, state: String, asked: String = title, unread: Boolean = false) = JSONObject()

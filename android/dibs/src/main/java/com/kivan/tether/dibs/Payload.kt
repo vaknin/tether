@@ -396,6 +396,14 @@ data class YourTask(
     val ask: AskEntry? = null,
     /** The recap's account of it (a dibs that sends them; the current one sends none here: the recap's items and the board card carry it). */
     val brief: Brief? = null,
+    /** Its state in words ("Queued, 3rd in line"); empty from an older dibs. */
+    val stateWords: String = "",
+    /** needs | working | queued | later | done | stopped (a page fetched for a task), else empty. */
+    val group: String = "",
+    /** The tasks and ideas it is linked to. */
+    val links: List<RefLink> = emptyList(),
+    /** One of the user's own tasks (false: dibs's own work, shown on a fetched page read-only). */
+    val mine: Boolean = true,
 ) {
     /** Its name as the screens show it. */
     val label: String get() = plainTitle(title, asked).ifBlank { name }.ifBlank { "Task $id" }
@@ -403,6 +411,9 @@ data class YourTask(
     /** It has ended one way or another: done, stopped or failed. */
     val finishedState: Boolean get() = state == "done" || state == "stopped" || state == "failed"
 }
+
+/** A link from a task or idea to another ([kind] task | idea, number [n]): its [title], [state] in words and [why] ("Made from", "Waits for"). */
+data class RefLink(val kind: RefKind, val n: Int, val title: String, val state: String, val why: String)
 
 /**
  * One card on dibs's board (docs/DIBS-APP.md, "The board"): a task (`task:<id>`, [n] its number) or an
@@ -483,6 +494,8 @@ data class DibsView(
     val recapListed: Boolean = false,
     /** Every full story kept, newest first (`recap.stories`). */
     val recapStories: List<StoryEntry> = emptyList(),
+    /** Changes when a task or idea is added or renamed or moves on: the phone fetches the index (`what: index`) then. Null from an older dibs. */
+    val indexRev: String? = null,
 ) {
     fun task(id: Long): YourTask? = yours?.firstOrNull { it.id == id }
 
@@ -585,6 +598,7 @@ data class DibsView(
                 recapStories = recap.optJSONArray("stories").objects().mapNotNull { e ->
                     e.long("task")?.let { StoryEntry(it, e.str("title").orEmpty(), e.optLong("ts"), e.str("project")) }
                 }.distinctBy { it.task },
+                indexRev = o.str("index_rev"),
             )
         }
 
@@ -627,7 +641,8 @@ data class DibsView(
             return AskEntry(about, label)
         }
 
-        private fun yourTask(o: JSONObject): YourTask {
+        /** A task of the user's as the view lists it; also a fetched page (`page-<id>-<rev>.json.gz`), which adds `group` and `mine`. */
+        fun yourTask(o: JSONObject): YourTask {
             val r = o.optJSONObject("result")
             return YourTask(
                 id = o.optLong("id"),
@@ -663,7 +678,17 @@ data class DibsView(
                 story = o.optJSONObject("story")?.let(::story),
                 ask = askEntry(o.optJSONObject("ask")),
                 brief = o.optJSONObject("brief")?.let { brief(it, o.optLong("id")) },
+                stateWords = o.str("state_words").orEmpty(),
+                group = o.str("group").orEmpty(),
+                links = links(o.optJSONArray("links")),
+                mine = if (o.has("mine") && !o.isNull("mine")) o.optBoolean("mine") else true,
             )
+        }
+
+        /** The `links` of a task or an idea note; one without a number is dropped. */
+        fun links(a: JSONArray?): List<RefLink> = a.objects().mapNotNull {
+            val n = it.optInt("n").takeIf { n -> n > 0 } ?: return@mapNotNull null
+            RefLink(if (it.optString("kind") == "idea") RefKind.IDEA else RefKind.TASK, n, it.str("title").orEmpty(), it.str("state").orEmpty(), it.str("why").orEmpty())
         }
 
         /** One brief; none without its task (a board card's or a task's own names it when the brief doesn't). */

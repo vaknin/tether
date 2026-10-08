@@ -306,6 +306,37 @@ object Dibs {
     /** The dibs chat's box. */
     val chat = Composer(null)
 
+    /**
+     * Every task and idea in a few words (the newest `index-<rev>.json.gz` dibs sent), read by the
+     * links in text and the `#` picker; null until one is fetched (then no text has links).
+     */
+    var index by mutableStateOf<RefIndex?>(null)
+
+    /** The rev of the index asked for last, so one view change asks once. */
+    private var indexAsked: String? = null
+
+    /**
+     * The view's [rev] (`index_rev`) has no file yet ([have]: the name of the newest one on the phone): asks dibs for
+     * it, once per rev. No rev (an older dibs) asks for nothing.
+     */
+    fun wantIndex(rev: String?, have: String?) {
+        if (rev.isNullOrEmpty() || have?.contains(rev) == true || indexAsked == rev) return
+        indexAsked = rev
+        host.act("fetch", JSONObject().put("what", "index"))
+    }
+
+    /** Opens the task or idea a link names: a task's page, an idea's page (found by its number in the Ideas tab; nothing if it isn't there). */
+    fun openRef(view: DibsView?, kind: RefKind, n: Int) {
+        if (kind == RefKind.TASK) return open(Page.Task(n.toLong()))
+        view?.ideas?.notes?.firstOrNull { it.num == n.toLong() }?.let { open(Page.Idea(it.id)) }
+    }
+
+    /** [openRef] with the newest view the laptop sent (for a link in text, which has no view in hand). */
+    fun openRef(kind: RefKind, n: Int) = openRef(DibsView.ofView(host.view.value), kind, n)
+
+    /** The dibs chat's list position: a page replaces the tabs, so it is kept here to land on the same line on return. */
+    val chatList = androidx.compose.foundation.lazy.LazyListState()
+
     /** Typed answers and the like, by field, kept across tabs. */
     val fields = mutableStateMapOf<String, String>()
     /** Lines (by id) opened to their full text, earlier days unfolded, cards opened. */

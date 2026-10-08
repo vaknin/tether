@@ -224,7 +224,7 @@ private fun TranscriptList(rows: List<TRow>) {
                 when (row) {
                     is AskRow -> AskBlock(row)
                     is AgentRow -> SelectionContainer {
-                        Text(remember(row.text) { linkified(row.text) }, Modifier.fillMaxWidth().padding(vertical = 2.dp), style = bodyStyle, color = Palette.Text)
+                        Text(rememberLinked(row.text), Modifier.fillMaxWidth().padding(vertical = 2.dp), style = bodyStyle, color = Palette.Text)
                     }
                     is UserRow -> UserBubble(row)
                     is SysRow -> Text(
@@ -276,7 +276,7 @@ private fun AskBlock(row: AskRow) {
 private fun UserBubble(row: UserRow) {
     BubbleBox(mine = true, first = true, last = true) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(remember(row.text) { linkified(row.text) }, style = bodyStyle, color = Palette.Text)
+            Text(rememberLinked(row.text), style = bodyStyle, color = Palette.Text)
             Row(Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 when (row.src) {
                     "phone" -> Icon(painterResource(R.drawable.lucide_smartphone), "From the phone", Modifier.size(12.dp), tint = MineMeta)

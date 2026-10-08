@@ -348,7 +348,7 @@ private fun MyLine(text: String, wait: String?, sending: Boolean) {
                     .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text(remember(text) { linkified(text) }, style = bodyStyle, color = Palette.Text)
+                Text(rememberLinked(text), style = bodyStyle, color = Palette.Text)
                 when {
                     wait != null -> Text(wait, style = AppType.small, color = Palette.Muted)
                     sending -> Icon(

@@ -112,8 +112,8 @@ class IdeasScreensTest {
 
     @Test
     fun trashFoldsAndRestores() {
-        scrollTo("TRASH · 1")
-        compose.onNodeWithText("TRASH · 1").performClick()
+        scrollTo("TICKED OFF · 1")
+        compose.onNodeWithText("TICKED OFF · 1").performClick()
         compose.waitForIdle()
         scrollTo("Restore")
         compose.onNodeWithText("Pond in the garden").assertIsDisplayed()

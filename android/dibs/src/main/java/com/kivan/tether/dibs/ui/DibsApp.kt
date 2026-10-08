@@ -111,6 +111,7 @@ fun DibsApp() {
     val link by host.link.collectAsStateWithLifecycle()
     val view = remember(json) { runCatching { DibsView.ofView(json) }.getOrNull() }
     val context = LocalContext.current
+    IndexLoader(view?.indexRev)
     LaunchedEffect(view) {
         Dibs.seen(view)
         Drafts.seen(context, view?.ideas)

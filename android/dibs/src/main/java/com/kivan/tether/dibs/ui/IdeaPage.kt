@@ -112,6 +112,7 @@ internal fun IdeaPage(id: String, view: DibsView) {
                 }
             }
             if (showTranscript) TranscriptPart(n, transcript) else SummaryPart(n.summary)
+            RefSection("Linked", n.links)
 
             val adding = drafts.filter { it.note == n.id }.sortedBy { it.createdMs }
             if (adding.isNotEmpty()) {

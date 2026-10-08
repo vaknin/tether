@@ -178,14 +178,14 @@
     ],
     "total": 4,
     "trash": {
-      "title": "Trash · 1",
-      "note": "Ticked-off ideas stay here for 30 days.",
+      "title": "Ticked off · 1",
+      "note": "Ticked-off ideas stay here for good.",
       "items": [
         {
           "id": "dddddddddddddddd0000000000000004",
           "label": "#41",
           "title": "Pond in the garden",
-          "meta": "Ticked off 4 Oct 15:00 · 28 days left",
+          "meta": "Ticked off 4 Oct 15:00",
           "actions": [
             {
               "action": "idea-restore",

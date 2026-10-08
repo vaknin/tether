@@ -68,7 +68,7 @@ internal fun ChatTab(view: DibsView) {
                     modifier = Modifier.align(Alignment.Center).padding(Space.XL),
                 )
             }
-            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line, look = look)
+            Conversation(rows, echoes, busy = view.state.busy, busyLine = view.state.line, look = look, state = Dibs.chatList)
         }
         HoldBar(view)
         InputArea(Dibs.chat, "Message dibs")

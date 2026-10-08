@@ -173,6 +173,8 @@ class DibsBridge(context: Context) : DibsHost {
                 if (!f.delete()) Log.w("Tether", "couldn't prune ${f.name}")
             }
         }
+        // The index of tasks and ideas: only the newest.
+        files.filter { it.name.startsWith("index-") }.sortedByDescending { it.lastModified() }.drop(1).forEach { if (!it.delete()) Log.w("Tether", "couldn't prune ${it.name}") }
         for ((note, list) in files.groupBy { ideaFileOf(it.name) }) {
             if (note == null) continue
             val sorted = list.sortedByDescending { it.lastModified() }
