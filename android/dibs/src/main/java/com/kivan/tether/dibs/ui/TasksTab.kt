@@ -90,6 +90,8 @@ internal fun TasksTab(view: DibsView) {
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
         verticalArrangement = Arrangement.spacedBy(Space.S),
     ) {
+        // The queue is on hold (a move, a used-up plan): said first, or it just looks stuck (word 601).
+        view.board?.hold?.let { hold -> item(key = "_hold") { RoomLine(hold, warn = true, Modifier.padding(top = Space.M)) } }
         // What the tab's badge counts, said plainly (nothing when nothing wants you).
         val open = list.groups.flatMap { it.tasks }
         val read = open.count { it.state != "needs" && Dibs.unread(it) }
