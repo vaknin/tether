@@ -73,6 +73,10 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   (`kind: "rootkey"`) makes the key and sends its public half (`root-key`). Release signing: without
   `~/.config/tether/keystore.properties`, `scripts/install-phone.sh` builds unsigned and has `dibs root request` run
   the fixed `scripts/sign-apk.sh` (approved on the phone), then installs the APK it signed.
+  Since dibs moved to the home server, ships run there (dibs task #288, 2026-10-08): the server has no Tether
+  daemon (the recipe installs and restarts it only where `tether.service` exists) and reaches the phone over adb
+  on the home Wi-Fi, and its root helper signs with a copy of the laptop's release key (the user's choice, task #295:
+  one line pasted at the laptop piped the key folder from root to root and installed `sign-apk` beside the helper).
 - Phone root screen: the channel list (`ui/ChannelScreen.kt`, state in `Channels.kt`); the chat is one entry.
   A channel view with a `thread` block (dibs's conversation) is laid out chat-first (`ChatFirst` in
   `ChannelScreen.kt`): the blocks before it fold to "N waiting", the thread fills the screen, its
