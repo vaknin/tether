@@ -16,11 +16,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -37,7 +38,6 @@ import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Link
 import com.kivan.tether.dibs.Page
-import com.kivan.tether.dibs.Question
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.dayWords
@@ -80,6 +80,9 @@ internal fun BriefPage(page: Page.Brief, view: DibsView) {
         // Replaces this page: back returns to the list, not to the brief just left.
         if (b != null && Dibs.pages.lastOrNull() == page) Dibs.pages[Dibs.pages.lastIndex] = Page.Brief(b.task, true)
     }
+    val goNow by rememberUpdatedState(go)
+    // Whether it was unread when the page opened: reading it here must not take "since yesterday" away.
+    val wasUnread = remember(id) { brief?.let(Dibs::briefUnread) == true }
     val prev = at > 0
     val next = at in 0 until items.size - 1
     val st = rememberStory(id, view.storyOf(id), autoAsk = false)
@@ -112,7 +115,7 @@ internal fun BriefPage(page: Page.Brief, view: DibsView) {
                 detectHorizontalDragGestures(
                     onDragStart = { dx = 0f },
                     onDragEnd = {
-                        if (dx < -threshold && next) go(at + 1) else if (dx > threshold && prev) go(at - 1)
+                        if (dx < -threshold && next) goNow(at + 1) else if (dx > threshold && prev) goNow(at - 1)
                     },
                     onDragCancel = { dx = 0f },
                     onHorizontalDrag = { _, d -> dx += d },
@@ -124,7 +127,7 @@ internal fun BriefPage(page: Page.Brief, view: DibsView) {
                 contentPadding = PaddingValues(start = Space.L, end = Space.L, top = Space.XS, bottom = Space.XXL),
                 verticalArrangement = Arrangement.spacedBy(Space.M),
             ) {
-                item(key = "_head") { Head(id, title, brief, t, card, now) }
+                item(key = "_head") { Head(id, title, brief, wasUnread, t, card, now) }
                 if (brief != null) {
                     parts(brief)
                 } else {
@@ -142,12 +145,12 @@ internal fun BriefPage(page: Page.Brief, view: DibsView) {
 
 /** The tag, the big title and the meta line; a task with no brief shows its number and state words instead. */
 @Composable
-private fun Head(id: Long, title: String, brief: Brief?, t: YourTask?, card: BoardCard?, now: Long) {
+private fun Head(id: Long, title: String, brief: Brief?, wasUnread: Boolean, t: YourTask?, card: BoardCard?, now: Long) {
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         if (brief != null && brief.tag.isNotEmpty()) TierChip(brief)
         Text(title, style = AppType.title, color = Palette.Text)
         if (brief != null) {
-            Meta(id, brief)
+            Meta(id, brief, wasUnread)
         } else {
             Text("#$id", style = AppType.mono, color = Palette.Muted)
             if (t != null) TaskState(t, now) else if (card != null && card.stateWords.isNotBlank()) CardState(card.stateWords, busy = false)
@@ -157,14 +160,14 @@ private fun Head(id: Long, title: String, brief: Brief?, t: YourTask?, card: Boa
 
 /** "#210 · dibs · Plan · ready 06:40"; unread and from before today, "since yesterday" in amber. */
 @Composable
-private fun Meta(id: Long, b: Brief) {
+private fun Meta(id: Long, b: Brief, wasUnread: Boolean) {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
     val day = b.ts.takeIf { it > 0 }?.let { Instant.ofEpochSecond(it).atZone(zone).toLocalDate() }
     val whenWords = if (b.ts > 0) whenWords(b.ts) else null
     val kind = b.kind?.replaceFirstChar { it.uppercase() }
     val line = listOfNotNull("#$id", b.project, kind, whenWords).joinToString(" · ")
-    val since = if (Dibs.briefUnread(b) && day != null && day.isBefore(today)) {
+    val since = if (wasUnread && day != null && day.isBefore(today)) {
         "since " + dayWords(day, today).let { if (it == "Yesterday") it.lowercase() else it }
     } else {
         null
@@ -203,25 +206,19 @@ private fun Part(label: String, text: String) {
 }
 
 /**
- * The open question the brief names (`card`) with its buttons as Waiting draws them (answering here closes it there
- * too), then Ask dibs about this and Open the task (a task of the user's).
+ * Every open question of the task (the one the brief names with `card`, the ones its own task lists, any that names it)
+ * as a Waiting card, buttons and all (answering here closes it there too); then Ask dibs about this and Open the task
+ * (a task of the user's).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Actions(id: Long, title: String, brief: Brief?, view: DibsView, now: Long) {
-    val q: Question? = brief?.card?.let { c -> view.questions.firstOrNull { it.id == c && "q$c" !in Dibs.answered } }
+    val t = view.task(id)
+    val questions = view.questions.filter {
+        (it.id == brief?.card || t?.questions?.contains(it.id) == true || it.task == id) && "q${it.id}" !in Dibs.answered
+    }
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
-        if (q != null) {
-            if (q.kind == "root" || q.kind == "rootkey") {
-                QuestionCard(q, now, Modifier)
-            } else {
-                Column(Modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(q.title, style = AppType.body.copy(fontWeight = Bold), color = Palette.Text)
-                    if (q.why.isNotBlank()) Text(q.why, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
-                    QuestionControls(q.id, "q/${q.id}", q.actions, q.reply, q.hint, Modifier.padding(top = 4.dp))
-                }
-            }
-        }
+        for (q in questions) QuestionCard(q, now, Modifier)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.S), verticalArrangement = Arrangement.spacedBy(Space.S), itemVerticalAlignment = Alignment.CenterVertically) {
             val ask = view.askFor(id)
             if (ask != null) {

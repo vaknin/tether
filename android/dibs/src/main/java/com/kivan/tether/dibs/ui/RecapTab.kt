@@ -95,8 +95,8 @@ private fun UnreadRecap(view: DibsView) {
     val unread = if (items.isEmpty()) 0 else items.count { Dibs.briefUnread(it) }
     val small = view.recapSmall?.takeIf { it.n > 0 }
     val sub = listOfNotNull(
-        view.recapNeeds.takeIf { it > 0 && unread > 0 }?.let { "$it need you" },
-        small?.let { "${it.n} small fixes folded" },
+        view.recapNeeds.takeIf { it > 0 && unread > 0 }?.let { if (it == 1) "1 needs you" else "$it need you" },
+        small?.let { if (it.n == 1) "1 small fix folded" else "${it.n} small fixes folded" },
     ).joinToString(" · ")
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -109,7 +109,7 @@ private fun UnreadRecap(view: DibsView) {
                 if (sub.isNotEmpty() || unread > 0) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S)) {
                         Text(sub, Modifier.weight(1f), style = AppType.body, color = Palette.Muted)
-                        if (unread > 0) ActButton("Mark all read", "plain") { Dibs.recapSeenAll() }
+                        if (unread > 0) ActButton("Mark all read", "plain") { Dibs.recapSeenAll(items) }
                     }
                 }
             }
