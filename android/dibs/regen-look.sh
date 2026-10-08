@@ -6,7 +6,7 @@ set -euo pipefail
 HUE=180
 MARK=dibs-mark.svg  # the deadpan face, drawn for dibs (the user's pick, 2026-10-05)
 ICONS=(message-circle inbox hammer history paperclip send-horizontal image camera file file-text
-  chevron-down chevron-up check x arrow-down smartphone ellipsis-vertical copy eye-off undo-2
+  chevron-down chevron-up chevron-left check x arrow-down smartphone ellipsis-vertical copy eye-off undo-2
   sparkles circle-stop triangle-alert message-square-reply external-link laptop clock
   list-checks arrow-left refresh-cw chevron-right scroll-text circle-check book-open
   lightbulb keyboard mic plus square trash-2 message-circle-question corner-up-right

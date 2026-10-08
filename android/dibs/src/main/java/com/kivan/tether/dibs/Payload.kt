@@ -285,6 +285,57 @@ data class Story(
 }
 
 /**
+ * One piece of work the morning recap tells the user about (docs/DIBS-APP.md, "The morning recap"): a headline
+ * and a line, the four parts of its story ([what], [why], [means], [next]; any may be empty) and what to do about
+ * it. [tier] needs | urgent | asked | talked. [writing]: the parts aren't written yet ([what] and [lede] hold the
+ * plain summary). [card]: an open Waiting card of it (a question id). Every board card and task of the user's may carry one.
+ */
+data class Brief(
+    val key: String,
+    val task: Long,
+    val tier: String,
+    val title: String,
+    val lede: String = "",
+    val what: String = "",
+    val why: String = "",
+    val means: String = "",
+    val next: String = "",
+    /** The answer to a question the user asked. */
+    val answer: String? = null,
+    val project: String? = null,
+    /** build | plan | research | design */
+    val kind: String? = null,
+    /** done | stopped | failed | running | waiting */
+    val state: String? = null,
+    val ts: Long = 0,
+    val unread: Boolean = false,
+    val writing: Boolean = false,
+    val card: Long? = null,
+    val story: Story? = null,
+) {
+    /** It needs the user: "Needs you" or "Urgent". */
+    val needsYou: Boolean get() = tier == "needs" || tier == "urgent"
+
+    /** Its tag, in the words the recap uses ("Answers your question" when it holds an answer to one). */
+    val tag: String
+        get() = when {
+            answer != null && (tier == "asked" || tier == "talked") -> "Answers your question"
+            tier == "needs" -> "Needs you"
+            tier == "urgent" -> "Urgent"
+            tier == "talked" -> "You talked it over"
+            else -> "You asked"
+        }
+
+    /** At least one of the four parts is written. */
+    val hasParts: Boolean get() = what.isNotBlank() || why.isNotBlank() || means.isNotBlank() || next.isNotBlank()
+}
+
+/** Small fixes folded in the recap: one project's count and its first lines (fewer lines than [n]: "n more"). */
+data class SmallGroup(val project: String, val n: Int, val lines: List<String>)
+
+data class RecapSmall(val n: Int, val groups: List<SmallGroup>)
+
+/**
  * One of the user's own tasks (docs/DIBS-APP.md, "Your tasks"): it waits in the Tasks tab from its
  * start until they tick it off. Its [talk] is the chat with its own agent (who: user, agent, note).
  */
@@ -325,6 +376,8 @@ data class YourTask(
     val story: Story? = null,
     /** Ask about it (a dibs that offers it). */
     val ask: AskEntry? = null,
+    /** The recap's account of it (a dibs that sends them). */
+    val brief: Brief? = null,
 ) {
     /** Its name as the screens show it. */
     val label: String get() = plainTitle(title, asked).ifBlank { name }.ifBlank { "Task $id" }
@@ -352,6 +405,8 @@ data class BoardCard(
     val deleteText: String? = null,
     /** Ask about it (tasks only, a dibs that offers it). */
     val ask: AskEntry? = null,
+    /** The recap's account of it (a dibs that sends them). */
+    val brief: Brief? = null,
 ) {
     /** Its task's id, for a task card; null for an idea. */
     val task: Long? get() = key.removePrefix("task:").takeIf { key.startsWith("task:") }?.toLongOrNull()
@@ -395,8 +450,25 @@ data class DibsView(
     val ideas: com.kivan.tether.dibs.ideas.Ideas? = null,
     /** The Ask about conversations of the last 24 hours, newest first (a dibs that sends them). */
     val asks: List<Asking> = emptyList(),
+    /** The morning recap's unread list, in order (`recap.items`); empty from a dibs without one. */
+    val recapItems: List<Brief> = emptyList(),
+    /** Folded small fixes (`recap.small`). */
+    val recapSmall: RecapSmall? = null,
+    val recapUnread: Int = 0,
+    val recapNeeds: Int = 0,
+    /** The payload has `recap.items` (even an empty list): Recap draws the unread list, not the old tab. */
+    val recapListed: Boolean = false,
 ) {
     fun task(id: Long): YourTask? = yours?.firstOrNull { it.id == id }
+
+    /** Recap draws the unread list (a dibs that sends one), else the old tab. */
+    val recapList: Boolean get() = recapListed || recapItems.isNotEmpty()
+
+    /** The board card of a task. */
+    fun card(id: Long): BoardCard? = board?.let { b -> (b.columns.flatMap { it.cards } + b.done).firstOrNull { it.task == id } }
+
+    /** A task's account: the recap's, else its own task's, else its board card's. */
+    fun brief(id: Long): Brief? = recapItems.firstOrNull { it.task == id } ?: task(id)?.brief ?: card(id)?.brief
 
     /** A task's Ask about button: its own, else its board card's (a dibs that offers it). */
     fun askFor(t: YourTask): AskEntry? = t.ask ?: board?.let { b -> (b.columns.flatMap { it.cards } + b.done).firstOrNull { it.task == t.id }?.ask }
@@ -466,6 +538,16 @@ data class DibsView(
                 board = o.optJSONObject("board")?.let(::board)?.let { b -> if (b.room != null) b else b.copy(room = queueRoom(o.optJSONObject("queue"))) },
                 ideas = o.optJSONObject("ideas")?.let(com.kivan.tether.dibs.ideas.Ideas::parse),
                 asks = o.optJSONArray("threads").objects().mapNotNull(::asking).distinctBy { it.about },
+                recapItems = recap.optJSONArray("items").objects().mapNotNull { brief(it) }.distinctBy { it.task },
+                recapSmall = recap.optJSONObject("small")?.let { sm ->
+                    RecapSmall(
+                        sm.optInt("n"),
+                        sm.optJSONArray("groups").objects().map { g -> SmallGroup(g.str("project").orEmpty(), g.optInt("n"), g.optJSONArray("lines").strings()) },
+                    )
+                },
+                recapUnread = recap.optInt("unread"),
+                recapNeeds = recap.optInt("needs"),
+                recapListed = recap.has("items") && !recap.isNull("items"),
             )
         }
 
@@ -543,6 +625,32 @@ data class DibsView(
                 },
                 story = o.optJSONObject("story")?.let(::story),
                 ask = askEntry(o.optJSONObject("ask")),
+                brief = o.optJSONObject("brief")?.let { brief(it, o.optLong("id")) },
+            )
+        }
+
+        /** One brief; none without its task (a board card's or a task's own names it when the brief doesn't). */
+        private fun brief(o: JSONObject, task: Long? = null): Brief? {
+            val t = o.long("task") ?: task ?: return null
+            return Brief(
+                key = o.str("key") ?: "t$t",
+                task = t,
+                tier = o.str("tier").orEmpty(),
+                title = o.str("title").orEmpty(),
+                lede = o.str("lede").orEmpty(),
+                what = o.str("what").orEmpty(),
+                why = o.str("why").orEmpty(),
+                means = o.str("means").orEmpty(),
+                next = o.str("next").orEmpty(),
+                answer = o.str("answer"),
+                project = o.str("project"),
+                kind = o.str("kind"),
+                state = o.str("state"),
+                ts = o.optLong("ts"),
+                unread = o.optBoolean("unread"),
+                writing = o.optBoolean("writing"),
+                card = o.long("card"),
+                story = o.optJSONObject("story")?.let(::story),
             )
         }
 
@@ -582,6 +690,7 @@ data class DibsView(
             actions = o.optJSONArray("actions").strings(),
             deleteText = o.str("delete_text"),
             ask = askEntry(o.optJSONObject("ask")),
+            brief = o.optJSONObject("brief")?.let { brief(it, o.long("n")) },
         )
 
         private fun decision(o: JSONObject) =
