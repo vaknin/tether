@@ -74,8 +74,9 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   `~/.config/tether/keystore.properties`, `scripts/install-phone.sh` builds unsigned and has `dibs root request` run
   the fixed `scripts/sign-apk.sh` (approved on the phone), then installs the APK it signed.
   Since dibs moved to the home server, ships run there (dibs task #288, 2026-10-08): the server has no Tether
-  daemon (the recipe installs and restarts it only where `tether.service` exists), installs the app over adb on
-  the home Wi-Fi, and its root helper signs with a copy of the laptop's release key.
+  daemon (the recipe installs and restarts it only where `tether.service` exists) and reaches the phone over adb
+  on the home Wi-Fi, but its root helper has no `sign-apk` and no release key (only the laptop's helper has them),
+  so the phone install can't sign there until the user decides where signing happens.
 - Phone root screen: the channel list (`ui/ChannelScreen.kt`, state in `Channels.kt`); the chat is one entry.
   A channel view with a `thread` block (dibs's conversation) is laid out chat-first (`ChatFirst` in
   `ChannelScreen.kt`): the blocks before it fold to "N waiting", the thread fills the screen, its
