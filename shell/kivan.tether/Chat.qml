@@ -97,7 +97,7 @@ BorderSurface {
       anchors.baseline: peerName.baseline
       text: ui ? ui.statusLine : ""
       color: chat.muted
-      elide: Text.ElideRight
+      wrapMode: Text.Wrap
       font.family: chat.fontFamily
       font.pixelSize: Style.font.caption
     }
@@ -269,7 +269,7 @@ BorderSurface {
               Text {
                 text: model.fileName || "file"
                 width: Math.min(implicitWidth, row.maxBubble - chat.bubblePad * 2 - Style.space(33))
-                elide: Text.ElideMiddle
+                wrapMode: Text.WrapAnywhere
                 color: chat.fg
                 font.family: chat.fontFamily
                 font.pixelSize: Style.font.bodySmall
@@ -515,7 +515,7 @@ BorderSurface {
       visible: chat.roomy
       anchors { top: inputRow.bottom; topMargin: Style.space(4); horizontalCenter: parent.horizontalCenter }
       width: Math.min(implicitWidth, parent.width)
-      elide: Text.ElideRight
+      wrapMode: Text.Wrap
       text: "Enter sends · Shift+Enter line · Ctrl+V attaches · right-click menu"
       color: Util.alpha(chat.fg, 0.4)
       font.family: chat.fontFamily

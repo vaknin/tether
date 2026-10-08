@@ -218,7 +218,7 @@ BorderSurface {
         width: parent.width
         text: ch.headerBlock && ch.headerBlock.title ? ch.headerBlock.title : (ch.channel ? ch.channel.title : "")
         color: ch.fg
-        elide: Text.ElideRight
+        wrapMode: Text.Wrap
         horizontalAlignment: ch.alignOf(text)
         font.family: ch.fontFamily
         font.pixelSize: Style.font.subtitle
@@ -230,7 +230,7 @@ BorderSurface {
         text: ch.headerBlock && ch.headerBlock.subtitle ? ch.headerBlock.subtitle
           : (ch.ui && !ch.ui.daemonUp ? "daemon not running" : "")
         color: ch.muted
-        elide: Text.ElideRight
+        wrapMode: Text.Wrap
         horizontalAlignment: ch.alignOf(text)
         font.family: ch.fontFamily
         font.pixelSize: Style.font.caption
