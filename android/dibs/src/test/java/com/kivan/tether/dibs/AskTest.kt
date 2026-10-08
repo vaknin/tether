@@ -250,6 +250,17 @@ class AskTest {
     }
 
     @Test
+    fun theChatIsToldReadOnceForEachNewerLine() {
+        Dibs.chatSeen(0)
+        Dibs.chatSeen(5)
+        Dibs.chatSeen(5)
+        Dibs.chatSeen(3)
+        Dibs.chatSeen(9)
+        assertEquals(List(2) { "chat-seen" }, host.acts.map { it.first })
+        assertEquals(listOf(5, 9), host.acts.map { it.second!!.getInt("n") })
+    }
+
+    @Test
     fun aNotificationOpensItsConversationOnAColdStart() {
         // The notification knew the subject: its page at once, with no view loaded yet.
         Dibs.pages += Page.Task(3)

@@ -7,32 +7,12 @@
     android:viewportHeight="108">
     <!-- Mark fitted into a 46 dp box, centred in the 66 dp safe circle of the 108 dp canvas. -->
     <group android:translateX="31.200" android:translateY="31.200" android:scaleX="1.9000" android:scaleY="1.9000">
-        <path android:pathData="M2,12a10,10 0 1 0 20,0a10,10 0 1 0 -20,0z"
+        <path android:pathData="M18.5 3v17"
             android:strokeColor="#FFFFFFFF"
             android:strokeWidth="2"
             android:strokeLineCap="round"
             android:strokeLineJoin="round" />
-        <path android:pathData="M7.5 9.5h3"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-        <path android:pathData="M13.5 9.5h3"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-        <path android:pathData="M9 12h.01"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-        <path android:pathData="M15 12h.01"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-        <path android:pathData="M9 16h4.5l1.5-1"
+        <path android:pathData="M9.57 19.53A6.5 6.5 0 1 0 5.97 15.93L5.5 20.5Z"
             android:strokeColor="#FFFFFFFF"
             android:strokeWidth="2"
             android:strokeLineCap="round"

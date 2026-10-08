@@ -4,7 +4,7 @@
 # app's same-named resources would win the merge) and its Lucide icons. Never edit the outputs.
 set -euo pipefail
 HUE=180
-MARK=dibs-mark.svg  # the deadpan face, drawn for dibs (the user's pick, 2026-10-05)
+MARK=dibs-mark.svg  # the d with a chat bubble, dibs's pick for the user (2026-10-08)
 ICONS=(message-circle inbox hammer history paperclip send-horizontal image camera file file-text
   chevron-down chevron-up chevron-left check x arrow-down smartphone ellipsis-vertical copy eye-off undo-2
   sparkles circle-stop triangle-alert message-square-reply external-link laptop clock
