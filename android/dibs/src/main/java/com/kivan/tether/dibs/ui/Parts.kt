@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kivan.tether.dibs.Action
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.TapState
@@ -81,6 +82,28 @@ import kotlin.math.max
 import kotlin.math.min
 
 // Small pieces the four tabs share: buttons, chips, the answer box, a ticking clock, thumbnails.
+
+/**
+ * An [Action] as a button; when it is dibs's pick the words "dibs's pick" stand under it, so the pick
+ * never rests on colour alone. The words wrap, never cut.
+ */
+@Composable
+internal fun ActChoice(a: Action, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    if (a.pick) {
+        Column(modifier) {
+            ActButton(a.label, a.style, onClick = onClick)
+            PickMark()
+        }
+    } else {
+        ActButton(a.label, a.style, modifier, onClick = onClick)
+    }
+}
+
+/** "dibs's pick", small and quiet, under the button dibs recommends. */
+@Composable
+internal fun PickMark(modifier: Modifier = Modifier) {
+    Text("dibs's pick", style = AppType.small, color = Palette.Muted, modifier = modifier.padding(start = 4.dp, top = 2.dp))
+}
 
 /**
  * A button named for what it does. primary: filled accent; plain: quiet text; danger: red outline; else outlined.

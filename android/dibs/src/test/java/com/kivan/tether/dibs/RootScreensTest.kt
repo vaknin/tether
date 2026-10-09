@@ -8,7 +8,9 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -118,6 +120,66 @@ class RootScreensTest {
         assertEquals("d700", host.acts.last().first)
         compose.onNodeWithText("Restart Bluetooth").assertDoesNotExist()
     }
+
+    private fun plain(vararg actions: JSONObject) = JSONObject().put("id", 800).put("title", "Which place should the dibs app live in: inside Tether or on its own?")
+        .put("why", "Both work; one app is simpler.").put("from", "dibs").put("ts", NOW - 60).put("kind", "question")
+        .put("actions", JSONArray().apply { actions.forEach { put(it) } })
+
+    private fun act(id: String, label: String, style: String = "", pick: Boolean = false) =
+        JSONObject().put("id", id).put("label", label).put("style", style).apply { if (pick) put("pick", true) }
+
+    // dibs's pick is the one filled button and says so in words; no pick, nothing marked.
+    private fun pickedQuestion() {
+        show(
+            view(
+                plain(
+                    act("y800", "Inside Tether, with the same notifications and one install", ""),
+                    act("n800", "A separate app of its own, installed next to Tether", "primary", pick = true),
+                    act("x800", "Drop this question", "plain"),
+                ),
+            ),
+        )
+        compose.onAllNodesWithText("dibs's pick").assertCountEquals(1)
+        compose.onNodeWithText("A separate app of its own, installed next to Tether").assertIsDisplayed()
+        compose.onNodeWithText("Inside Tether, with the same notifications and one install").assertIsDisplayed()
+        compose.onAllNodes(hasText("…", substring = true), useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun aPickedQuestionButtonSaysSo() {
+        pickedQuestion()
+        shot("question-pick")
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun aPickedQuestionButtonSaysSoOnASmallScreen() {
+        pickedQuestion()
+        shot("question-pick-small")
+    }
+
+    @Test
+    fun withNoPickNothingIsMarked() {
+        show(view(plain(act("y800", "Inside Tether"), act("n800", "A separate app"), act("x800", "Drop this question", "plain"))))
+        compose.onNodeWithText("A separate app").assertIsDisplayed()
+        compose.onAllNodesWithText("dibs's pick").assertCountEquals(0)
+    }
+
+    private fun rootPageMarks(pick: String?, marks: Int) {
+        show(view(root(pick = pick)))
+        open()
+        scrollTo("Approve")
+        compose.onAllNodesWithText("dibs's pick").assertCountEquals(marks)
+    }
+
+    @Test
+    fun theRootPageMarksApproveWhenDibsAccepts() = rootPageMarks("accept", 1)
+
+    @Test
+    fun theRootPageMarksDenyWhenDibsRejects() = rootPageMarks("reject", 1)
+
+    @Test
+    fun theRootPageMarksNothingWithoutAPick() = rootPageMarks(null, 0)
 
     @Test
     fun aCardDibsHasntCheckedSaysSo() {

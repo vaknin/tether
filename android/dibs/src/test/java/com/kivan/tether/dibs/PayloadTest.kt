@@ -203,6 +203,21 @@ class PayloadTest {
     }
 
     @Test
+    fun onlyTheButtonDibsPicksIsMarked() {
+        val d = DibsView.parse(
+            JSONObject(
+                """{"now": 1, "questions": [{"id": 5, "title": "Inside Tether, or a separate app?", "kind": "question", "actions": [
+                  {"id": "y5", "label": "Inside Tether", "style": ""},
+                  {"id": "n5", "label": "Separate app", "style": "primary", "pick": true},
+                  {"id": "x5", "label": "Drop this question", "style": "plain"}]},
+                  {"id": 6, "title": "Old dibs", "kind": "question", "actions": [{"id": "y6", "label": "Yes", "style": "primary"}]}]}""",
+            ),
+        )
+        assertEquals(listOf(false, true, false), d.questions[0].actions.map { it.pick })
+        assertEquals("an older dibs sends no pick", listOf(false), d.questions[1].actions.map { it.pick })
+    }
+
+    @Test
     fun aTaskLineCanCarryItsQuestion() {
         val d = DibsView.parse(
             JSONObject(

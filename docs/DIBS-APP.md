@@ -94,7 +94,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). The Recap's To look over section (task #336) is 0.13.0 (46). The drop box (Ideas v2, task #267) is 0.14.0 (47). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). The Recap's To look over section (task #336) is 0.13.0 (46). The drop box (Ideas v2, task #267) is 0.14.0 (47). dibs's pick on question buttons (task #360) is 0.14.1 (48). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -112,13 +112,13 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
   "lends": {"phone": {"lent": false, "text": "", "until": null, "action": "phone-lend"},
             "laptop": {"lent": true, "text": "Until you take it back · rami-0f is on it", "until": 1791240000, "action": "laptop-back"}}?,
   "talk": [{"id": "64", "who": "user|dibs", "text": "full text", "short": "…"?, "ts": 1791212701,
-            "note": true?, "ask": {"q": 249, "actions": [{"id","label","style"}], "reply": "r249"?,
+            "note": true?, "ask": {"q": 249, "actions": [{"id","label","style","pick": true?}], "reply": "r249"?,
                                    "hint": "Add a comment…"?, "outcome": "Inside Tether"?,
                                    "read": {"label": "Read it in full", "task": 42, "url": "https://…" | null}?}?,
             "files": [{"id": "<tether file id>", "name": "a.jpg", "size": 123, "image": true}]?}],
   "questions": [{"id": 249, "title": "…", "why": "…", "details": "…"?, "from": "dibs", "repo": "tether"?,
                  "ts": …, "blocking": false, "phone": {"secs": 1800, "unlock": true}?,
-                 "actions": [{"id": "y249", "label": "Yes", "style": "primary"}], "reply": "r249"?,
+                 "actions": [{"id": "y249", "label": "Yes", "style": "primary", "pick": true}], "reply": "r249"?,
                  "hint": "Answer in your own words…"?,
                  "read": {"label": "Read it in full", "task": 42, "url": "https://…" | null}?}],
   "looks": [{"id": 7, "kind": "plan|design|research|answer|page", "title": "…", "pick": "what dibs picked and why, or found",
@@ -158,6 +158,12 @@ among them stay open; unused since 0.5.x, when decisions moved to Recap with Und
 **Look (task #336, 0.12.0).** `look` `{"id": <look id>, "act": "keep|got|change|reply", "text"?}`: Keep or Got it closes the
 look; Change or Reply carries the user's words in `text` (required) and dibs passes them on to the build it started
 (or, for a read, to the brain). Sent through `Dibs.answer("l<id>", …)`, so the card is gone here at once.
+
+**dibs's pick (task #360, 0.14.1).** An action carries `"pick": true` when it is the answer dibs recommends; at most
+one does, and dibs sends it with `"style": "primary"`, so every other button is plain or outlined. The app fills
+only that button and writes "dibs's pick" under it (words, so it never rests on colour alone). No `pick` anywhere
+on a card: no button is filled. An older dibs sends none, an older app fills the primary one without the words. A
+root step's page fills Approve when its `root.pick` is `accept` and marks Deny when it is `reject`.
 
 **Questions' buttons and words (task #66, 2026-10-06).** Each button says what a tap does (dibs's
 docs/PLAN.md, "Question buttons", lists every kind). An `x<id>` button (a close: "Drop this

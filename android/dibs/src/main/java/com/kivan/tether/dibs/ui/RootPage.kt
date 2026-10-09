@@ -108,7 +108,7 @@ internal fun RootActions(q: Question, modifier: Modifier = Modifier) {
         // Set up is handled here; dibs's own button for it (if it sent one) isn't drawn twice.
         for (a in q.actions.filter { !(setup && it.label.equals("Set up", ignoreCase = true)) }) {
             // A root step is never taken back, however long dibs takes with the helper.
-            ActButton(a.label, a.style) { Dibs.answer("q${q.id}", a.label, a.id, rollback = false) }
+            ActChoice(a) { Dibs.answer("q${q.id}", a.label, a.id, rollback = false) }
         }
     }
 }
@@ -246,41 +246,48 @@ internal fun RootPage(id: Long, view: DibsView) {
             error?.let { Text(it, style = AppType.small, color = Palette.Danger) }
 
             Spacer(Modifier.height(Space.XS))
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.S)) {
-                ActButton(
-                    "Approve",
-                    "primary",
-                    Modifier.weight(1f),
-                    enabled = blocked == null && key is KeyState.Ready && !busy,
-                    icon = R.drawable.lucide_fingerprint,
-                ) {
-                    val r = root
-                    val keep = never
-                    if (r.expires <= System.currentTimeMillis() / 1000) {
-                        error = "This request just expired."
-                        return@ActButton
-                    }
-                    // Built again now, from what's on screen, with the tick as it is at the tap.
-                    val msg = RootMessage.build(r, keep)
-                    busy = true
-                    error = null
-                    scope.launch {
-                        val res = Root.key.sign(context, msg.toByteArray(Charsets.UTF_8), q.title, "Request code ${RootMessage.shortHash(msg)}")
-                        busy = false
-                        when (res) {
-                            is SignResult.Signed -> {
-                                Dibs.approveRoot(q, r.request!!, res.der, keep)
-                                Dibs.back()
+            // Only dibs's pick is filled, and it says so under the button (never colour alone).
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.S), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    ActButton(
+                        "Approve",
+                        if (root.pick == "accept") "primary" else "",
+                        Modifier.fillMaxWidth(),
+                        enabled = blocked == null && key is KeyState.Ready && !busy,
+                        icon = R.drawable.lucide_fingerprint,
+                    ) {
+                        val r = root
+                        val keep = never
+                        if (r.expires <= System.currentTimeMillis() / 1000) {
+                            error = "This request just expired."
+                            return@ActButton
+                        }
+                        // Built again now, from what's on screen, with the tick as it is at the tap.
+                        val msg = RootMessage.build(r, keep)
+                        busy = true
+                        error = null
+                        scope.launch {
+                            val res = Root.key.sign(context, msg.toByteArray(Charsets.UTF_8), q.title, "Request code ${RootMessage.shortHash(msg)}")
+                            busy = false
+                            when (res) {
+                                is SignResult.Signed -> {
+                                    Dibs.approveRoot(q, r.request!!, res.der, keep)
+                                    Dibs.back()
+                                }
+                                SignResult.Cancelled -> {}
+                                SignResult.Invalidated -> key = KeyState.Invalidated
+                                is SignResult.Failed -> error = res.why
                             }
-                            SignResult.Cancelled -> {}
-                            SignResult.Invalidated -> key = KeyState.Invalidated
-                            is SignResult.Failed -> error = res.why
                         }
                     }
+                    if (root.pick == "accept") PickMark()
                 }
-                ActButton("Deny", "danger", Modifier.weight(1f)) {
-                    Dibs.denyRoot(q)
-                    Dibs.back()
+                Column(Modifier.weight(1f)) {
+                    ActButton("Deny", "danger", Modifier.fillMaxWidth()) {
+                        Dibs.denyRoot(q)
+                        Dibs.back()
+                    }
+                    if (root.pick == "reject") PickMark()
                 }
             }
         }

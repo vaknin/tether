@@ -149,7 +149,7 @@ internal fun QuestionControls(
         if (actions.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (a in actions) {
-                    ActButton(a.label, a.style) {
+                    ActChoice(a) {
                         // A close (x…) takes no words: it's "no answer".
                         val comment = Dibs.fields[field]?.trim().orEmpty().takeIf { reply != null && !a.id.startsWith("x") && it.isNotEmpty() }
                         Dibs.answer(key, a.label, a.id, comment?.let { JSONObject().put("comment", it) })

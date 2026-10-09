@@ -6,7 +6,8 @@ import org.json.JSONObject
 // The payload dibs publishes in its channel's view (`"dibs": {…}`, docs/DIBS-APP.md), parsed once
 // per view. Every field is optional on the wire: an older or newer dibs still draws.
 
-data class Action(val id: String, val label: String, val style: String = "")
+/** [pick]: the button dibs recommends. Only that one is filled, and the app writes "dibs's pick" under it. */
+data class Action(val id: String, val label: String, val style: String = "", val pick: Boolean = false)
 
 data class FileRef(val id: String, val name: String, val size: Long, val image: Boolean)
 
@@ -870,7 +871,7 @@ data class DibsView(
             return ReadInFull(o.str("label") ?: "Read it in full", task, o.str("url")?.takeIf { it.startsWith("https://") })
         }
 
-        private fun actions(a: JSONArray?) = a.objects().map { Action(it.optString("id"), it.optString("label"), it.optString("style")) }
+        private fun actions(a: JSONArray?) = a.objects().map { Action(it.optString("id"), it.optString("label"), it.optString("style"), it.optBoolean("pick")) }
     }
 }
 
