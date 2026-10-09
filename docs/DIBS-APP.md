@@ -495,9 +495,10 @@ one matters" flag would be the next step.
   while zoomed, back or ✕ closes). `DibsHost.image(id, maxPx)` gives the sharpest copy: a file dibs sent is kept
   in its channel folder; the user's own sent copies are gone, so theirs show the 720 px thumbnail. Images dibs
   sends now get a thumbnail on arrival (`Core`), so they show as pictures, not chips.
-- **Usage** (word 131): the header shows each window, "5h 88% · resets 12:20", amber from 80 %, from
-  `state.limits` (`{"ts", "windows": [{"name", "pct", "resets"}]}`, added on the dibs side by task #66).
-  A line too long for its room wraps after its "·" ("7d 93% ·" over "resets Sun 10:00"), never cut (0.5.9).
+- **Usage** (word 131): the header showed each window, "5h 88% · resets 12:20", amber from 80 %, from
+  `state.limits` (`{"ts", "windows": [{"name", "pct", "resets", "asof"}]}`, added on the dibs side by task #66).
+  Since 0.16.0 (task #370, word 798) the bar draws the 5-hour and weekly windows as two rings instead (below);
+  only the spending limit is still a line, on the dibs page.
 
 ## Full story (task #85, 2026-10-06)
 
@@ -699,13 +700,13 @@ a few lines typed and the keyboard closed, the chat got under 40 % of the screen
 - **One slim bar on every tab, pinned** (about 52 dp under the status bar): dibs's mark (32 dp), "dibs" with its
   state as a small coloured line under it (the old eyebrow, now a subtitle), then **marks that only appear when
   they matter**: a phone and/or laptop icon in an accent pill while lent to dibs (filled, so it reads without
-  colour), and "5h 88%" in amber when a usage window passes 80 %. Then ⋮. It does not hide on scroll or while
+  colour), and Claude's usage as two small rings (see "Usage rings" below). Then ⋮. It does not hide on scroll or while
   typing: once slim it costs little, and the state is what the user watches while dibs works.
 - **The dibs page** (`Page.Status`, opened by a tap on the bar's mark, name or marks, and from ⋮ "Laptop and
-  phone"): the state in words, the two lend switches as full cards, Claude usage (every window, its reset time),
+  phone"): the state in words, the two lend switches as full cards, the spending limit if there is one (the 5-hour and weekly windows are the bar's rings),
   the laptop's load (memory, cores, builds, agents; moved off the Tasks tab) and its room for more tasks, Start
-  dibs when the brain is down, Open Tether. This is the one place for all of it; no tab shows lend cards or usage
-  lines any more. "Start dibs" also stays in the bar while the brain is down (it blocks everything).
+  dibs when the brain is down, Open Tether. This is the one place for all of it; no tab shows lend cards
+  any more. "Start dibs" also stays in the bar while the brain is down (it blocks everything).
 - **Tasks**: each board section shows its count ("Working now · 2", "Queue · 5"); dibs renames "Up next" to
   **Queue** in its board (phone, desktop app and the brain's own words match). When the laptop has no room, the
   board's `room.line` shows above Queue, so a waiting queue explains itself.
@@ -892,3 +893,16 @@ and files it as a parked Backlog task linked to the note (dibs side: `docs/plan/
 - Tasks tab: a one-line box and a mic at the top of the Backlog column; a draft on its way shows "Sending…" under
   it; drop cards show with no number and open the idea's page.
 - The idea's page: an Answer box while dibs asks; the Add to it box otherwise.
+
+## Usage rings in the bar (app 0.16.0, 2026-10-09, task #370, word 798)
+
+- The slim bar holds two rings beside the lent marks and ⋮ (so they are in view in the chat): the 5-hour window
+  ("5h") then the weekly one ("7d"), from `state.limits`, each filled clockwise from the top by the percent used
+  (clamped 0..100) with the number inside and the name under it. Teal below 80 %, amber from 80 % (`LIMIT_WARN`);
+  the fill and the number carry the meaning, so it holds for protan colour blindness. A window past its reset
+  shows an empty ring with 0 ("started over at 12:20"); with neither window in the payload the rings are gone.
+- A tap on the rings (outside the page-opening row, so it does not open the dibs page) opens a small card:
+  "5-hour window: 87% used, resets 12:20", "Weekly: 63% used, resets Thu 09:00", and "Numbers from 10:05" when the
+  newest reading is over 15 minutes old. Screen readers get the same words as the rings' description.
+- Code: `Format.usageRings` / `usageStale` (unit-tested), `ui/UsageRings.kt`. The desktop app draws the same rings in
+  its header with the same words on hover (`desktop/src/lib/format.ts`, `UsageRings.svelte`).
