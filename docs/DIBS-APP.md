@@ -94,7 +94,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). The Recap's To look over section (task #336) is 0.13.0 (46). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -121,6 +121,9 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
                  "actions": [{"id": "y249", "label": "Yes", "style": "primary"}], "reply": "r249"?,
                  "hint": "Answer in your own words…"?,
                  "read": {"label": "Read it in full", "task": 42, "url": "https://…" | null}?}],
+  "looks": [{"id": 7, "kind": "plan|design|research|answer|page", "title": "…", "pick": "what dibs picked and why, or found",
+             "link": "https://…"?, "task": 210?, "follow": 211?, "follow_state": "queued|running|done"?,
+             "ts": …, "read": false}],              // "To look over" in Recap (0.12.0), newest first, at most 30
   "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …}],
   "tasks": [{"id": 16, "name": "…", "state": "running", "repo": "dibs", "minutes": 46,
              "text": "…", "doing": "last line", "background": false}],
@@ -137,7 +140,7 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
             "items": [<Brief>]?, "unread": 3?, "needs": 1?,          // the morning recap, below (0.10.0)
             "small": {"n": 47, "groups": [{"project": "dibs", "n": 21, "lines": ["…"]}]}?,
             "stories": [{"task": 189, "title": "…", "ts": …, "project": "dibs"?}]?},   // every full story kept, newest first
-  "badges": {"waiting": 3, "work": 1, "recap": 1}       // recap: the unread count with `items`, else 0/1
+  "badges": {"waiting": 3, "work": 1, "recap": 1, "looks": 2}   // recap: the unread count with `items`, else 0/1; looks: open ones
 }
 ```
 
@@ -151,6 +154,10 @@ handed to the brain as the user's request), `phone-back` (task #19), `phone-lend
 screen lend nothing either).
 `ack-decided` (`value.items`: the decision ids the Waiting tab showed; "Got it to all", questions
 among them stay open; unused since 0.5.x, when decisions moved to Recap with Undo only). `badges.waiting` counts questions only.
+
+**Look (task #336, 0.12.0).** `look` `{"id": <look id>, "act": "keep|got|change|reply", "text"?}`: Keep or Got it closes the
+look; Change or Reply carries the user's words in `text` (required) and dibs passes them on to the build it started
+(or, for a read, to the brain). Sent through `Dibs.answer("l<id>", …)`, so the card is gone here at once.
 
 **Questions' buttons and words (task #66, 2026-10-06).** Each button says what a tap does (dibs's
 docs/PLAN.md, "Question buttons", lists every kind). An `x<id>` button (a close: "Drop this
@@ -734,6 +741,16 @@ none and the old tab shows).
   lines than `n`), a row "Stories · N" (`recap.stories`, hidden when empty) that opens `Page.Stories`
   (`ui/StoriesPage.kt`: a list of every full story dibs keeps, newest first, title and project · when; a tap opens
   the task's story screen, whose Full story section reads it), and "Decided for you". The tab's badge is the unread number (a read here counts at once).
+- **To look over** (task #336, app 0.12.0; `ui/LookSection.kt`, drawn first in both Recap layouts by `lookItems`).
+  The user's rule (2026-10-09): plans, designs and choice pages no longer wait for them; dibs goes with its own pick,
+  the build starts, and this section is the one place that says so. `looks[]` in the payload: a card per look with a
+  chip for its kind (Plan, Design, Research, Answer, Page), where its build is ("Queued to build", "Building now",
+  "Built"; none for a read), the title, what dibs picked and why (three lines, a tap opens all), and buttons: "Open page"
+  (`link`, https only; else "Open task" for its `task`), **Keep** and **Change** (a read: **Got it** and **Reply**).
+  Change and Reply open a box for the user's words (`look/<id>` in `Dibs.fields`). The first line counts the open
+  questions ("1 question waits for your answer") and a tap goes to the Waiting tab; four looks show, then "Show all N".
+  No `looks` key (an older dibs) and no questions: no section. The Recap tab's number is the unread briefs plus the
+  open looks (`Dibs.answered["l<id>"]` hides one at once).
 - **Story screen** (`Page.Brief(task, fromRecap)`, `ui/BriefPage.kt`): top bar with back, "k of N" (from Recap, its
   place in `recap.items`) or "Story", and previous/next arrows. A swipe over 60 dp or the arrows replace the top page
   (back still returns to the list). Content: tag, big title, meta ("#id · project · Kind · when", and in amber "since

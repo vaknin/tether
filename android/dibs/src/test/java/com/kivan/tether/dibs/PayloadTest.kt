@@ -149,6 +149,34 @@ class PayloadTest {
     }
 
     @Test
+    fun looksParse() {
+        val d = DibsView.parse(
+            JSONObject(
+                """{"badges": {"waiting": 0, "work": 0, "recap": 0, "looks": 2},
+                  "looks": [
+                    {"id": 7, "kind": "plan", "title": "Terminal choice", "pick": "tmux: it keeps sessions.", "link": "https://example.com/p",
+                     "task": 210, "follow": 211, "follow_state": "queued", "ts": 5, "read": false},
+                    {"id": 8, "kind": "research", "title": "Found", "pick": "It is X.", "link": "http://example.com/p",
+                     "task": 212, "follow": null, "follow_state": null, "ts": 4, "read": true}]}""",
+            ),
+        )
+        assertEquals(2, d.badges.looks)
+        val (a, b) = d.looks
+        assertEquals(Look(7, "plan", "Terminal choice", "tmux: it keeps sessions.", "https://example.com/p", 210, 211, "queued", 5, false), a)
+        assertNull("a link that isn't https is dropped", b.link)
+        assertNull(b.follow)
+        assertNull(b.followState)
+        assertTrue(b.read)
+    }
+
+    @Test
+    fun noLooksKeyIsNoLooks() {
+        val d = DibsView.parse(JSONObject("""{"v": 1, "badges": {"waiting": 1}}"""))
+        assertTrue(d.looks.isEmpty())
+        assertEquals(0, d.badges.looks)
+    }
+
+    @Test
     fun aViewWithoutThePayloadIsNull() {
         assertNull(DibsView.ofView(JSONObject("""{"v": 1, "blocks": []}""")))
         assertNull(DibsView.ofView(null))

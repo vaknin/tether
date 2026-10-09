@@ -271,7 +271,25 @@ data class State(
     val brainDown: Boolean get() = brain == null && enabled
 }
 
-data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0)
+data class Badges(val waiting: Int, val work: Int, val recap: Int, val tasks: Int = 0, val looks: Int = 0)
+
+/**
+ * One thing to look over, Recap's "To look over": a plan, design or choice dibs went ahead with (Keep or Change), or a
+ * result to read ([read]: Got it or Reply). [pick] is what dibs picked and why, or what it found; [link] its page (https
+ * only); [follow] the build dibs started, [followState] where it is (`queued`, `running`, `done`).
+ */
+data class Look(
+    val id: Long,
+    val kind: String,
+    val title: String,
+    val pick: String,
+    val link: String?,
+    val task: Long?,
+    val follow: Long?,
+    val followState: String?,
+    val ts: Long,
+    val read: Boolean,
+)
 
 /** Where a task's work went: "Shipped to tether · 3 changes" and their For you lines. */
 data class Shipped(val repo: String, val changes: Int, val forYou: List<String>)
@@ -466,6 +484,8 @@ data class DibsView(
     val state: State,
     val talk: List<TalkLine>,
     val questions: List<Question>,
+    /** What waits for a look, newest first (`looks`); empty from a dibs that doesn't send it. */
+    val looks: List<Look> = emptyList(),
     val decided: List<Decision>,
     /** What was decided for the user lately, read or not: Recap's "Decided for you" (an older dibs: [decided]). */
     val recapDecided: List<Decision>,
@@ -555,6 +575,7 @@ data class DibsView(
                 ),
                 talk = o.optJSONArray("talk").objects().map(::talkLine),
                 questions = o.optJSONArray("questions").objects().map(::question),
+                looks = o.optJSONArray("looks").objects().map(::look),
                 decided = o.optJSONArray("decided").objects().map(::decision),
                 recapDecided = (if (recap.has("decided")) recap.optJSONArray("decided") else o.optJSONArray("decided")).objects().map(::decision),
                 tasks = o.optJSONArray("tasks").objects().map {
@@ -582,7 +603,7 @@ data class DibsView(
                 },
                 lend = o.optJSONObject("lend")?.let { Lend(it.optLong("until").takeIf { u -> u > 0 }, it.str("holder"), it.optString("text")) },
                 lends = o.optJSONObject("lends")?.let { l -> Lends(l.optJSONObject("phone")?.let(::lendToggle), l.optJSONObject("laptop")?.let(::lendToggle), l.optJSONObject("compute")?.let(::lendToggle)) },
-                badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap"), b.optInt("tasks")),
+                badges = Badges(b.optInt("waiting"), b.optInt("work"), b.optInt("recap"), b.optInt("tasks"), b.optInt("looks")),
                 yours = if (o.has("yours")) o.optJSONArray("yours").objects().map(::yourTask) else null,
                 board = o.optJSONObject("board")?.let(::board)?.let { b -> if (b.room != null) b else b.copy(room = queueRoom(o.optJSONObject("queue"))) },
                 ideas = o.optJSONObject("ideas")?.let(com.kivan.tether.dibs.ideas.Ideas::parse),
@@ -824,6 +845,19 @@ data class DibsView(
                 read = readInFull(o.optJSONObject("read")),
             )
         }
+
+        private fun look(o: JSONObject) = Look(
+            id = o.optLong("id"),
+            kind = o.optString("kind"),
+            title = o.optString("title"),
+            pick = o.optString("pick"),
+            link = o.str("link")?.takeIf { it.startsWith("https://") },
+            task = o.long("task")?.takeIf { it > 0 },
+            follow = o.long("follow")?.takeIf { it > 0 },
+            followState = o.str("follow_state"),
+            ts = o.optLong("ts"),
+            read = o.optBoolean("read"),
+        )
 
         private fun readInFull(o: JSONObject?): ReadInFull? {
             val task = o?.long("task")?.takeIf { it > 0 } ?: return null

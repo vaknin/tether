@@ -3,6 +3,7 @@ package com.kivan.tether.dibs
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.core.view.WindowCompat
@@ -266,6 +268,138 @@ class RecapScreensTest {
         compose.onNodeWithText("Waiting its turn").assertIsDisplayed()
         compose.onNodeWithText("Ask dibs about this").assertIsDisplayed()
         compose.onNodeWithText("Read the full story").assertIsDisplayed()
+    }
+
+    private fun look(id: Long, title: String, extra: JSONObject.() -> Unit = {}) = JSONObject()
+        .put("id", id).put("kind", "plan").put("title", title).put("pick", "Went with the small option: it is cheapest.")
+        .put("link", "https://example.com/plan-$id").put("task", 300 + id).put("follow", 400 + id).put("follow_state", "running")
+        .put("ts", NOW - 120).put("read", false).apply(extra)
+
+    private fun withLooks(view: JSONObject, vararg looks: JSONObject): JSONObject {
+        view.getJSONObject("dibs").put("looks", JSONArray(looks.toList()))
+        view.getJSONObject("dibs").getJSONObject("badges").put("looks", looks.size)
+        return view
+    }
+
+    @Test
+    fun aLookShowsAboveUnread() {
+        show(withLooks(recapView(three), look(1, "Terminal plan")))
+        compose.onNodeWithText("TO LOOK OVER").assertIsDisplayed()
+        compose.onNodeWithText("Terminal plan").assertIsDisplayed()
+        compose.onNodeWithText("Went with the small option: it is cheapest.").assertIsDisplayed()
+        compose.onNodeWithText("Open page").assertIsDisplayed()
+        compose.onNodeWithText("Building now").assertIsDisplayed()
+        compose.onNodeWithText("Keep").assertIsDisplayed()
+        compose.onNodeWithText("Change").assertIsDisplayed()
+        // The section is first: it sits higher than the Unread hero.
+        val look = compose.onNodeWithText("TO LOOK OVER").fetchSemanticsNode().boundsInRoot.top
+        val unread = compose.onNodeWithText("UNREAD").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(look < unread)
+        // The tab's number: two unread and the look.
+        compose.onAllNodes(hasText("3"), useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test
+    fun keepSendsItAndTheCardGoes() {
+        show(withLooks(recapView(three), look(1, "Terminal plan")))
+        compose.onNodeWithText("Keep").performClick()
+        compose.waitForIdle()
+        val (_, v) = host.acts.single { it.first == "look" }
+        assertEquals(1L, v!!.getLong("id"))
+        assertEquals("keep", v.getString("act"))
+        assertFalse(v.has("text"))
+        compose.onAllNodes(hasText("Terminal plan")).assertCountEquals(0)
+        compose.onAllNodes(hasText("TO LOOK OVER")).assertCountEquals(0)
+    }
+
+    @Test
+    fun changeTakesTheUsersWords() {
+        show(withLooks(recapView(three), look(1, "Terminal plan")))
+        compose.onNodeWithText("Change").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("What should change?").assertIsDisplayed()
+        assertTrue("opening the box sends nothing", host.acts.none { it.first == "look" })
+        compose.onNode(hasSetTextAction()).performTextInput("Use the big option")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitForIdle()
+        val (_, v) = host.acts.single { it.first == "look" }
+        assertEquals(1L, v!!.getLong("id"))
+        assertEquals("change", v.getString("act"))
+        assertEquals("Use the big option", v.getString("text"))
+        compose.onAllNodes(hasText("Terminal plan")).assertCountEquals(0)
+    }
+
+    @Test
+    fun aReadLookOffersGotItAndReply() {
+        val read = look(2, "What the research found") { put("kind", "research"); put("read", true); put("follow", JSONObject.NULL); put("follow_state", JSONObject.NULL) }
+        show(withLooks(recapView(three), read))
+        compose.onNodeWithText("Research").assertIsDisplayed()
+        compose.onNodeWithText("Got it").assertIsDisplayed()
+        compose.onNodeWithText("Reply").assertIsDisplayed()
+        compose.onAllNodes(hasText("Keep")).assertCountEquals(0)
+        compose.onAllNodes(hasText("Building now")).assertCountEquals(0)
+        compose.onNodeWithText("Got it").performClick()
+        compose.waitForIdle()
+        val (_, v) = host.acts.single { it.first == "look" }
+        assertEquals("got", v!!.getString("act"))
+    }
+
+    @Test
+    fun aLookWithNoLinkOpensItsTask() {
+        show(withLooks(recapView(three), look(1, "Terminal plan") { put("link", JSONObject.NULL) }))
+        compose.onAllNodes(hasText("Open page")).assertCountEquals(0)
+        compose.onNodeWithText("Open task").performClick()
+        compose.waitForIdle()
+        assertEquals(Page.Task(301), Dibs.pages.last())
+    }
+
+    @Test
+    fun theQuestionsLineJumpsToWaiting() {
+        val v = withLooks(recapView(three), look(1, "Terminal plan"))
+        v.getJSONObject("dibs").put("questions", JSONArray().put(JSONObject().put("id", 77).put("title", "Delete the duplicates?").put("why", "There are 40")
+            .put("from", "agent").put("ts", NOW - 60).put("kind", "question").put("actions", JSONArray()
+                .put(JSONObject().put("id", "y77").put("label", "Delete them").put("style", "primary")))))
+        show(v)
+        compose.onNodeWithText("1 question waits for your answer").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Delete the duplicates?").assertIsDisplayed()
+        compose.onAllNodes(hasText("TO LOOK OVER")).assertCountEquals(0)
+    }
+
+    @Test
+    fun noLooksKeyMeansNoSection() {
+        show(recapView(three))
+        compose.onAllNodes(hasText("TO LOOK OVER")).assertCountEquals(0)
+        compose.onNodeWithText("UNREAD").assertIsDisplayed()
+        compose.onNodeWithText("The plan is ready").assertIsDisplayed()
+    }
+
+    @Test
+    fun fiveLooksFoldAfterFour() {
+        show(withLooks(recapView(three), *(1L..5L).map { look(it, "Plan number $it") }.toTypedArray()))
+        compose.onNodeWithText("Show all 5").assertIsDisplayed()
+        compose.onNodeWithText("Plan number 1").assertIsDisplayed()
+    }
+
+    @Test
+    fun theOldFeedLayoutShowsTheSectionToo() {
+        val v = withLooks(recapView(three), look(1, "Terminal plan"))
+        v.getJSONObject("dibs").getJSONObject("recap").remove("items")
+        show(v)
+        compose.onAllNodes(hasText("UNREAD")).assertCountEquals(0)
+        compose.onNodeWithText("TO LOOK OVER").assertIsDisplayed()
+        compose.onNodeWithText("Terminal plan").assertIsDisplayed()
+        compose.onNodeWithText("Keep").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun aLookFitsASmallScreen() {
+        show(withLooks(recapView(three), look(1, "Terminal plan with a rather long title that wraps")))
+        for (b in listOf("Open page", "Keep", "Change", "Building now")) compose.onNodeWithText(b).assertIsDisplayed()
+        compose.onNodeWithText("Change").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("What should change?").assertIsDisplayed()
     }
 
     @Test

@@ -103,6 +103,7 @@ private fun UnreadRecap(view: DibsView) {
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
         verticalArrangement = Arrangement.spacedBy(Space.S),
     ) {
+        lookItems(view)
         item(key = "_hero") {
             Column {
                 Hero("Unread", "$unread")
@@ -245,6 +246,7 @@ private fun FeedRecap(view: DibsView) {
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        lookItems(view)
         if (away != null) {
             item(key = "_away") { AwayCard(away) }
         } else {

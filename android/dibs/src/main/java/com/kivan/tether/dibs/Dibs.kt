@@ -671,6 +671,8 @@ object Dibs {
         view.questions.forEach { asked += "q${it.id}" }
         view.talk.forEach { l -> l.ask?.takeIf { it.open }?.let { asked += "q${it.q}" } }
         view.decided.forEach { asked += it.ack }
+        // A Keep, Change or Got it here hides the look until the view agrees.
+        view.looks.forEach { asked += "l${it.id}" }
         // Recap's Undo shows "Undo asked" until dibs lists it without Undo.
         view.recapDecided.forEach { if (it.undo) asked += it.ack }
         view.away?.let { asked += "w${it.id}" }

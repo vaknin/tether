@@ -195,7 +195,10 @@ fun DibsApp() {
                 // as dibs's own count does: unread reports show on their cards (the user, word 531).
                 val forYou = view.yours?.count { !Dibs.ticked(it) && it.state == "needs" } ?: view.badges.work
                 // Recap's number: what is unread (a read here counts at once); an older dibs: the old dot.
-                val recap = if (view.recapList) view.recapItems.count { Dibs.briefUnread(it) }.takeIf { view.recapItems.isNotEmpty() } ?: view.recapUnread else null
+                // Plus what dibs went ahead with or found, to look over (one answered here counts out at once).
+                val looks = view.looks.count { "l${it.id}" !in Dibs.answered }
+                val recap = (if (view.recapList) view.recapItems.count { Dibs.briefUnread(it) }.takeIf { view.recapItems.isNotEmpty() } ?: view.recapUnread else null)
+                    ?.plus(looks) ?: looks.takeIf { it > 0 }
                 NavBar(tab, view.badges, forYou, view.yours != null, view.ideas?.total ?: 0, recap) {
                     tab = it
                     // Gone elsewhere: a notification's conversation not listed yet no longer opens.
