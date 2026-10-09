@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
@@ -75,10 +77,11 @@ class IdeasScreensTest {
 
     @Test
     fun theTabDrawsDibssNotesAndAnAnswerShowsAtOnce() {
-        compose.onNodeWithText("Record an idea").assertIsDisplayed()
-        compose.onNodeWithText("Type an idea").assertIsDisplayed()
-        compose.onNodeWithText("Standing desk").assertIsDisplayed()
+        compose.onNodeWithText("Say it").assertIsDisplayed()
+        compose.onNodeWithText("Or type it here").assertIsDisplayed()
         shot("ideas-tab")
+        scrollTo("Standing desk")
+        compose.onNodeWithText("Standing desk").assertIsDisplayed()
         compose.onNodeWithText("Research").performClick()
         compose.waitForIdle()
         val (action, value) = host.acts.last()
@@ -96,14 +99,15 @@ class IdeasScreensTest {
         desk.put("actions", JSONArray()).put("status", JSONObject().put("text", "Research running").put("tone", "work"))
         host.view.value = JSONObject(same.toString())
         compose.waitForIdle()
+        scrollTo("Research running")
         compose.onNodeWithText("Research running").assertIsDisplayed()
         compose.onAllNodesWithText("Research: sent").assertCountEquals(0)
     }
 
     @Test
     fun aTypedIdeaShowsAsADraftUntilDibsListsIt() {
-        compose.onNode(hasSetTextAction()).performTextInput("Buy basil")
-        compose.onNodeWithContentDescription("Save").performClick()
+        compose.onAllNodes(hasSetTextAction()).onFirst().performTextInput("Buy basil")
+        compose.onAllNodesWithContentDescription("Save").onFirst().performClick()
         compose.waitForIdle()
         assertEquals("idea-new", host.acts.last().first)
         compose.onNodeWithText("#–").assertIsDisplayed()
@@ -112,13 +116,30 @@ class IdeasScreensTest {
     }
 
     @Test
-    fun trashFoldsAndRestores() {
-        scrollTo("TICKED OFF · 1")
-        compose.onNodeWithText("TICKED OFF · 1").performClick()
+    fun aQuestionDibsAsksAboutADropHasItsAnswerBoxAndButtons() {
+        compose.onNodeWithText("Drop an idea, a problem or a task").assertIsDisplayed()
+        compose.onNodeWithText("dibs files it in the Backlog and asks if it needs more").assertIsDisplayed()
+        compose.onNodeWithText("dibs asks: Which app: the phone or the laptop?").assertIsDisplayed()
+        compose.onNodeWithText("File it as it is").assertIsDisplayed()
+        compose.onNodeWithText("Drop it").assertIsDisplayed()
+        shot("ideas-tab-asks")
+        compose.onNodeWithText("File it as it is").performClick()
         compose.waitForIdle()
-        scrollTo("Restore")
+        val (action, value) = host.acts.last()
+        assertEquals("drop-answer", action)
+        assertEquals("file", value!!.getString("choice"))
+        scrollTo("FILED · 1")
+        shot("ideas-tab-filed")
+    }
+
+    @Test
+    fun trashFoldsAndRestores() {
+        scrollTo("TICKED OFF · 2")
+        compose.onNodeWithText("TICKED OFF · 2").performClick()
+        compose.waitForIdle()
+        scrollTo("Pond in the garden")
         compose.onNodeWithText("Pond in the garden").assertIsDisplayed()
-        compose.onNodeWithText("Restore").performClick()
+        compose.onAllNodesWithText("Restore").onFirst().performClick()
         compose.waitForIdle()
         assertEquals("idea-restore", host.acts.last().first)
     }
@@ -148,7 +169,7 @@ class IdeasScreensTest {
         compose.waitForIdle()
         assertEquals("idea-done", host.acts.last().first)
         // Back on the tab, the note is gone at once (until dibs's next view says otherwise).
-        scrollTo("IDEAS · 3")
+        scrollTo("NOTES · 4")
         compose.onAllNodesWithText("Water plan for the balcony").assertCountEquals(0)
     }
 }

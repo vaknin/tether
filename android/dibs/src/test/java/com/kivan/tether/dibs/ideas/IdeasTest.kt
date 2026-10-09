@@ -66,22 +66,53 @@ class IdeasTest {
 
     @Test
     fun theSampleReadsAsSent() {
-        assertEquals(listOf("#45", "#44", "#43", "#42"), ideas.notes.map { it.label })
-        val desk = ideas.notes[0]
+        assertEquals(listOf("#46", "#47", "#49", "#45", "#44", "#43", "#42", "#48"), ideas.notes.map { it.label })
+        val note = { label: String -> ideas.notes.single { it.label == label } }
+        val desk = note("#45")
         assertEquals("ask", desk.status!!.tone)
         assertEquals(listOf("Research", "Build", "Keep"), desk.actions.map { it.label })
         assertEquals("research", desk.actions[0].value.getString("choice"))
-        val long = ideas.notes[1]
+        val long = note("#44")
         assertNull(long.transcript)
         assertEquals("fetch", long.fetch!!.action)
         assertTrue(long.loadPrefix.matches(Regex("idea-${long.id}-[0-9a-f]{10}")))
-        assertEquals(1L, ideas.notes[2].task)
-        assertEquals(setOf("eeeeeeeeeeeeeeee0000000000000005"), ideas.notes[3].adds)
-        assertEquals("Ticked off · 1", ideas.trashTitle)
-        assertEquals("Restore", ideas.trash.single().actions.single().label)
+        assertEquals(1L, note("#43").task)
+        assertEquals(setOf("eeeeeeeeeeeeeeee0000000000000005"), note("#42").adds)
+        assertEquals("Ticked off · 2", ideas.trashTitle)
+        assertTrue(ideas.trash.flatMap { r -> r.actions.map { it.label } }.containsAll(listOf("Restore", "File it anyway")))
         assertTrue("dddddddddddddddd0000000000000004" in ideas.known)
         // And through the whole payload.
-        assertEquals(4, DibsView.parse(JSONObject().put("now", 1).put("yours", org.json.JSONArray()).put("ideas", sample.getJSONObject("ideas"))).ideas!!.notes.size)
+        assertEquals(8, DibsView.parse(JSONObject().put("now", 1).put("yours", org.json.JSONArray()).put("ideas", sample.getJSONObject("ideas"))).ideas!!.notes.size)
+    }
+
+    @Test
+    fun theDropBoxGroupsAnswersAndWords() {
+        assertEquals("Drop an idea, a problem or a task", ideas.box!!.placeholder)
+        assertEquals(listOf("#46"), ideas.group(GROUP_ASKS).map { it.label })
+        assertEquals(listOf("#47"), ideas.group(GROUP_READING).map { it.label })
+        assertEquals(listOf("#49", "#45", "#44", "#43", "#42"), ideas.group(GROUP_NOTES).map { it.label })
+        assertEquals(listOf("#48"), ideas.group(GROUP_FILED).map { it.label })
+        val asks = ideas.group(GROUP_ASKS).single()
+        assertEquals("dibs asks: Which app: the phone or the laptop?", asks.status!!.text)
+        assertEquals(listOf("File it as it is", "Drop it"), asks.actions.map { it.label })
+        assertEquals("file", asks.actions[0].value.getString("choice"))
+        assertEquals("idea:add:f1f1f1f1f1f1f1f10000000000000007", asks.answer)
+        val filed = ideas.group(GROUP_FILED).single()
+        assertEquals("Filed as #2: Show a box in the Backlog", filed.status!!.text)
+        assertEquals(2L, filed.task)
+        // An older dibs: no group, no box. Every note is a plain note.
+        val old = Ideas.parse(JSONObject().put("notes", org.json.JSONArray().put(JSONObject().put("id", "x").put("title", "t")).put(JSONObject().put("id", "y").put("group", "strange"))))
+        assertNull(old.box)
+        assertEquals(2, old.group(GROUP_NOTES).size)
+    }
+
+    @Test
+    fun aTypedDropIsSentMarkedWhereItWasDropped() = runBlocking {
+        Drafts.typed(context, "Make the app dark", drop = "backlog")
+        val (action, value) = host.acts.single()
+        assertEquals("idea-new", action)
+        assertEquals("backlog", value!!.getString("drop"))
+        assertEquals("backlog", Drafts.list.value.single().drop)
     }
 
     @Test
@@ -159,12 +190,12 @@ class IdeasTest {
     @Test
     fun theLastViewIsReadFromWhereTetherNestsItAndKeptOnDisk() = runBlocking {
         host.view.value = view()
-        assertEquals(4, Drafts.lastIdeas(context)!!.notes.size)
+        assertEquals(8, Drafts.lastIdeas(context)!!.notes.size)
         Drafts.seen(context, ideas)
         // A cold start: Tether has no view yet; the copy on disk stands in.
         Drafts.reset()
         host.view.value = null
-        assertEquals(4, Drafts.lastIdeas(context)!!.notes.size)
+        assertEquals(8, Drafts.lastIdeas(context)!!.notes.size)
     }
 
     @Test

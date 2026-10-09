@@ -237,14 +237,14 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
     // an idea has none: its tap opens the menu.
     val tid = c.task
     val t = tid?.let(view::task)
+    // A drop dibs is still reading or asks about: no number, no button; a tap opens its idea page.
+    val drop = c.key.startsWith("drop:")
+    val dropIdea = if (drop) c.open?.removePrefix("idea:")?.toIntOrNull() else null
     // The primary action is the button on the card's face, so the menu lists the rest.
     val primary = c.primary?.takeIf { it in ACT_WORDS && !drop }
     val acts = c.actions.filter { it in ACT_WORDS && it != primary && (it != "story" || tid != null) }
     // A tap on this card's button or menu shows at once, until dibs's next view.
     val busyTap = rememberTapState("card:${c.key}") == TapState.BUSY
-    // A drop dibs is still reading or asks about: no number, no button; a tap opens its idea page.
-    val drop = c.key.startsWith("drop:")
-    val dropIdea = if (drop) c.open?.removePrefix("idea:")?.toIntOrNull() else null
     val openMenu = {
         if (acts.isNotEmpty() && !busyTap) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)

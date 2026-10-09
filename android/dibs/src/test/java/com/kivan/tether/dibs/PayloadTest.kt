@@ -460,8 +460,16 @@ class PayloadTest {
         assertEquals(listOf("task:1", "task:2", "task:3", "task:4"), b.columns[0].cards.map { it.key })
         assertEquals(listOf("running", "running", "waiting", "waiting"), b.columns[0].cards.map { it.lane })
         assertTrue(b.columns[0].cards.all { it.primary == "park" })
-        assertEquals(listOf("idea:note-41", "task:5", "task:6"), b.columns[1].cards.map { it.key })
-        assertTrue(b.columns[1].cards.all { it.primary == "start" && it.lane == null })
+        assertEquals(listOf("drop:bbbbbbbbbbbbbbbb0000000000000002", "drop:bbbbbbbbbbbbbbbb0000000000000001", "idea:note-41", "task:5", "task:6"), b.columns[1].cards.map { it.key })
+        assertEquals("Add to the Backlog: an idea, a problem, a task", b.columns[1].box)
+        // A drop dibs reads or asks about: no number, no button, a tap opens its idea.
+        val drop = b.columns[1].cards[0]
+        assertNull(drop.n)
+        assertNull(drop.primary)
+        assertTrue(drop.actions.isEmpty())
+        assertEquals("dibs asks: Which app: the phone or the laptop?", drop.stateWords)
+        assertTrue(drop.open!!.startsWith("idea:"))
+        assertTrue(b.columns[1].cards.filter { !it.key.startsWith("drop:") }.all { it.primary == "start" && it.lane == null })
         val first = b.columns[0].cards.first()
         assertEquals("", first.now)
         assertNull(first.story)

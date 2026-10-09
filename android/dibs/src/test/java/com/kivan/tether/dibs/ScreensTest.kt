@@ -385,6 +385,28 @@ class ScreensTest {
     }
 
     @Test
+    fun theBacklogHasADropBoxAndShowsWhatDibsIsReading() {
+        val v = boardView()
+        val backlog = v.getJSONObject("dibs").getJSONObject("board").getJSONArray("columns").getJSONObject(1)
+        val cards = backlog.getJSONArray("cards")
+        val drop = JSONObject().put("key", "drop:bbbbbbbbbbbbbbbb0000000000000002").put("n", JSONObject.NULL).put("title", "Make the app dark")
+            .put("state_words", "dibs asks: Which app: the phone or the laptop?").put("now", "").put("tags", JSONArray()).put("story", JSONObject.NULL)
+            .put("actions", JSONArray()).put("primary", JSONObject.NULL).put("open", "idea:46")
+        val all = JSONArray().put(drop)
+        for (i in 0 until cards.length()) all.put(cards.getJSONObject(i))
+        backlog.put("cards", all).put("backlog_box", JSONObject().put("placeholder", "Add to the Backlog: an idea, a problem, a task"))
+        show(v)
+        Dibs.tab = "tasks"
+        compose.waitForIdle()
+        compose.onNodeWithText("Add to the Backlog: an idea, a problem, a task").assertIsDisplayed()
+        compose.onNodeWithText("Make the app dark").assertIsDisplayed()
+        compose.onNodeWithText("dibs asks: Which app: the phone or the laptop?").assertIsDisplayed()
+        // The drop has no button; the two real cards keep theirs.
+        compose.onAllNodes(hasText("Start")).assertCountEquals(2)
+        shot("tasks-backlog-drop")
+    }
+
+    @Test
     @Config(qualifiers = "w320dp-h568dp-280dpi")
     fun theBoardOnASmallScreen() {
         show(boardView())

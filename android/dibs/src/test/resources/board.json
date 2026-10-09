@@ -96,6 +96,30 @@
         "title": "Backlog",
         "cards": [
           {
+            "key": "drop:bbbbbbbbbbbbbbbb0000000000000002",
+            "n": null,
+            "title": "Make the app dark",
+            "state_words": "dibs asks: Which app: the phone or the laptop?",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [],
+            "primary": null,
+            "open": "idea:43"
+          },
+          {
+            "key": "drop:bbbbbbbbbbbbbbbb0000000000000001",
+            "n": null,
+            "title": "A box that lists what to buy for the balcony",
+            "state_words": "dibs is reading it",
+            "now": "",
+            "tags": [],
+            "story": null,
+            "actions": [],
+            "primary": null,
+            "open": "idea:42"
+          },
+          {
             "key": "idea:note-41",
             "n": null,
             "title": "A standing desk that remembers two heights",
@@ -151,7 +175,10 @@
             "goal": null,
             "delete_text": "Delete removes this task. No work is lost."
           }
-        ]
+        ],
+        "backlog_box": {
+          "placeholder": "Add to the Backlog: an idea, a problem, a task"
+        }
       }
     ],
     "done": {
