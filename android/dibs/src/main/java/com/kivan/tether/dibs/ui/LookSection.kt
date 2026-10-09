@@ -44,7 +44,7 @@ private const val LOOKS_ALL = "recap:looks"
 
 /** The section: its questions line, then the looks, newest first. Nothing at all when there is neither. */
 internal fun LazyListScope.lookItems(view: DibsView) {
-    val waiting = view.questions.count { "q${it.id}" !in Dibs.answered }
+    val waiting = Dibs.waiting(view).size
     val looks = view.looks.filter { "l${it.id}" !in Dibs.answered }
     if (waiting == 0 && looks.isEmpty()) return
     val all = Dibs.open[LOOKS_ALL] == true

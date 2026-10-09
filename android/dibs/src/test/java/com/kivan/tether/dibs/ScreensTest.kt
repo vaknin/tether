@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -917,6 +918,25 @@ class ScreensTest {
         JSONObject().put("id", if (mine) "u-$i" else "s$i").put("n", i).put("who", if (mine) "user" else "dibs")
             .put("text", if (mine) "Line $i from me" else "dibs's line $i, a little longer so it wraps onto a second line on the phone.")
             .put("ts", NOW - 3600 + i * 100)
+    }
+
+    @Test
+    fun theWaitingBadgeCountsWhatTheTabLists() {
+        // dibs's own count says 2, but nothing is listed: no badge, as the tab says (the user's bug, word 784).
+        val v = view(talk = emptyList())
+        v.getJSONObject("dibs").getJSONObject("badges").put("waiting", 2)
+        show(v)
+        Dibs.tab = "waiting"
+        compose.onNodeWithText("Nothing waiting on you.").assertIsDisplayed()
+        compose.onNodeWithTag("badge-waiting", useUnmergedTree = true).assertDoesNotExist()
+        // Two listed, one answered here: the badge and the list both say 1.
+        val q = { id: Int -> JSONObject().put("id", id).put("title", "Question $id?").put("why", "").put("from", "dibs").put("ts", NOW).put("kind", "question") }
+        Dibs.answered["q2"] = "Yes"
+        host.view.value = view(talk = emptyList(), questions = listOf(q(1), q(2)))
+        compose.waitForIdle()
+        compose.onNodeWithText("Question 1?").assertIsDisplayed()
+        compose.onAllNodesWithText("Question 2?").assertCountEquals(0)
+        compose.onNodeWithTag("badge-waiting", useUnmergedTree = true).assertTextEquals("1")
     }
 
     private fun view(talk: List<JSONObject>, questions: List<JSONObject> = emptyList()) = JSONObject().put(

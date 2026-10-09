@@ -55,6 +55,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -199,7 +200,7 @@ fun DibsApp() {
                 val looks = view.looks.count { "l${it.id}" !in Dibs.answered }
                 val recap = (if (view.recapList) view.recapItems.count { Dibs.briefUnread(it) }.takeIf { view.recapItems.isNotEmpty() } ?: view.recapUnread else null)
                     ?.plus(looks) ?: looks.takeIf { it > 0 }
-                NavBar(tab, view.badges, forYou, view.yours != null, view.ideas?.total ?: 0, recap) {
+                NavBar(tab, view.badges, Dibs.waiting(view).size, forYou, view.yours != null, view.ideas?.total ?: 0, recap) {
                     tab = it
                     // Gone elsewhere: a notification's conversation not listed yet no longer opens.
                     Dibs.forgetAsk()
@@ -349,11 +350,12 @@ internal fun usageWarning(limits: List<Limit>, now: Long, ctx: android.content.C
     ).firstOrNull { it.warn }?.text?.substringBefore(" · ")
 
 @Composable
-private fun NavBar(tab: Tab, badges: Badges, tasks: Int, yours: Boolean, ideas: Int, recap: Int?, onTab: (Tab) -> Unit) {
+private fun NavBar(tab: Tab, badges: Badges, waiting: Int, tasks: Int, yours: Boolean, ideas: Int, recap: Int?, onTab: (Tab) -> Unit) {
     NavigationBar(containerColor = Palette.SurfaceLow, tonalElevation = 0.dp) {
         for (t in Tab.entries) {
             val count = when (t) {
-                Tab.WAITING -> badges.waiting
+                // The list the tab shows, not dibs's own count: the two never disagree.
+                Tab.WAITING -> waiting
                 Tab.TASKS -> tasks
                 Tab.IDEAS -> ideas
                 Tab.RECAP -> recap ?: 0
@@ -369,7 +371,7 @@ private fun NavBar(tab: Tab, badges: Badges, tasks: Int, yours: Boolean, ideas: 
                     BadgedBox(badge = {
                         when {
                             count > 0 -> Badge(containerColor = Palette.Accent, contentColor = Palette.OnAccent) {
-                                Text("$count", style = AppType.mono)
+                                Text("$count", Modifier.testTag("badge-${t.key}"), style = AppType.mono)
                             }
                             dot -> Badge(containerColor = Palette.Accent)
                         }

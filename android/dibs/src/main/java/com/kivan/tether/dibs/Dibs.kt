@@ -367,6 +367,12 @@ object Dibs {
     /** It's ticked off: by the view, or by a tap here the view hasn't caught up with. */
     fun ticked(t: YourTask): Boolean = if (t.ticked == null) "tick:${t.id}" in answered else "untick:${t.id}" !in answered
 
+    /**
+     * What the Waiting tab lists: the view's questions less those answered here. Its badge counts
+     * this same list, so the number and the tab always agree.
+     */
+    fun waiting(view: DibsView): List<Question> = view.questions.filter { "q${it.id}" !in answered }
+
     /** Done and not opened yet (an open here counts at once). */
     fun unread(t: YourTask): Boolean = t.unread && "seen:${t.id}" !in answered
 

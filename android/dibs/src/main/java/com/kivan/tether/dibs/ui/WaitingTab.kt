@@ -61,7 +61,7 @@ import org.json.JSONObject
 @Composable
 internal fun WaitingTab(view: DibsView) {
     val now by rememberNow()
-    val questions = view.questions.filter { "q${it.id}" !in Dibs.answered }
+    val questions = Dibs.waiting(view)
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = Space.L, end = Space.L, bottom = Space.L),
