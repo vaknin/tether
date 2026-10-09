@@ -103,7 +103,8 @@ internal fun RootActions(q: Question, modifier: Modifier = Modifier) {
         if (setup) {
             ActButton("Set up", "primary", icon = R.drawable.lucide_key_round) { Dibs.open(Page.RootKey) }
         } else {
-            ActButton("Review", "primary", icon = R.drawable.lucide_shield_check) { Dibs.open(Page.Root(q.id)) }
+            // Only dibs's pick is filled: when it picks Deny, Review is outlined.
+            ActButton("Review", if (q.actions.any { it.pick }) "" else "primary", icon = R.drawable.lucide_shield_check) { Dibs.open(Page.Root(q.id)) }
         }
         // Set up is handled here; dibs's own button for it (if it sent one) isn't drawn twice.
         for (a in q.actions.filter { !(setup && it.label.equals("Set up", ignoreCase = true)) }) {
