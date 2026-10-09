@@ -216,3 +216,6 @@ Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linu
 - Phone over adb: `dibs phone connect` finds it on any network (through `tether adb` when mDNS can't); never
   store or ask for an IP or port. Always pass `-s`, and check which app has focus before any `adb input`.
 - QML plugin edits only take effect after `omarchy restart shell`.
+
+## Screens
+- A change to a screen of the dibs app or the Tether app is shot and looked at before it ships: `dibs screens list --changed`, then `dibs screens shoot --changed` after the tests (the screen map is `screens.toml` in the dibs repo; the Pixel is shot only when it is lent, by intent, never by tapping). `dibs screens shoot <names>` for before/after shots, `--all` only for a big rework. `DibsActivity.EXTRA_PAGE` opens a read-only page by intent for this.

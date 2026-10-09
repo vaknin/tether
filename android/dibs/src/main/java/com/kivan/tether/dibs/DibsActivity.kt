@@ -71,6 +71,7 @@ class DibsActivity : ComponentActivity() {
             Dibs.pages.clear()
             Dibs.open(Page.Task(task))
         }
+        pageFor(intent.getStringExtra(EXTRA_PAGE), task, intent.getStringExtra(EXTRA_NOTE))?.let { Dibs.open(it) }
         intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.let { text ->
             Dibs.pages.clear()
             Dibs.chat.draft = listOf(Dibs.chat.draft, text).filter { it.isNotBlank() }.joinToString("\n")
@@ -99,6 +100,13 @@ class DibsActivity : ComponentActivity() {
         const val EXTRA_ASK = "com.kivan.tether.dibs.ASK"
         /** With [EXTRA_ASK]: its subject (`about`, a String), when the notification knew it. */
         const val EXTRA_ASK_ABOUT = "com.kivan.tether.dibs.ASK_ABOUT"
+        /**
+         * A read-only page to show: "status", "stories", "transcript" | "report" | "story" (with
+         * [EXTRA_TASK]) or "idea" (with [EXTRA_NOTE]). Used by dibs's screen shots; see [pageFor].
+         */
+        const val EXTRA_PAGE = "com.kivan.tether.dibs.PAGE"
+        /** With [EXTRA_PAGE] "idea": the note's id (a String). */
+        const val EXTRA_NOTE = "com.kivan.tether.dibs.NOTE"
         const val TAB_CHAT = "chat"
         const val TAB_IDEAS = "ideas"
         const val TAB_WAITING = "waiting"
@@ -110,6 +118,20 @@ class DibsActivity : ComponentActivity() {
 
         /** The tab a dibs notification (by its tag) opens: Recap for the morning recap, else the chat. */
         fun tabFor(tag: String?): String = if (tag == RECAP_TAG) TAB_RECAP else TAB_CHAT
+
+        /**
+         * The page an [EXTRA_PAGE] names, or null. Only pages that just show something: never the
+         * root request pages (they sign approvals, and this activity is exported).
+         */
+        fun pageFor(page: String?, task: Long, note: String?): Page? = when (page) {
+            "status" -> Page.Status
+            "stories" -> Page.Stories
+            "transcript" -> if (task >= 0) Page.Transcript(task) else null
+            "report" -> if (task >= 0) Page.Report(task) else null
+            "story" -> if (task >= 0) Page.Story(task) else null
+            "idea" -> note?.takeIf { it.isNotBlank() }?.let { Page.Idea(it) }
+            else -> null
+        }
 
         /** Opens dibs, on [tab] if given. */
         fun intent(context: Context, tab: String? = null): Intent =
