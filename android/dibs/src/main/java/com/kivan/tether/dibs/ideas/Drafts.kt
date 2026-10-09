@@ -48,19 +48,24 @@ data class Draft(
     val sentMs: Long? = null,
     /** Its recording is still under way (the draft is written at the start, so a crash can't lose it). */
     val recording: Boolean = false,
+    /** Which box a new note was dropped in, `ideas` or `backlog` (sent as `drop`); null for an older draft and for an addition. */
+    val drop: String? = null,
 ) {
     fun json(): JSONObject = JSONObject()
         .put("id", id).put("note", note).put("created", createdMs).put("typed", typed)
         .put("text", text).put("title", title).put("summary", summary).put("duration_ms", durationMs)
         .put("audio", audio).put("gemini", gemini).put("why", why).put("failed", failed)
-        .put("attempts", attempts).put("last_error", lastError).put("sent", sentMs).put("recording", recording)
+        .put("attempts", attempts).put("last_error", lastError).put("sent", sentMs).put("recording", recording).put("drop", drop)
 
     /** The action that sends it to dibs, and its value. */
     fun action(): Pair<String, JSONObject> {
         val created = Instant.ofEpochMilli(createdMs).toString()
         val v = JSONObject().put("id", id).put("created", created).put("title", title).put("summary", summary)
         durationMs?.let { v.put("duration_ms", it) }
-        return if (note == null) "idea-new" to v.put("transcript", text) else "idea-add" to v.put("note", note).put("text", text)
+        if (note != null) return "idea-add" to v.put("note", note).put("text", text)
+        v.put("transcript", text)
+        drop?.let { v.put("drop", it) }
+        return "idea-new" to v
     }
 
     companion object {
@@ -73,7 +78,7 @@ data class Draft(
                 text = o.optString("text"), title = o.optString("title"), summary = o.optString("summary"),
                 durationMs = long("duration_ms"), audio = str("audio"), gemini = o.optBoolean("gemini"),
                 why = str("why"), failed = o.optBoolean("failed"), attempts = o.optInt("attempts"),
-                lastError = str("last_error"), sentMs = long("sent"), recording = o.optBoolean("recording"),
+                lastError = str("last_error"), sentMs = long("sent"), recording = o.optBoolean("recording"), drop = str("drop"),
             )
         }
 
@@ -226,28 +231,28 @@ object Drafts {
     }
 
     /**
-     * Typed on the phone ([note]: added to that note). A short new one-liner goes at once; the rest
-     * are titled by Gemini first. Returns once it is safe on the phone (and, if it goes at once,
-     * in Tether's queue).
+     * Typed on the phone ([note]: added to that note; [drop]: the box a new note was dropped in,
+     * `ideas` or `backlog`). A short new one-liner goes at once; the rest are titled by Gemini first.
+     * Returns once it is safe on the phone (and, if it goes at once, in Tether's queue).
      */
-    suspend fun typed(context: Context, text: String, note: String? = null) {
+    suspend fun typed(context: Context, text: String, note: String? = null, drop: String? = null) {
         init(context)
         val t = text.trim()
         if (t.isEmpty()) return
         val gemini = note != null || TextNote.needsGemini(t)
-        val d = Draft(Draft.newId(), note, System.currentTimeMillis(), typed = true, text = t, title = if (gemini) "" else TextNote.shortTitle(t), gemini = gemini)
+        val d = Draft(Draft.newId(), note, System.currentTimeMillis(), typed = true, text = t, title = if (gemini) "" else TextNote.shortTitle(t), gemini = gemini, drop = drop.takeIf { note == null })
         put(d)
         if (gemini) IdeaWorker.enqueue(context, d.id) else send(d)
     }
 
     /** A recording has started ([IdeaRecordingService]): its draft is written now, so it outlives a crash. */
-    fun recording(context: Context, audio: File, createdMs: Long, note: String?) {
+    fun recording(context: Context, audio: File, createdMs: Long, note: String?, drop: String? = null) {
         init(context)
-        put(Draft(Draft.newId(), note, createdMs, typed = false, audio = audio.name, gemini = true, recording = true))
+        put(Draft(Draft.newId(), note, createdMs, typed = false, audio = audio.name, gemini = true, recording = true, drop = drop.takeIf { note == null }))
     }
 
     /** A recording finished: it waits for Gemini. An empty one ([audio] is gone) leaves no draft. */
-    fun recorded(context: Context, audio: File, createdMs: Long, durationMs: Long, note: String?) {
+    fun recorded(context: Context, audio: File, createdMs: Long, durationMs: Long, note: String?, drop: String? = null) {
         init(context)
         val was = _list.value.firstOrNull { it.audio == audio.name }
         if (!audio.isFile || audio.length() <= 0L) {
@@ -255,7 +260,7 @@ object Drafts {
             return
         }
         val d = was?.copy(recording = false, durationMs = durationMs)
-            ?: Draft(Draft.newId(), note, createdMs, typed = false, durationMs = durationMs, audio = audio.name, gemini = true)
+            ?: Draft(Draft.newId(), note, createdMs, typed = false, durationMs = durationMs, audio = audio.name, gemini = true, drop = drop.takeIf { note == null })
         put(d)
         IdeaWorker.enqueue(context, d.id)
     }

@@ -36,6 +36,10 @@ data class IdeaNote(
     val ask: com.kivan.tether.dibs.AskEntry? = null,
     /** The tasks and ideas it is linked to (a dibs that sends them). */
     val links: List<com.kivan.tether.dibs.RefLink> = emptyList(),
+    /** Where the tab files it: `asks`, `reading`, `notes` (also an older dibs's every note) or `filed`. */
+    val group: String = GROUP_NOTES,
+    /** The key of its inline answer box while dibs asks about it (`idea:add:<id>`); the text goes as an addition. */
+    val answer: String? = null,
 ) {
     /**
      * The start of the name of the file a Load brings: `idea-<id>-<hash>`, the hash naming this
@@ -44,8 +48,23 @@ data class IdeaNote(
     val loadPrefix: String get() = "idea-$id-" + fetch?.value?.optString("hash").orEmpty()
 }
 
-/** A note in Trash, with its Restore. */
-data class TrashedIdea(val id: String, val label: String, val title: String, val meta: String, val actions: List<IdeaButton>)
+const val GROUP_ASKS = "asks"
+const val GROUP_READING = "reading"
+const val GROUP_NOTES = "notes"
+const val GROUP_FILED = "filed"
+
+/** The words over the Ideas tab's drop box: its [placeholder] and the [hint] under it (a dibs that has drops sends them). */
+data class IdeaBox(val placeholder: String, val hint: String)
+
+/** A note in Trash, with its Restore (and, for one dibs found already covered, why: its [status]). */
+data class TrashedIdea(
+    val id: String,
+    val label: String,
+    val title: String,
+    val meta: String,
+    val actions: List<IdeaButton>,
+    val status: IdeaStatus? = null,
+)
 
 /** The Ideas tab as dibs sends it: the notes newest first, how many there are, Trash, and what an empty tab says. */
 data class Ideas(
@@ -55,8 +74,13 @@ data class Ideas(
     val trashTitle: String,
     val trashNote: String,
     val trash: List<TrashedIdea>,
+    /** The drop box's words; null from a dibs without drops (the tab then says what it always said). */
+    val box: IdeaBox? = null,
 ) {
     fun note(id: String): IdeaNote? = notes.firstOrNull { it.id == id }
+
+    /** The notes of one [group], in dibs's order (newest first). */
+    fun group(group: String): List<IdeaNote> = notes.filter { it.group == group }
 
     /** Every note id dibs knows of here, listed or in Trash: a draft with one of these has landed. */
     val known: Set<String> by lazy { (notes.map { it.id } + trash.map { it.id }).toSet() }
@@ -72,7 +96,11 @@ data class Ideas(
                 trashNote = t.optString("note"),
                 trash = t.optJSONArray("items").objects().mapNotNull { x ->
                     val id = x.optString("id").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-                    TrashedIdea(id, x.optString("label"), x.optString("title"), x.optString("meta"), buttons(x.optJSONArray("actions")))
+                    TrashedIdea(id, x.optString("label"), x.optString("title"), x.optString("meta"), buttons(x.optJSONArray("actions")), status(x.optJSONObject("status")))
+                },
+                box = o.optJSONObject("box")?.let { b ->
+                    val placeholder = b.optString("placeholder").takeIf { it.isNotBlank() } ?: return@let null
+                    IdeaBox(placeholder, b.optString("hint"))
                 },
             )
         }
@@ -86,7 +114,7 @@ data class Ideas(
                 title = o.optString("title"),
                 summary = o.optString("summary"),
                 meta = o.optString("meta"),
-                status = o.optJSONObject("status")?.let { IdeaStatus(it.optString("text"), it.optString("tone")) },
+                status = status(o.optJSONObject("status")),
                 task = if (o.isNull("task")) null else o.optLong("task").takeIf { it > 0 },
                 actions = buttons(o.optJSONArray("actions")),
                 page = buttons(o.optJSONArray("page")),
@@ -99,8 +127,15 @@ data class Ideas(
                     if (about != null && label != null) com.kivan.tether.dibs.AskEntry(about, label) else null
                 },
                 links = com.kivan.tether.dibs.DibsView.links(o.optJSONArray("links")),
+                // No group (an older dibs), or one this app doesn't know: a plain note.
+                group = o.optString("group").takeIf { it in GROUPS } ?: GROUP_NOTES,
+                answer = if (o.isNull("answer")) null else o.optString("answer").takeIf { it.isNotEmpty() },
             )
         }
+
+        private val GROUPS = setOf(GROUP_ASKS, GROUP_READING, GROUP_NOTES, GROUP_FILED)
+
+        private fun status(o: JSONObject?): IdeaStatus? = o?.let { IdeaStatus(it.optString("text"), it.optString("tone")) }
 
         private fun button(o: JSONObject): IdeaButton? {
             val action = o.optString("action").takeIf { it.isNotEmpty() } ?: return null

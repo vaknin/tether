@@ -48,6 +48,12 @@ import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.Progress
 import com.kivan.tether.dibs.R
+import com.kivan.tether.dibs.RefKind
+import com.kivan.tether.dibs.ideas.Draft
+import com.kivan.tether.dibs.ideas.Drafts
+import com.kivan.tether.dibs.ideas.IdeaRecording
+import com.kivan.tether.dibs.ideas.RecorderState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.TapState
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.barFill
@@ -101,6 +107,7 @@ internal fun TasksTab(view: DibsView) {
     val armed = rememberArmed()
     val answered = Dibs.answered.toMap()
     val list = remember(yours, answered) { tasksList(yours) { Dibs.ticked(it) } }
+    val all by Drafts.list.collectAsStateWithLifecycle()
     val own = view.tasks.count { it.background } + view.sessions.size + view.ships.size
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -119,11 +126,17 @@ internal fun TasksTab(view: DibsView) {
         val board = view.board
         if (board != null) {
             // dibs's board as it sent it: no grouping or sorting here.
-            val columns = board.columns.filter { it.cards.isNotEmpty() }
+            val columns = board.columns.filter { it.cards.isNotEmpty() || it.box != null }
             for (c in columns) {
                 // The laptop has no room: say why the waiting ones wait, right above them (an old dibs: the "next" column).
                 if ((c.key == "active" || c.key == "next") && board.room?.n == 0) item(key = "_room") { RoomLine(board.room.line, warn = true, Modifier.padding(top = Space.M)) }
-                item(key = "col-${c.key}") { Section("${c.title} · ${c.cards.size}") }
+                item(key = "col-${c.key}") { Section("${c.title} · ${c.cards.count { !it.key.startsWith("drop:") }}${c.cards.count { it.key.startsWith("drop:") }.let { if (it > 0) " (+$it being read)" else "" }}") }
+                c.box?.let { placeholder ->
+                    item(key = "_box-${c.key}") { BacklogBox(placeholder) }
+                    // What was dropped here and isn't listed yet: muted, until dibs's view lists it.
+                    val pending = all.filter { it.drop == "backlog" && it.note == null && !it.recording }
+                    items(pending, key = { "p-${it.id}" }) { d -> PendingDrop(d, Modifier.animateItem()) }
+                }
                 items(c.cards, key = { "c-${c.key}-${it.key}" }) { card -> BoardCardRow(card, view, armed, Modifier.animateItem()) }
             }
             if (columns.isEmpty()) item(key = "_none") { Quiet("Nothing on the board. Tasks you ask for show here.") }
@@ -225,10 +238,13 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
     val tid = c.task
     val t = tid?.let(view::task)
     // The primary action is the button on the card's face, so the menu lists the rest.
-    val primary = c.primary?.takeIf { it in ACT_WORDS }
+    val primary = c.primary?.takeIf { it in ACT_WORDS && !drop }
     val acts = c.actions.filter { it in ACT_WORDS && it != primary && (it != "story" || tid != null) }
     // A tap on this card's button or menu shows at once, until dibs's next view.
     val busyTap = rememberTapState("card:${c.key}") == TapState.BUSY
+    // A drop dibs is still reading or asks about: no number, no button; a tap opens its idea page.
+    val drop = c.key.startsWith("drop:")
+    val dropIdea = if (drop) c.open?.removePrefix("idea:")?.toIntOrNull() else null
     val openMenu = {
         if (acts.isNotEmpty() && !busyTap) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -238,7 +254,13 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
     Box(modifier) {
         Column(
             Modifier.card().clip(MaterialTheme.shapes.medium)
-                .combinedClickable(onClick = { if (tid != null) Dibs.open(Page.Brief(tid, false)) else openMenu() }, onLongClick = openMenu)
+                .combinedClickable(onClick = {
+                        when {
+                            tid != null -> Dibs.open(Page.Brief(tid, false))
+                            dropIdea != null -> Dibs.openRef(RefKind.IDEA, dropIdea)
+                            else -> openMenu()
+                        }
+                    }, onLongClick = openMenu)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -248,7 +270,7 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
                     c.title,
                     Modifier.weight(1f),
                     style = AppType.body.copy(fontWeight = if (t != null && Dibs.unread(t)) FontWeight.W600 else FontWeight.W400),
-                    color = Palette.Text,
+                    color = if (drop) Palette.Muted else Palette.Text,
                 )
                 if (primary != null) {
                     TextButton(
@@ -263,7 +285,9 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
                     Spinner(Modifier.padding(end = 10.dp), size = 16.dp)
                 }
             }
-            if (c.stateWords.isNotBlank()) CardState(c.stateWords, busy = t?.busy == true)
+            if (c.stateWords.isNotBlank()) {
+                if (drop && c.stateWords.startsWith("dibs asks")) Text(c.stateWords, style = AppType.small, color = Palette.Accent) else CardState(c.stateWords, busy = t?.busy == true)
+            }
             val story = c.story?.takeIf { it.state == "ready" || it.writing }
             if (c.tags.isNotEmpty() || story != null) {
                 FlowRow(Modifier.padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -275,6 +299,39 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
             c.progress?.let { CardProgress(it) }
         }
         CardMenu(menu, c, acts, armed) { menu = false }
+    }
+}
+
+/** The box at the top of Backlog: type or say a rough idea; dibs reads it and files it as a parked task (or asks). */
+@Composable
+private fun BacklogBox(placeholder: String) {
+    val context = LocalContext.current
+    val rec by IdeaRecording.state.collectAsStateWithLifecycle()
+    val record = rememberRecord(drop = BACKLOG_DROP)
+    val recording = rec.takeIf { it is RecorderState.Recording || it is RecorderState.Starting }
+    val mine = recording != null && (recording as? RecorderState.Recording)?.drop.let { it == null || it == BACKLOG_DROP }
+    Column(Modifier.padding(bottom = Space.XS), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        if (recording != null && mine) {
+            RecordPanel(recording, "Recording for the Backlog")
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.S), verticalAlignment = Alignment.Top) {
+                IdeaTextBox(BACKLOG_FIELD, placeholder, Modifier.weight(1f)) { t -> later { Drafts.typed(context, t, drop = BACKLOG_DROP) } }
+                RoundAction(R.drawable.lucide_mic, "Say it", accent = false) { record(null) }
+            }
+            FinishedLine(rec)
+        }
+    }
+}
+
+internal const val BACKLOG_DROP = "backlog"
+internal const val BACKLOG_FIELD = "backlog:new"
+
+/** Something dropped in the Backlog box that dibs's view doesn't list yet. */
+@Composable
+private fun PendingDrop(d: Draft, modifier: Modifier) {
+    Column(modifier.card().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(draftTitle(d), style = AppType.body, color = Palette.Muted)
+        Text(if (d.failed || d.why != null) draftState(d) else "Sending…", style = AppType.small, color = if (d.failed || d.why != null) Palette.Warning else Palette.Muted)
     }
 }
 

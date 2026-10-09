@@ -44,6 +44,7 @@ class IdeaRecordingService : Service() {
     private var recorder: MediaRecorder? = null
     private var audio: File? = null
     private var note: String? = null
+    private var drop: String? = null
     private var startWallMs = 0L
     private var startElapsedMs = 0L
     private var ticker: Job? = null
@@ -57,13 +58,13 @@ class IdeaRecordingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stop(StopCause.USER)
-            else -> start(intent?.getStringExtra(EXTRA_NOTE))
+            else -> start(intent?.getStringExtra(EXTRA_NOTE), intent?.getStringExtra(EXTRA_DROP))
         }
         return START_NOT_STICKY
     }
 
     /** [note]: the recording adds to that note instead of being a new idea. */
-    private fun start(note: String?) {
+    private fun start(note: String?, drop: String? = null) {
         val idle = recorder == null && !starting && !finishing
         if (idle) startWallMs = System.currentTimeMillis()
         try {
@@ -77,13 +78,14 @@ class IdeaRecordingService : Service() {
         }
         if (!idle) return
         this.note = note
+        this.drop = drop
         starting = true
         stopRequested = false
         requestFocus()
-        scope.launch { begin(note) }
+        scope.launch { begin(note, drop) }
     }
 
-    private fun begin(note: String?) {
+    private fun begin(note: String?, drop: String?) {
         val dir = File(filesDir, AUDIO_DIR).apply { mkdirs() }
         val name = UUID.randomUUID().toString()
         var file = File(dir, "$name.ogg")
@@ -118,12 +120,12 @@ class IdeaRecordingService : Service() {
         audio = file
         startElapsedMs = SystemClock.elapsedRealtime()
         // Its draft now: a recording cut off by a crash or a restart is kept with what it got.
-        runCatching { Drafts.recording(applicationContext, file, startWallMs, note) }.onFailure { Log.e(TAG, "Could not write the draft for ${file.name}", it) }
+        runCatching { Drafts.recording(applicationContext, file, startWallMs, note, drop) }.onFailure { Log.e(TAG, "Could not write the draft for ${file.name}", it) }
         Log.i(TAG, "Recording ${file.name} started (${IdeaRecording.mimeType(file)})")
         ticker = scope.launch {
             while (isActive) {
                 val amplitude = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
-                IdeaRecording.set(RecorderState.Recording(note, SystemClock.elapsedRealtime() - startElapsedMs, level(amplitude)))
+                IdeaRecording.set(RecorderState.Recording(note, SystemClock.elapsedRealtime() - startElapsedMs, level(amplitude), drop))
                 delay(100)
             }
         }
@@ -235,10 +237,11 @@ class IdeaRecordingService : Service() {
         val context = applicationContext
         val createdMs = startWallMs
         val adds = this.note
+        val dropped = this.drop
         // On the process-wide scope: it has to happen even when the service is being destroyed.
         IdeaRecording.scope.launch {
             try {
-                Drafts.recorded(context, file, createdMs, durationMs, adds)
+                Drafts.recorded(context, file, createdMs, durationMs, adds, dropped)
             } catch (e: Exception) {
                 Log.e(TAG, "Could not keep recording ${file.name} as a draft", e)
             }
@@ -307,6 +310,7 @@ class IdeaRecordingService : Service() {
         const val ACTION_START = "com.kivan.tether.dibs.ideas.action.START"
         const val ACTION_STOP = "com.kivan.tether.dibs.ideas.action.STOP"
         const val EXTRA_NOTE = "com.kivan.tether.dibs.ideas.extra.NOTE"
+        const val EXTRA_DROP = "com.kivan.tether.dibs.ideas.extra.DROP"
         const val MAX_DURATION_MS = 15 * 60 * 1000
 
         /** Under `filesDir`; [Drafts.audioDir] is the same folder. */

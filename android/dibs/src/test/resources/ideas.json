@@ -4,6 +4,148 @@
     "empty": "No ideas yet. Record one or type it.",
     "notes": [
       {
+        "id": "f1f1f1f1f1f1f1f10000000000000007",
+        "num": 46,
+        "label": "#46",
+        "title": "Dark mode",
+        "summary": "",
+        "meta": "Typed · 6 Oct 13:00",
+        "adds": [],
+        "actions": [
+          {
+            "action": "drop-answer",
+            "value": {
+              "note": "f1f1f1f1f1f1f1f10000000000000007",
+              "choice": "file"
+            },
+            "label": "File it as it is",
+            "style": "primary"
+          },
+          {
+            "action": "drop-answer",
+            "value": {
+              "note": "f1f1f1f1f1f1f1f10000000000000007",
+              "choice": "drop"
+            },
+            "label": "Drop it",
+            "style": "plain"
+          }
+        ],
+        "group": "asks",
+        "status": {
+          "text": "dibs asks: Which app: the phone or the laptop?",
+          "tone": "ask"
+        },
+        "answer": "idea:add:f1f1f1f1f1f1f1f10000000000000007",
+        "page": [
+          {
+            "action": "drop-answer",
+            "value": {
+              "note": "f1f1f1f1f1f1f1f10000000000000007",
+              "choice": "file"
+            },
+            "label": "File it as it is",
+            "style": "primary"
+          },
+          {
+            "action": "drop-answer",
+            "value": {
+              "note": "f1f1f1f1f1f1f1f10000000000000007",
+              "choice": "drop"
+            },
+            "label": "Drop it",
+            "style": "plain"
+          },
+          {
+            "action": "idea-done",
+            "value": {
+              "note": "f1f1f1f1f1f1f1f10000000000000007"
+            },
+            "label": "Done",
+            "style": "plain"
+          }
+        ],
+        "transcript": "make it dark"
+      },
+      {
+        "id": "f2f2f2f2f2f2f2f20000000000000008",
+        "num": 47,
+        "label": "#47",
+        "title": "Call the plumber about the tap",
+        "summary": "",
+        "meta": "Typed · 6 Oct 14:00",
+        "adds": [],
+        "actions": [],
+        "group": "reading",
+        "status": {
+          "text": "dibs is reading it",
+          "tone": "work"
+        },
+        "page": [
+          {
+            "action": "idea-done",
+            "value": {
+              "note": "f2f2f2f2f2f2f2f20000000000000008"
+            },
+            "label": "Done",
+            "style": "plain"
+          }
+        ],
+        "transcript": "the kitchen tap drips"
+      },
+      {
+        "id": "f4f4f4f4f4f4f4f4000000000000000a",
+        "num": 49,
+        "label": "#49",
+        "title": "Buy a new kettle",
+        "summary": "",
+        "meta": "Typed · 6 Oct 14:45",
+        "adds": [],
+        "actions": [],
+        "group": "notes",
+        "status": {
+          "text": "Kept as a note: an errand",
+          "tone": "kept"
+        },
+        "page": [
+          {
+            "action": "drop-file",
+            "value": {
+              "note": "f4f4f4f4f4f4f4f4000000000000000a"
+            },
+            "label": "File it anyway",
+            "style": ""
+          },
+          {
+            "action": "idea-answer",
+            "value": {
+              "note": "f4f4f4f4f4f4f4f4000000000000000a",
+              "choice": "research"
+            },
+            "label": "Research",
+            "style": "primary"
+          },
+          {
+            "action": "idea-answer",
+            "value": {
+              "note": "f4f4f4f4f4f4f4f4000000000000000a",
+              "choice": "build"
+            },
+            "label": "Build",
+            "style": ""
+          },
+          {
+            "action": "idea-done",
+            "value": {
+              "note": "f4f4f4f4f4f4f4f4000000000000000a"
+            },
+            "label": "Done",
+            "style": "plain"
+          }
+        ],
+        "transcript": "the kettle is dying"
+      },
+      {
         "id": "aaaaaaaaaaaaaaaa0000000000000001",
         "num": 45,
         "label": "#45",
@@ -44,6 +186,7 @@
             "style": "plain"
           }
         ],
+        "group": "notes",
         "page": [
           {
             "action": "idea-done",
@@ -65,6 +208,7 @@
         "meta": "Voice · 6 Oct 09:00 · 15:00",
         "adds": [],
         "actions": [],
+        "group": "notes",
         "page": [
           {
             "action": "idea-answer",
@@ -118,6 +262,7 @@
         "task": 1,
         "adds": [],
         "actions": [],
+        "group": "notes",
         "page": [
           {
             "action": "idea-done",
@@ -145,6 +290,7 @@
           "eeeeeeeeeeeeeeee0000000000000005"
         ],
         "actions": [],
+        "group": "notes",
         "page": [
           {
             "action": "idea-answer",
@@ -174,13 +320,68 @@
           }
         ],
         "transcript": "water the basil every other day\n\n── Added 5 Oct 15:00 ──\n\nand the mint too"
+      },
+      {
+        "id": "f3f3f3f3f3f3f3f30000000000000009",
+        "num": 48,
+        "label": "#48",
+        "title": "A box in the Backlog",
+        "summary": "",
+        "meta": "Typed · 6 Oct 14:30",
+        "status": {
+          "text": "Filed as #2: Show a box in the Backlog",
+          "tone": "done"
+        },
+        "task": 2,
+        "adds": [],
+        "actions": [],
+        "group": "filed",
+        "page": [
+          {
+            "action": "idea-done",
+            "value": {
+              "note": "f3f3f3f3f3f3f3f30000000000000009"
+            },
+            "label": "Done",
+            "style": "plain"
+          }
+        ],
+        "transcript": "put a box at the top of the Backlog"
       }
     ],
-    "total": 4,
+    "total": 8,
     "trash": {
-      "title": "Ticked off · 1",
+      "title": "Ticked off · 2",
       "note": "Ticked-off ideas stay here for good.",
       "items": [
+        {
+          "id": "f5f5f5f5f5f5f5f5000000000000000b",
+          "label": "#50",
+          "title": "Backup way into the server",
+          "meta": "Ticked off 5 Oct 15:00",
+          "actions": [
+            {
+              "action": "drop-file",
+              "value": {
+                "note": "f5f5f5f5f5f5f5f5000000000000000b"
+              },
+              "label": "File it anyway",
+              "style": ""
+            },
+            {
+              "action": "idea-restore",
+              "value": {
+                "note": "f5f5f5f5f5f5f5f5000000000000000b"
+              },
+              "label": "Restore",
+              "style": ""
+            }
+          ],
+          "status": {
+            "text": "Already covered by #3",
+            "tone": "kept"
+          }
+        },
         {
           "id": "dddddddddddddddd0000000000000004",
           "label": "#41",
@@ -198,6 +399,10 @@
           ]
         }
       ]
+    },
+    "box": {
+      "placeholder": "Drop an idea, a problem or a task",
+      "hint": "dibs files it in the Backlog and asks if it needs more"
     }
   },
   "action": {

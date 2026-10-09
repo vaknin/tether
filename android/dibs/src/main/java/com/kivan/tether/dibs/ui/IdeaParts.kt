@@ -71,20 +71,20 @@ import org.json.JSONObject
 // panel, the typing box, and sending a button dibs worded.
 
 /**
- * Starts a recording ([note]: the note it adds to), asking for the microphone first when it isn't
- * allowed yet; once Android stops asking, the app's settings open instead. [onDenied]: the user
- * said no.
+ * Starts a recording ([note]: the note it adds to; a new idea goes in the box [drop] names, `ideas`
+ * or `backlog`), asking for the microphone first when it isn't allowed yet; once Android stops
+ * asking, the app's settings open instead. [onDenied]: the user said no.
  */
 @Composable
-internal fun rememberRecord(onDenied: () -> Unit = {}): (String?) -> Unit {
+internal fun rememberRecord(onDenied: () -> Unit = {}, drop: String? = null): (String?) -> Unit {
     val context = LocalContext.current
     var asked by remember { mutableStateOf<String?>(null) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) IdeaRecording.start(context, asked) else onDenied()
+        if (granted) IdeaRecording.start(context, asked, drop) else onDenied()
     }
     return { note ->
         when {
-            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> IdeaRecording.start(context, note)
+            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> IdeaRecording.start(context, note, drop)
             micAsked && !shouldAsk(context) -> {
                 onDenied()
                 openAppSettings(context)
@@ -338,8 +338,8 @@ internal object IdeaTaps {
     /** Done or Restore was tapped on [note] and [ideas] doesn't show it yet: it has moved, as far as this screen goes. */
     fun moved(ideas: Ideas?, note: String, action: String): Boolean = live(ideas, note)?.action == action
 
-    /** The label of the question's answer tapped on [note] ("Research"), while [ideas] doesn't show it yet. */
-    fun answered(ideas: Ideas?, note: String): String? = live(ideas, note)?.takeIf { it.action == "idea-answer" }?.label
+    /** The label of the question's answer tapped on [note] ("Research", "Drop it"), while [ideas] doesn't show it yet. */
+    fun answered(ideas: Ideas?, note: String): String? = live(ideas, note)?.takeIf { it.action == "idea-answer" || it.action == "drop-answer" }?.label
 
     internal fun reset() {
         taps.clear()

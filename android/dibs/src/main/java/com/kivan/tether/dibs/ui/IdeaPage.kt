@@ -37,6 +37,7 @@ import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.ideas.Drafts
+import com.kivan.tether.dibs.ideas.GROUP_ASKS
 import com.kivan.tether.dibs.ideas.IdeaNote
 import com.kivan.tether.dibs.ideas.IdeaRecording
 import com.kivan.tether.dibs.ideas.RecorderState
@@ -132,19 +133,23 @@ internal fun IdeaPage(id: String, view: DibsView) {
                 }
             }
 
-            Eyebrow("Add to it", Modifier.padding(top = Space.S))
+            // While dibs asks about it, the box is the answer (it goes as an addition, which dibs reads again).
+            val asking = n.group == GROUP_ASKS
+            Eyebrow(if (asking) "Answer" else "Add to it", Modifier.padding(top = Space.S))
             val recording = rec.takeIf { it is RecorderState.Recording || it is RecorderState.Starting }
             if (recording != null) {
                 RecordPanel(recording, if ((recording as? RecorderState.Recording)?.note == n.id) "Adding to ${n.label}" else "Recording")
             } else {
-                IdeaTextBox("idea:add:${n.id}", "Type more") { t -> later { Drafts.typed(context, t, note = n.id) } }
+                IdeaTextBox(n.answer ?: "idea:add:${n.id}", if (asking) "Type your answer" else "Type more") { t -> later { Drafts.typed(context, t, note = n.id) } }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    ActButton("Record more", "") { record(n.id) }
+                    ActButton(if (asking) "Say your answer" else "Record more", "") { record(n.id) }
                     Box(Modifier.weight(1f).padding(start = Space.S)) { FinishedLine(rec) }
                 }
             }
 
-            IdeaButtons(n.page.takeIf { answered == null }.orEmpty(), Modifier.padding(top = Space.S)) { b ->
+            // What the row already offers above (File it as it is, Drop it) isn't offered twice.
+            val rest = n.page.filter { p -> n.actions.none { it.action == p.action && it.value.toString() == p.value.toString() } }
+            IdeaButtons(rest.takeIf { answered == null }.orEmpty(), Modifier.padding(top = Space.S)) { b ->
                 IdeaTaps.tap(b, view.ideas)
                 if (b.action == "idea-done") Dibs.back()
             }

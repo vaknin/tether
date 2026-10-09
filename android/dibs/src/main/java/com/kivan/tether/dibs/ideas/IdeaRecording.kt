@@ -35,11 +35,12 @@ object IdeaRecording {
     val busy: Boolean get() = _state.value.let { it is RecorderState.Recording || it is RecorderState.Starting }
 
     /**
-     * Starts recording; [note]: the id of the note it adds to, or null for a new idea. Call it from a
+     * Starts recording; [note]: the id of the note it adds to, or null for a new idea, which [drop] says
+     * which box it was dropped in (`ideas` or `backlog`). Call it from a
      * screen that is on top, after RECORD_AUDIO is granted: Android lets a microphone service start
      * only while the app is in the foreground. Does nothing while [busy].
      */
-    fun start(context: Context, note: String? = null) {
+    fun start(context: Context, note: String? = null, drop: String? = null) {
         if (busy) return
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             set(RecorderState.Finished("Microphone not allowed"))
@@ -51,6 +52,7 @@ object IdeaRecording {
                 Intent(context, IdeaRecordingService::class.java)
                     .setAction(IdeaRecordingService.ACTION_START)
                     .putExtra(IdeaRecordingService.EXTRA_NOTE, note)
+                    .putExtra(IdeaRecordingService.EXTRA_DROP, drop)
             )
         } catch (e: Exception) {
             // Not allowed from the background, mostly.

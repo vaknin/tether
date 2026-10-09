@@ -460,13 +460,18 @@ data class BoardCard(
     val brief: Brief? = null,
     /** A running task's stage and rough time left ([progressLine], [barFill]). */
     val progress: Progress? = null,
+    /** Where a tap goes instead of a task's page: `idea:<n>` (an idea's or a drop's card); null on task cards. */
+    val open: String? = null,
 ) {
     /** Its task's id, for a task card; null for an idea. */
     val task: Long? get() = key.removePrefix("task:").takeIf { key.startsWith("task:") }?.toLongOrNull()
 }
 
-/** A column of the board: active or backlog (an old dibs: now, next or later), its title ("Active") and its cards, in dibs's order. */
-data class BoardColumn(val key: String, val title: String, val cards: List<BoardCard>)
+/**
+ * A column of the board: active or backlog (an old dibs: now, next or later), its title ("Active") and its cards, in dibs's order.
+ * [box]: the placeholder of the box that drops a new idea into the Backlog (`backlog_box`); null in every other column and from a dibs without drops.
+ */
+data class BoardColumn(val key: String, val title: String, val cards: List<BoardCard>, val box: String? = null)
 
 /**
  * dibs's board for the Tasks tab: its columns in order, and what's done ([doneCount], [done] its cards).
@@ -747,7 +752,7 @@ data class DibsView(
             return Board(
                 // A column or card without a key is dropped and a repeated key kept once: the list keys on them.
                 columns = o.optJSONArray("columns").objects()
-                    .map { BoardColumn(it.str("key").orEmpty(), it.str("title").orEmpty(), cards(it.optJSONArray("cards"))) }
+                    .map { BoardColumn(it.str("key").orEmpty(), it.str("title").orEmpty(), cards(it.optJSONArray("cards")), it.optJSONObject("backlog_box")?.str("placeholder")?.takeIf { p -> p.isNotBlank() }) }
                     .filter { it.key.isNotEmpty() }.distinctBy { it.key },
                 doneCount = done.long("count")?.toInt() ?: doneCards.size,
                 done = doneCards,
@@ -780,6 +785,7 @@ data class DibsView(
             ask = askEntry(o.optJSONObject("ask")),
             brief = o.optJSONObject("brief")?.let { brief(it, o.long("n")) },
             progress = o.optJSONObject("progress")?.let(::progress),
+            open = o.str("open"),
         )
 
         private fun progress(o: JSONObject): Progress? {

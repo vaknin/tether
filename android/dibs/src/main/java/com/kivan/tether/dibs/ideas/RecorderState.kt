@@ -12,9 +12,10 @@ sealed interface RecorderState {
 
     /**
      * [level] is 0..1 on a log scale, from `getMaxAmplitude()` every 100 ms. [note]: the note this
-     * recording adds to, or null for a new idea.
+     * recording adds to, or null for a new idea;
+     * [drop]: the box that idea is dropped in (`ideas` or `backlog`).
      */
-    data class Recording(val note: String?, val elapsedMs: Long, val level: Float) : RecorderState
+    data class Recording(val note: String?, val elapsedMs: Long, val level: Float, val drop: String? = null) : RecorderState
 
     /** Shown briefly once it is over: "Saved", "Nothing recorded", "Microphone unavailable", and so on. */
     data class Finished(val message: String) : RecorderState
