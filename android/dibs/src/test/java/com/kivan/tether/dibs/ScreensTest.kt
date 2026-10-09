@@ -1,5 +1,6 @@
 package com.kivan.tether.dibs
 
+import android.content.ClipboardManager
 import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.background
@@ -31,6 +32,8 @@ import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kivan.tether.dibs.ui.DibsApp
 import com.kivan.tether.dibs.ui.RefCard
+import com.kivan.tether.dibs.ui.linkified
+import androidx.compose.ui.text.LinkAnnotation
 import com.kivan.tether.dibs.ui.theme.AppTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -685,6 +688,31 @@ class ScreensTest {
         compose.waitForIdle()
         assertEquals(Page.Task(42), Dibs.pages.last())
         assertTrue(Dibs.answered.isEmpty())
+    }
+
+    @Test
+    fun aDeviceLoginCardIsWholeWithItsLinkAndACopyButton() {
+        val text = "Let the home server read your GitHub: enter code 070B-16D2 at github.com/login/device, then tap Done"
+        val v = view(talk = longTalk(), questions = listOf(JSONObject().put("id", 722).put("title", text)
+            .put("why", "Step 1 of the server move needs it to fetch your projects. The code expires about 15 minutes after it was made.")
+            .put("from", "dibs").put("ts", NOW - 60).put("kind", "question")
+            .put("actions", JSONArray().put(JSONObject().put("id", "a722").put("label", "Done, I approved it").put("style", "primary"))
+                .put(JSONObject().put("id", "d722").put("label", "Don't sign it in")))))
+        show(v)
+        Dibs.tab = "waiting"
+        compose.waitForIdle()
+        compose.onNodeWithText(text).assertIsDisplayed()
+        noEllipsis()
+        shot("waiting-device-login")
+        compose.onNodeWithText("Copy", substring = true).performClick()
+        compose.waitForIdle()
+        val clip = compose.activity.getSystemService(ClipboardManager::class.java).primaryClip
+        assertEquals("070B-16D2", clip?.getItemAt(0)?.text?.toString())
+        compose.onNodeWithText("Copied", substring = true).assertIsDisplayed()
+        // The address and the code are links in the text itself.
+        val links = linkified(text, onCode = {}).getLinkAnnotations(0, text.length).map { it.item }
+        assertTrue(links.any { it is LinkAnnotation.Url && it.url == "https://github.com/login/device" })
+        assertTrue(links.any { it is LinkAnnotation.Clickable && it.tag == "code:070B-16D2" })
     }
 
     @Test

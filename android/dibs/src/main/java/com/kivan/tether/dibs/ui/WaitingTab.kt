@@ -10,21 +10,29 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -37,10 +45,12 @@ import com.kivan.tether.dibs.Question
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.ReadInFull
 import com.kivan.tether.dibs.age
+import com.kivan.tether.dibs.signInCodes
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 
 // The Waiting tab: only what needs the user, every open question as a full card (what dibs
@@ -87,9 +97,10 @@ internal fun QuestionCard(q: Question, now: Long, modifier: Modifier, task: Long
             val who = if (q.kind == "update") "Update" else q.from
             Eyebrow(listOfNotNull(who.ifBlank { null }, q.repo, age(now - q.ts)).joinToString(" · "))
         }
-        Text(q.title, style = AppType.body.copy(fontWeight = Bold), color = Palette.Text)
-        if (q.why.isNotBlank()) Text(q.why, style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
+        Text(rememberLinked(q.title), style = AppType.body.copy(fontWeight = Bold), color = Palette.Text)
+        if (q.why.isNotBlank()) Text(rememberLinked(q.why), style = MaterialTheme.typography.bodyMedium, color = Palette.Muted)
         }
+        CopyCodes(listOfNotNull(q.title, q.why, q.details))
         q.details?.let { Details(q.id, it) }
         QuestionControls(q.id, "q/${q.id}", q.actions, q.reply, q.hint, Modifier.padding(top = 4.dp), read = q.read)
         if (task != null) {
@@ -186,11 +197,54 @@ private fun Details(id: Long, details: String) {
     if (open) {
         SelectionContainer {
             Text(
-                details,
+                rememberLinked(details),
                 Modifier.fillMaxWidth().background(Palette.SurfaceLow, MaterialTheme.shapes.small).padding(10.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Palette.Text,
             )
+        }
+    }
+}
+
+/**
+ * A button per sign-in code in [texts] ("Copy 070B-16D2"), each code once: a device login's code
+ * is copied, then pasted on the page its link opens. A tick shows for a moment after a tap.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun CopyCodes(texts: List<String>, modifier: Modifier = Modifier) {
+    val codes = remember(texts) { texts.flatMap { t -> signInCodes(t).map { it.code } }.distinct() }
+    if (codes.isEmpty()) return
+    val ctx = LocalContext.current
+    var copied by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(copied) {
+        if (copied != null) {
+            delay(1500)
+            copied = null
+        }
+    }
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (c in codes) {
+            val ticked = copied == c
+            OutlinedButton(
+                {
+                    copy(ctx, c)
+                    copied = c
+                },
+                Modifier.heightIn(min = 36.dp),
+                shape = MaterialTheme.shapes.medium,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Palette.Text),
+            ) {
+                Icon(
+                    painterResource(if (ticked) R.drawable.lucide_check else R.drawable.lucide_copy),
+                    null,
+                    Modifier.padding(end = 8.dp).size(16.dp),
+                    tint = if (ticked) Palette.Success else Palette.Muted,
+                )
+                Text(if (ticked) "Copied" else "Copy", style = AppType.label)
+                Text(" $c", style = AppType.mono)
+            }
         }
     }
 }

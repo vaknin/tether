@@ -71,6 +71,11 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
   from five marks based on dibs's personality.
 - **No "…" anywhere (the user's rule, 2026-10-06, app 0.5.9):** no text is cut with an ellipsis and no string of the app's
   own ends in "…"; text wraps to as many lines as it needs (titles, the header's usage, rows, chips, the top bars).
+- **A card's addresses open and its codes copy (task #303, 2026-10-09):** a GitHub device login came as a card ("enter
+  code 070B-16D2 at github.com/login/device") the user could not use. Every dibs text (`linkified`) makes web addresses
+  tappable, bare ones too when they end in a well-known domain (`.com`, `.ai`, `.dev` and a few more; never a file name like
+  `server.md`), and sign-in codes ("code 482913", or GitHub's four-and-four `070B-16D2`) mono and tap-to-copy. A question
+  card (Waiting, a task's page, its chat bubble) also shows a "Copy <code>" button per code. The rules are `CardText.kt`.
 
 ## How it's built
 
@@ -89,7 +94,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)

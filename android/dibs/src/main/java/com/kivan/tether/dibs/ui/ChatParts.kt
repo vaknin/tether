@@ -151,6 +151,8 @@ import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.RefIndex
 import com.kivan.tether.dibs.RefKind
 import com.kivan.tether.dibs.findRefs
+import com.kivan.tether.dibs.signInCodes
+import com.kivan.tether.dibs.webLinks
 import com.kivan.tether.dibs.Echo
 import com.kivan.tether.dibs.EchoRow
 import com.kivan.tether.dibs.FileRef
@@ -723,7 +725,10 @@ private fun Bubble(row: LineRow, outcome: String?, look: ChatLook) {
                         Icon(painterResource(R.drawable.lucide_check), null, Modifier.size(16.dp), tint = Palette.Success)
                         Text(outcomeWords(outcome), style = AppType.small, color = Palette.Muted)
                     }
-                    ask != null -> AskButtons(ask, look)
+                    ask != null -> {
+                        CopyCodes(listOf(l.text))
+                        AskButtons(ask, look)
+                    }
                 }
             }
             LineMenu(menu, l, look) { menu = false }
@@ -1320,31 +1325,35 @@ private fun Strip(box: Composer) {
     }
 }
 
-private val urlPattern = Regex("""\b(?:https?://|www\.)[^\s<>"]+[^\s<>".,;:!?)\]']""")
-
-/** The text with its links tappable: web addresses, and `#230` / `idea 45` where the index knows that task or idea. */
-internal fun linkified(text: String, index: RefIndex? = null): AnnotatedString = buildAnnotatedString {
+/**
+ * The text with its links tappable: web addresses (bare ones like `github.com/login/device` too),
+ * `#230` / `idea 45` where the index knows that task or idea, and sign-in codes, which a tap gives
+ * to [onCode] (copies them).
+ */
+internal fun linkified(text: String, index: RefIndex? = null, onCode: ((String) -> Unit)? = null): AnnotatedString = buildAnnotatedString {
     append(text)
     val style = TextLinkStyles(SpanStyle(color = Palette.Accent, textDecoration = TextDecoration.Underline))
-    val urls = urlPattern.findAll(text).map { it.range }.toList()
-    for (range in urls) {
-        val url = text.substring(range).let { if (it.startsWith("www.")) "https://$it" else it }
-        addLink(LinkAnnotation.Url(url, style), range.first, range.last + 1)
+    val urls = webLinks(text)
+    for (u in urls) addLink(LinkAnnotation.Url(u.url, style), u.start, u.end)
+    if (onCode != null) {
+        val code = TextLinkStyles(SpanStyle(color = Palette.Accent, fontFamily = AppType.mono.fontFamily, background = Palette.AccentDim))
+        for (c in signInCodes(text)) addLink(LinkAnnotation.Clickable("code:${c.code}", code) { onCode(c.code) }, c.start, c.end)
     }
     if (index == null) return@buildAnnotatedString
     for (r in findRefs(text)) {
-        if (!index.knows(r.kind, r.n) || urls.any { r.start <= it.last && it.first < r.end }) continue
+        if (!index.knows(r.kind, r.n) || urls.any { r.start < it.end && it.start < r.end }) continue
         val tag = "${if (r.kind == RefKind.TASK) "task" else "idea"}:${r.n}"
         addLink(LinkAnnotation.Clickable("ref:$tag", style) { Dibs.openRef(r.kind, r.n) }, r.start, r.end)
         addStringAnnotation("ref", tag, r.start, r.end)
     }
 }
 
-/** [linkified], kept while the text and the index are the same. */
+/** [linkified], kept while the text and the index are the same; a tap on a code copies it. */
 @Composable
 internal fun rememberLinked(text: String): AnnotatedString {
     val index = Dibs.index
-    return remember(text, index) { linkified(text, index) }
+    val ctx = LocalContext.current
+    return remember(text, index) { linkified(text, index) { copy(ctx, it) } }
 }
 
 /** A line's time, as the phone's clock shows times (12 or 24 hours). */
