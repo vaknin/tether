@@ -56,8 +56,8 @@ import java.util.Locale
 
 /**
  * The dibs page (opened from the slim bar): the state in words, the two lend switches as full cards,
- * Claude's usage (every window, when it resets), the laptop's load and room, Start dibs when the brain
- * is down, and Open Tether. The one place for all of it; no tab shows lend cards or usage.
+ * the spending limit if there is one (the bar's rings carry the 5-hour and weekly windows), the laptop's load and room, Start dibs when the brain
+ * is down, and Open Tether. The one place for all of it; no tab shows lend cards.
  */
 @Composable
 internal fun StatusPage(view: DibsView, link: Link) {
@@ -90,9 +90,11 @@ internal fun StatusPage(view: DibsView, link: Link) {
                 Text("This dibs sends no switches.", style = AppType.small, color = Palette.Muted)
             }
 
-            if (state.limits.isNotEmpty()) {
+            // The 5-hour and weekly windows are the bar's rings; only a window without a ring (the spending limit) is a line here.
+            val extra = state.limits.filter { it.name != "five_hour" && it.name != "seven_day" }
+            if (extra.isNotEmpty()) {
                 Section("Claude usage")
-                Usage(state.limits)
+                Usage(extra)
             }
 
             val laptop = state.laptop?.let(::laptopWords)
@@ -112,7 +114,7 @@ internal fun StatusPage(view: DibsView, link: Link) {
 }
 
 /**
- * Claude's usage on the dibs page: each window's percent and when it resets, amber near the end.
+ * Claude's usage lines on the dibs page: a window's percent and when it resets, amber near the end (today the spending limit).
  * Never cut: a line too long for its room breaks only after its "·" ("7d 93% ·" over "resets Sun
  * 10:00"), as each half is held together.
  */

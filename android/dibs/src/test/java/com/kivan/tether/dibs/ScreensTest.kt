@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -550,20 +551,56 @@ class ScreensTest {
     }
 
     @Test
-    fun theBarSaysNothingAboutUsageUntilAWindowWarns() {
-        val v = usageAt(view(talk = longTalk()), 17.0)
-        v.getJSONObject("dibs").getJSONObject("state").getJSONObject("limits").getJSONArray("windows").getJSONObject(1).put("pct", 20.0)
-        show(v)
-        compose.onAllNodes(hasText("5h", substring = true)).assertCountEquals(0)
-        compose.onNodeWithText("dibs").assertIsDisplayed()
+    fun theBarShowsBothUsageRingsWithTheirNumbers() {
+        show(view(talk = longTalk()))
+        compose.onNodeWithContentDescription("Claude usage", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("87").assertIsDisplayed()
+        compose.onNodeWithText("63").assertIsDisplayed()
+        compose.onNodeWithText("5h").assertIsDisplayed()
+        compose.onNodeWithText("7d").assertIsDisplayed()
+        // The reset times wait for a tap.
+        compose.onAllNodes(hasText("resets", substring = true)).assertCountEquals(0)
+        shot("bar-warning")
     }
 
     @Test
-    fun theBarShowsTheWarningWindowWithoutItsResetTime() {
+    fun aTapOnTheRingsShowsWhenEachWindowResets() {
         show(usageAt(view(talk = longTalk()), 88.0))
-        compose.onNodeWithText("5h\u00A088%").assertIsDisplayed()
-        compose.onAllNodes(hasText("resets", substring = true)).assertCountEquals(0)
-        shot("bar-warning")
+        val pages = Dibs.pages.size
+        compose.onNodeWithContentDescription("Claude usage", substring = true).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("usage-card").assertIsDisplayed()
+        compose.onNodeWithText("5-hour window: 88%", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Weekly: 63%", substring = true).assertIsDisplayed()
+        compose.onAllNodes(hasText("resets", substring = true)).assertCountEquals(2)
+        assertEquals(pages, Dibs.pages.size)
+        shot("bar-usage-card")
+    }
+
+    @Test
+    fun noUsageNumbersNoRings() {
+        val v = view(talk = longTalk())
+        v.getJSONObject("dibs").getJSONObject("state").remove("limits")
+        show(v)
+        compose.onNodeWithText("dibs").assertIsDisplayed()
+        compose.onAllNodes(hasContentDescription("Claude usage", substring = true)).assertCountEquals(0)
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h568dp-280dpi")
+    fun theRingsFitANarrowBarBesideBothLentMarks() {
+        val v = usageAt(view(talk = longTalk()), 100.0)
+        val d = v.getJSONObject("dibs")
+        d.getJSONObject("lends").put("phone", JSONObject().put("lent", true).put("text", "Until 15:40").put("action", "phone-back"))
+        show(v)
+        compose.onNodeWithText("dibs").assertIsDisplayed()
+        compose.onNodeWithText("100").assertIsDisplayed()
+        compose.onNodeWithText("5h").assertIsDisplayed()
+        compose.onNodeWithText("7d").assertIsDisplayed()
+        compose.onNodeWithContentDescription("More").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Phone lent to dibs", useUnmergedTree = true).assertExists()
+        compose.onNodeWithContentDescription("Laptop lent to dibs", useUnmergedTree = true).assertExists()
+        shot("bar-narrow")
     }
 
     @Test
@@ -576,7 +613,7 @@ class ScreensTest {
     }
 
     @Test
-    fun aTapOnTheBarOpensTheDibsPageWithBothLendCardsAndEveryUsageLine() {
+    fun aTapOnTheBarOpensTheDibsPageWithBothLendCards() {
         show(view(talk = longTalk()))
         compose.onNodeWithContentDescription("dibs, laptop and phone", substring = true).performClick()
         compose.waitForIdle()
@@ -585,8 +622,8 @@ class ScreensTest {
         compose.onNodeWithText("Laptop lent to dibs").assertIsDisplayed()
         compose.onNodeWithText("Until 15:40").assertIsDisplayed()
         compose.onNodeWithText("Laptop's memory and processor").assertIsDisplayed()
-        compose.onNodeWithText("5h\u00A087%", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("7d\u00A063%", substring = true).assertIsDisplayed()
+        // The 5-hour and weekly windows are the bar's rings now, not lines here.
+        compose.onAllNodes(hasText("5h", substring = true)).assertCountEquals(0)
         shot("dibs-page")
     }
 

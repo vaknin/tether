@@ -81,19 +81,12 @@ import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.State
 import com.kivan.tether.dibs.stateWords
-import com.kivan.tether.dibs.Limit
 import com.kivan.tether.dibs.ideas.Drafts
-import com.kivan.tether.dibs.limitWords
 import com.kivan.tether.dibs.ui.theme.AppType
 import com.kivan.tether.dibs.ui.theme.Eyebrow
 import com.kivan.tether.dibs.ui.theme.Palette
 import com.kivan.tether.dibs.ui.theme.Space
 import kotlinx.coroutines.delay
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.TextStyle
-import java.util.Date
-import java.util.Locale
 
 /**
  * The five tabs, by the key an intent names them with. The fourth is Tasks (the user's tasks), or
@@ -241,8 +234,9 @@ fun DibsApp() {
 
 /**
  * The slim bar, pinned over every tab (about 52 dp): the mark, "dibs" with its state under it, marks
- * that show only when they matter (the phone or laptop lent to dibs, a usage window past its warning),
- * and ⋮. A tap on the mark, name or marks opens the dibs page; nothing hides on scroll or typing.
+ * that show only when they matter (the phone or laptop lent to dibs), Claude's usage as two rings (a tap
+ * on them shows when each resets), and ⋮. A tap on the mark, name or marks opens the dibs page; nothing
+ * hides on scroll or typing.
  */
 @Composable
 private fun Header(link: Link, state: State?, lends: Lends?, oldLend: Lend?) {
@@ -256,9 +250,6 @@ private fun Header(link: Link, state: State?, lends: Lends?, oldLend: Lend?) {
         state.doing == null && !state.busy && !state.usage.isNullOrBlank() -> Palette.Warning
         else -> Palette.Accent
     }
-    val ctx = LocalContext.current
-    val now by rememberNow()
-    val warn = remember(state?.limits, now / 60) { usageWarning(state?.limits.orEmpty(), now, ctx) }
     val phone = lends?.phone?.lent == true || (lends?.phone == null && oldLend != null)
     val laptop = lends?.laptop?.lent == true
     Column(Modifier.fillMaxWidth().background(Palette.Bg).statusBarsPadding()) {
@@ -274,7 +265,6 @@ private fun Header(link: Link, state: State?, lends: Lends?, oldLend: Lend?) {
                         contentDescription = listOfNotNull(
                             "dibs, laptop and phone", words,
                             "phone lent to dibs".takeIf { phone }, "laptop lent to dibs".takeIf { laptop },
-                            warn?.let { "Claude usage $it" },
                         ).joinToString(", ")
                     }
                     .padding(vertical = 4.dp),
@@ -290,14 +280,9 @@ private fun Header(link: Link, state: State?, lends: Lends?, oldLend: Lend?) {
                 }
                 if (phone) LentMark(R.drawable.lucide_smartphone, "Phone lent to dibs")
                 if (laptop) LentMark(R.drawable.lucide_laptop, "Laptop lent to dibs")
-                if (warn != null) {
-                    Text(
-                        warn.replace(' ', NBSP),
-                        Modifier.padding(start = 6.dp).semantics { contentDescription = "Claude usage $warn" },
-                        style = AppType.mono, color = Palette.Warning,
-                    )
-                }
             }
+            // Beside the page-opening row, not in it: its tap shows the reset times, and its description would be swallowed.
+            UsageRings(state?.limits.orEmpty())
             Box {
                 IconButton(onClick = { menu = true }) {
                     Icon(painterResource(R.drawable.lucide_ellipsis_vertical), "More", tint = Palette.Muted)
@@ -340,14 +325,6 @@ private fun LentMark(icon: Int, description: String) {
         contentAlignment = Alignment.Center,
     ) { Icon(painterResource(icon), null, Modifier.size(16.dp), tint = Palette.Accent) }
 }
-
-/** The first usage window past its warning as "5h 88%" (no reset time), or null when none is. */
-internal fun usageWarning(limits: List<Limit>, now: Long, ctx: android.content.Context): String? =
-    limitWords(
-        limits, now,
-        clock = { android.text.format.DateFormat.getTimeFormat(ctx).format(Date(it * 1000)) },
-        day = { Instant.ofEpochSecond(it).atZone(ZoneId.systemDefault()).dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()) },
-    ).firstOrNull { it.warn }?.text?.substringBefore(" · ")
 
 @Composable
 private fun NavBar(tab: Tab, badges: Badges, waiting: Int, tasks: Int, yours: Boolean, ideas: Int, recap: Int?, onTab: (Tab) -> Unit) {
