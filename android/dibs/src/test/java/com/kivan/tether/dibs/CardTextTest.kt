@@ -35,6 +35,8 @@ class CardTextTest {
         assertEquals(emptyList<String>(), urls("edit docs/plan/server.md and setup.sh in Cargo.toml"))
         assertEquals(emptyList<String>(), urls("mail me@example.com"))
         assertEquals(emptyList<String>(), urls("in ~/Projects/foo.com/src"))
+        assertEquals(emptyList<String>(), urls("logger.info(x), req.app and state.me, foo.me@example.com"))
+        assertEquals(listOf("https://myapp.app/start"), urls("open myapp.app/start"))
     }
 
     @Test
@@ -56,10 +58,17 @@ class CardTextTest {
         assertEquals(emptyList<String>(), codes("code review please"))
         assertEquals(emptyList<String>(), codes("on 2026-10-08, SHA-256 and CVE-2026-1234"))
         assertEquals(emptyList<String>(), codes("https://example.com/ABCD-1234"))
+        assertEquals(emptyList<String>(), codes("READ-ONLY in 2026-2027, see DIBS-1234 and 1234-5678"))
     }
 
     @Test
-    fun aCodeFoundBothWaysIsOne() {
+    fun aCodeOfLettersOnlyNeedsTheWordCode() {
+        assertEquals(listOf("WDJB-MJHT"), codes("enter code WDJB-MJHT at github.com/login/device"))
+        assertEquals(emptyList<String>(), codes("WDJB-MJHT"))
+    }
+
+    @Test
+    fun aCodeIsListedOncePerPlace() {
         assertEquals(listOf("070B-16D2", "070B-16D2"), codes("code 070B-16D2, again 070B-16D2"))
         assertEquals(listOf("070B-16D2"), codes("code 070B-16D2"))
     }

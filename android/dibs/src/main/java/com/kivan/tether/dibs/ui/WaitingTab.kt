@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -217,7 +218,9 @@ internal fun CopyCodes(texts: List<String>, modifier: Modifier = Modifier) {
     if (codes.isEmpty()) return
     val ctx = LocalContext.current
     var copied by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(copied) {
+    // Counted, so a second tap while it shows "Copied" starts its moment again.
+    var taps by remember { mutableIntStateOf(0) }
+    LaunchedEffect(taps) {
         if (copied != null) {
             delay(1500)
             copied = null
@@ -230,6 +233,7 @@ internal fun CopyCodes(texts: List<String>, modifier: Modifier = Modifier) {
                 {
                     copy(ctx, c)
                     copied = c
+                    taps++
                 },
                 Modifier.heightIn(min = 36.dp),
                 shape = MaterialTheme.shapes.medium,
