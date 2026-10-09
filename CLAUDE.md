@@ -20,7 +20,7 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   `cargo install --path crates/daemon --locked` (`~/.cargo/bin/tether`), state and the paired identity in
   `~/.local/state/tether` (moved from the old dev dir), unit listed in `~/.config/laptop/paths`.
   After daemon changes: reinstall, then `systemctl --user restart tether`.
-- `android/`: Kotlin/Compose app `com.kivan.tether` (toolchain copied from ~/Projects/chordhand).
+- `android/`: **frozen since 2026-10-09: the phone app lives in the dibs repo (`~/Projects/dibs/android`); edit and ship it there, nothing installs from here** (`android/MOVED.md`). Kotlin/Compose app `com.kivan.tether` (toolchain copied from ~/Projects/chordhand).
   Gradle runs cargo-ndk and uniffi-bindgen itself (`buildSrc/.../RustTasks.kt`). `Core.kt` owns the
   node: it runs only while held (UI, `SyncWorker` after FCM wake, share or reply, `OutboxWorker`
   retries, `TransferService`) or a link is open, then shuts down. `SyncWorker` is an expedited job with
@@ -54,7 +54,7 @@ The full plan is in `docs/PLAN.md`. Read it before changing scope.
   `{"type":"presence","op","why"|null,"ts_ms","got_ms"}` per frame, `tether status --json` `phone_presence`
   (the same without `type`, null until the first frame since the daemon started). `_presence` and `_adb` are
   refused for sending (`check_channel`, as any `_…`) and for `app_subscribe`.
-- dibs's own app (`android/dibs`, Gradle module `:dibs`, plan in `docs/DIBS-APP.md`, version 0.16.0; a 🎤 in every message box, `Dictation.kt`): `DibsActivity`
+- (Frozen, see above: edit in the dibs repo.) dibs's own app (`android/dibs`, Gradle module `:dibs`, plan in `docs/DIBS-APP.md`, version 0.16.0; a 🎤 in every message box, `Dictation.kt`): `DibsActivity`
   (own launcher icon and Recents card) with five tabs (Chat, Ideas, Waiting, Tasks, Recap) under one slim pinned bar (mark, name, state, marks for what is lent, two usage rings (5h, 7d, filled by percent used with the number inside; a tap shows when they reset), ⋮); the lend switches, the spending limit and laptop load live on the dibs page (`Page.Status`, `ui/StatusPage.kt`), opened by a tap on the bar. Drawn from the `dibs` payload in
   the dibs channel's view (`Payload.kt`; chat folding in `ChatModel.kt`, task order in `TasksModel.kt`, unit-tested).
   Tasks holds the user's own tasks (`yours`) until ticked, with dibs's own work folded at its bottom (a dibs without
@@ -155,7 +155,7 @@ End every commit message with one line `For you: <what the user will notice, in 
 
 ## Build and test
 Rust is pinned in `mise.toml` (1.98.1). Run `cargo test` and `cargo build --release`.
-Android: `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linux-android` target and
+Android (frozen here; build in the dibs repo): `cd android && ./gradlew :app:assembleRelease` (needs the `aarch64-linux-android` target and
 `cargo-ndk`).
 
 ## Design decisions (keep these)

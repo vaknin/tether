@@ -1,3 +1,5 @@
+> **Frozen 2026-10-09:** the phone app moved to the dibs repo (`~/Projects/dibs/android`, `docs/DIBS-APP.md` there). Edit and ship it there; this copy is no longer installed.
+
 # dibs on the phone: its own app inside the Tether APK (task #22, 2026-10-05)
 
 The user chose (question #249, 2026-10-05): dibs gets a real app with sections, **inside the Tether
