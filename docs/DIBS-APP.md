@@ -904,5 +904,5 @@ and files it as a parked Backlog task linked to the note (dibs side: `docs/plan/
 - A tap on the rings (outside the page-opening row, so it does not open the dibs page) opens a small card:
   "5-hour window: 87% used, resets 12:20", "Weekly: 63% used, resets Thu 09:00", and "Numbers from 10:05" when the
   newest reading is over 15 minutes old. Screen readers get the same words as the rings' description.
-- Code: `Format.usageRings` / `usageStale` (unit-tested), `ui/UsageRings.kt`. The desktop app draws the same rings in
-  its header with the same words on hover (`desktop/src/lib/format.ts`, `UsageRings.svelte`).
+- Code: `Format.usageRings` / `usageStale` (unit-tested), `ui/UsageRings.kt`. The desktop app (in the dibs repo) draws the
+  same rings in its header with the same words on hover; dibs's `state.limits` carries each window's `asof`.

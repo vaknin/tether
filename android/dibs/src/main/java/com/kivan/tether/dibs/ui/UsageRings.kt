@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -33,7 +34,6 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
@@ -99,9 +99,12 @@ private fun Ring(r: UsageRing) {
                     )
                 }
             }
-            Text(r.number.toString(), style = AppType.mono.copy(fontSize = 10.sp, lineHeight = 12.sp), color = Palette.Text, maxLines = 1, softWrap = false)
+            // Sized in dp, not sp: the ring is a fixed 28 dp and the number must stay whole at any font scale.
+            val digits = with(LocalDensity.current) { (if (r.number >= 100) 8.dp else 10.dp).toSp() }
+            Text(r.number.toString(), style = AppType.mono.copy(fontSize = digits, lineHeight = digits), color = Palette.Text, maxLines = 1, softWrap = false)
         }
-        Text(r.label, style = AppType.small.copy(fontSize = 10.sp, lineHeight = 12.sp), color = Palette.Muted, maxLines = 1, softWrap = false)
+        val name = with(LocalDensity.current) { 10.dp.toSp() }
+        Text(r.label, style = AppType.small.copy(fontSize = name, lineHeight = name * 1.2f), color = Palette.Muted, maxLines = 1, softWrap = false)
     }
 }
 

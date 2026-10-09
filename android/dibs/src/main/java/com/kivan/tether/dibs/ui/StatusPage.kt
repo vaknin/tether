@@ -92,10 +92,7 @@ internal fun StatusPage(view: DibsView, link: Link) {
 
             // The 5-hour and weekly windows are the bar's rings; only a window without a ring (the spending limit) is a line here.
             val extra = state.limits.filter { it.name != "five_hour" && it.name != "seven_day" }
-            if (extra.isNotEmpty()) {
-                Section("Claude usage")
-                Usage(extra)
-            }
+            Usage(extra)
 
             val laptop = state.laptop?.let(::laptopWords)
             val room = view.board?.room
@@ -131,6 +128,7 @@ internal fun Usage(limits: List<Limit>) {
         )
     }
     if (lines.isEmpty()) return
+    Section("Claude usage")
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         for (l in lines) {
             Text(

@@ -113,7 +113,7 @@ fun usageRings(limits: List<Limit>, now: Long, clock: (Long) -> String, day: (Lo
         val at = if (l.resets - now > 20 * 3600) "${day(l.resets)} ${clock(l.resets)}" else clock(l.resets)
         val number = kotlin.math.round(pct).toInt().coerceIn(0, 100)
         val words = when {
-            over -> "$title: started over at ${clock(l.resets)}"
+            over -> "$title: started over at ${if (now - l.resets > 20 * 3600) "${day(l.resets)} " else ""}${clock(l.resets)}"
             l.resets <= 0 -> "$title: $number% used"
             else -> "$title: $number% used, resets $at"
         }

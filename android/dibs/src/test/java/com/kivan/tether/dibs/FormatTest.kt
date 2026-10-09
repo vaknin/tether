@@ -110,6 +110,9 @@ class FormatTest {
         assertEquals(0.0, r.pct, 0.0)
         assertEquals(false, r.warn)
         assertEquals("5-hour window: started over at t-30", r.words)
+        // A reset from days ago says its day, so it is not read as today.
+        val old = usageRings(listOf(Limit("seven_day", 95.0, now - 3 * 86400)), now, clock) { "Thu" }.single()
+        assertEquals("Weekly: started over at Thu t-259200", old.words)
         // Reset time unknown (0): treated as running, with no time in the words.
         val u = usageRings(listOf(Limit("five_hour", 42.0, 0)), now, clock) { "Thu" }.single()
         assertEquals(42, u.number)
