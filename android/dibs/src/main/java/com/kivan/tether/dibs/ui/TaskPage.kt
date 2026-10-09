@@ -212,7 +212,7 @@ private fun TaskActions(t: YourTask, view: DibsView, armed: Armed, mine: Boolean
         }) { Icon(painterResource(R.drawable.lucide_circle_check), "Tick off", Modifier.size(22.dp), tint = Palette.Accent) }
         else -> {
             val k = "stop-task${t.id}"
-            ActButton(if (armed.key == k) "Stop it?" else "Stop", "danger") { armed.press(k) { Dibs.stop(t.id) } }
+            ActButton(if (armed.key == k) "Stop it?" else "Stop", "danger", tap = "stop:${t.id}", pressTap = false) { armed.press(k) { Dibs.stop(t.id) } }
         }
     }
     Box {

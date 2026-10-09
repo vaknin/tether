@@ -281,7 +281,7 @@ internal fun DecisionRow(d: Decision, now: Long, armed: Armed, modifier: Modifie
         } else if (d.undo) {
             val k = "undo${d.id}"
             ActButton(if (armed.key == k) "Undo it?" else "Undo", if (armed.key == k) "" else "plain") {
-                armed.press(k) { Dibs.answer(d.ack, "Undo", "undo", JSONObject().put("item", d.id)) }
+                armed.press(k) { Dibs.answer(d.ack, "Undo", "undo", JSONObject().put("item", d.id), rollback = false) }
             }
         }
     }

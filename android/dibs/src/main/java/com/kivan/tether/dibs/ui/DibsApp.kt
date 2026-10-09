@@ -64,7 +64,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.kivan.tether.dibs.Badges
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.DibsView
@@ -72,6 +75,7 @@ import com.kivan.tether.dibs.Lend
 import com.kivan.tether.dibs.LendToggle
 import com.kivan.tether.dibs.Lends
 import com.kivan.tether.dibs.Link
+import com.kivan.tether.dibs.Taps
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.R
 import com.kivan.tether.dibs.State
@@ -113,10 +117,26 @@ fun DibsApp() {
     val context = LocalContext.current
     IndexLoader(view?.indexRev)
     LaunchedEffect(view) {
-        Dibs.seen(view)
+        Dibs.seen(view, json)
         Drafts.seen(context, view?.ideas)
         // A conversation's notification tapped before the views were loaded opens once one lists it.
         Dibs.resolveAsk(view)
+    }
+
+    // The taps' clock: how long the link has been up, and an answer dibs never took comes back.
+    LaunchedEffect(link) { Taps.upSince = if (link == Link.CONNECTED) Dibs.now() else null }
+    // Only while the screen is on: back from the background the link may have changed, so the wait starts over.
+    val waiting = Dibs.answered.isNotEmpty()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(waiting, lifecycle) {
+        if (!waiting) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            if (host.link.value == Link.CONNECTED) Taps.upSince = Dibs.now()
+            while (true) {
+                delay(1_000)
+                Dibs.sweep()
+            }
+        }
     }
 
     var tab by rememberSaveable { mutableStateOf(Tab.CHAT) }
@@ -134,24 +154,27 @@ fun DibsApp() {
     val page = Dibs.pages.lastOrNull()
     BackHandler(enabled = page != null) { Dibs.back() }
     if (page != null && view != null) {
-        Box(
+        Column(
             Modifier.fillMaxSize().background(Palette.Bg)
                 .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime)),
         ) {
-            // Each page its own state (its scroll, its taps), also when one replaces another of its kind.
-            key(page) {
-                when (page) {
-                    is Page.Task -> TaskPage(page.id, view)
-                    is Page.Transcript -> TranscriptScreen(page.id, view)
-                    is Page.Report -> ReportScreen(page.id, view)
-                    is Page.Story -> StoryScreen(page.id, view)
-                    is Page.Brief -> BriefPage(page, view)
-                    is Page.Idea -> IdeaPage(page.id, view)
-                    is Page.Ask -> AskPage(page.about, view)
-                    is Page.Root -> RootPage(page.id, view)
-                    Page.RootKey -> RootKeyPage()
-                    Page.Stories -> StoriesPage(view)
-                    Page.Status -> StatusPage(view, link)
+            TapNotes()
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                // Each page its own state (its scroll, its taps), also when one replaces another of its kind.
+                key(page) {
+                    when (page) {
+                        is Page.Task -> TaskPage(page.id, view)
+                        is Page.Transcript -> TranscriptScreen(page.id, view)
+                        is Page.Report -> ReportScreen(page.id, view)
+                        is Page.Story -> StoryScreen(page.id, view)
+                        is Page.Brief -> BriefPage(page, view)
+                        is Page.Idea -> IdeaPage(page.id, view)
+                        is Page.Ask -> AskPage(page.about, view)
+                        is Page.Root -> RootPage(page.id, view)
+                        Page.RootKey -> RootKeyPage()
+                        Page.Stories -> StoriesPage(view)
+                        Page.Status -> StatusPage(view, link)
+                    }
                 }
             }
         }
@@ -187,6 +210,7 @@ fun DibsApp() {
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).imePadding(),
         ) {
             Header(link, view?.state, view?.lends, view?.lend)
+            TapNotes()
             if (view == null) {
                 Empty(hasView = json != null)
                 return@Column
@@ -297,7 +321,7 @@ private fun Header(link: Link, state: State?, lends: Lends?, oldLend: Lend?) {
         // dibs's brain is on but down: one tap starts it (your start: no limit holds it back).
         if (link == Link.CONNECTED && state?.brainDown == true) {
             Row(Modifier.fillMaxWidth().padding(start = Space.L, end = Space.L, bottom = 8.dp), horizontalArrangement = Arrangement.End) {
-                ActButton("Start dibs", "primary") { Dibs.host.act("brain-start") }
+                ActButton("Start dibs", "primary", tap = "brain-start") { Dibs.host.act("brain-start") }
             }
         }
     }

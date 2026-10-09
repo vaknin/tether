@@ -373,13 +373,17 @@ object Dibs {
     /** Ticks a finished task off (it moves to "Ticked"); only the user does this. */
     fun tick(t: YourTask) {
         answered.remove("untick:${t.id}")
+        Taps.clear("untick:${t.id}")
         answered["tick:${t.id}"] = "ticked"
+        Taps.press("tick:${t.id}", "Tick off", timeOnly = true)
         host.act("tick", JSONObject().put("task", t.id))
     }
 
     fun untick(t: YourTask) {
         answered.remove("tick:${t.id}")
+        Taps.clear("tick:${t.id}")
         answered["untick:${t.id}"] = "unticked"
+        Taps.press("untick:${t.id}", "Untick", timeOnly = true)
         host.act("untick", JSONObject().put("task", t.id))
     }
 
@@ -413,6 +417,7 @@ object Dibs {
      * confirm step was shown and taken (dibs applies a delete only with it).
      */
     fun taskAct(key: String, act: String, before: String? = null, confirm: Boolean = false) {
+        Taps.press("card:$key", TASK_ACT_WORDS[act] ?: act)
         host.act(
             TASK_ACT,
             JSONObject().put("key", key).put("act", act).apply {
@@ -425,13 +430,22 @@ object Dibs {
     /** The phone action a board card's menu sends (docs/DIBS-APP.md, "The board"); its name may still change. */
     const val TASK_ACT = "task-act"
 
+    /** A board action in the words a note uses. */
+    private val TASK_ACT_WORDS = mapOf(
+        "start" to "Start", "park" to "Park", "start_now" to "Start now", "hold" to "Put on hold", "resume" to "Resume",
+        "stop" to "Stop", "delete" to "Delete", "up" to "Move up", "down" to "Move down",
+        "to_next" to "Move to the queue", "to_later" to "Move to Backlog",
+    )
+
     fun stop(task: Long) {
+        Taps.press("stop:$task", "Stop")
         host.act("stop", JSONObject().put("task", task))
     }
 
     /** Resumes its chat in a tab on the laptop: by its Recap entry's saved chat, else by the task's number. */
     fun openOnLaptop(view: DibsView, task: Long) {
         val key = view.feed.firstOrNull { it.task == task && it.reopen != null }?.reopen ?: task.toString()
+        Taps.press("reopen:$task", "Open on laptop", progress = "Opening on the laptop…")
         host.act("reopen", JSONObject().put("reopen", key))
     }
 
@@ -639,8 +653,9 @@ object Dibs {
      * Forgets the echoes a view now lists (in the dibs chat or a task's), and the answers to what
      * it no longer asks.
      */
-    fun seen(view: DibsView?) {
+    fun seen(view: DibsView?, source: Any? = null) {
         val ids = view?.talk?.mapTo(HashSet()) { it.id } ?: return
+        Taps.viewArrived(source)
         // The view agrees with the chip tapped here.
         holdTap?.let { tap -> if (tap.shown?.let { view.state.hold?.kind == it.kind } ?: (view.state.hold?.kind != tap.gone)) holdTap = null }
         val listed = HashSet(ids)
@@ -662,8 +677,24 @@ object Dibs {
         // A brief read here (also by Mark all read) shows read until the view agrees.
         listOf(view.recapItems, view.yours.orEmpty().mapNotNull { it.brief }, view.board?.let { b -> (b.columns.flatMap { it.cards } + b.done).mapNotNull { it.brief } }.orEmpty())
             .forEach { l -> l.forEach { b -> if (b.unread) asked += "rs:${b.task}" } }
+        // A key dibs dropped is answered: its tap is done.
+        answered.keys.filter { it !in asked }.forEach { Taps.clear(it) }
         answered.keys.retainAll(asked)
+        // A rolled-back answer (its note still up) that dibs has now dropped after all: no note.
+        Taps.rolledBack().filter { it !in asked }.forEach { Taps.clear(it) }
         hidden.keys.retainAll(ids)
+    }
+
+    /**
+     * An answer shown at once that the view still lists [Taps.FAIL_MS] after the link was up is dibs not
+     * taking it: it comes back (the question shows again) and [Taps.notes] says so.
+     */
+    fun sweep(nowMs: Long = now()) {
+        answered.keys.filter { Taps.tap(it)?.timeOnly == true && Taps.state(it, nowMs) == TapState.FAILED }.forEach {
+            answered.remove(it)
+            // A note the user dismissed already stays dismissed.
+            if (Taps.tap(it)?.quiet == true) Taps.clear(it) else Taps.rolledBack += it
+        }
     }
 
     /** Hides a line at once; dibs drops it from the next view (`h<n>`). */
@@ -673,8 +704,14 @@ object Dibs {
     }
 
     /** Answers [key] (`q<id>`, an ack) with [action], shown as [label] until the view drops it. */
-    fun answer(key: String, label: String, action: String, value: JSONObject? = null) {
+    fun answer(key: String, label: String, action: String, value: JSONObject? = null, rollback: Boolean = true) {
         answered[key] = label
+        // [rollback] false: the answer stays until dibs drops it, however long it takes (a root step's signature).
+        if (rollback) {
+            Taps.press(key, label, timeOnly = true)
+        } else {
+            Taps.clear(key)
+        }
         host.act(action, value)
     }
 
@@ -687,13 +724,14 @@ object Dibs {
             "q${q.id}", "Approved", "root-approve",
             JSONObject().put("item", q.id).put("request", request)
                 .put("sig", java.util.Base64.getEncoder().encodeToString(sig)).put("remember", remember),
+            rollback = false,
         )
     }
 
     /** Deny: the card's own `d<id>` (dibs then cancels the request). */
     fun denyRoot(q: Question) {
         val deny = q.actions.firstOrNull { it.id.startsWith("d") } ?: Action("d${q.id}", "Deny")
-        answer("q${q.id}", deny.label, deny.id)
+        answer("q${q.id}", deny.label, deny.id, rollback = false)
     }
 
     fun toggle(key: String) {

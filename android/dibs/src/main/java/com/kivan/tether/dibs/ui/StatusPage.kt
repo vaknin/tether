@@ -73,7 +73,7 @@ internal fun StatusPage(view: DibsView, link: Link) {
             Text(words, style = AppType.body, color = Palette.Text)
             if (state.busy && !state.line.isNullOrBlank()) Text(state.line, style = AppType.small, color = Palette.Muted)
             if (link == Link.CONNECTED && state.brainDown) {
-                ActButton("Start dibs", "primary") { Dibs.host.act("brain-start") }
+                ActButton("Start dibs", "primary", tap = "brain-start") { Dibs.host.act("brain-start") }
             }
 
             Section("Lend to dibs")
@@ -157,7 +157,7 @@ internal fun LendBar(lend: Lend) {
             Text("dibs has your phone", style = AppType.label, color = Palette.Text)
             if (lend.text.isNotBlank()) Text(lend.text, style = AppType.small, color = Palette.Text)
         }
-        ActButton("Take it back", "primary") { Dibs.host.act("phone-back") }
+        ActButton("Take it back", "primary", tap = "phone-back") { Dibs.host.act("phone-back") }
     }
 }
 

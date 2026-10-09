@@ -107,7 +107,8 @@ internal fun RootActions(q: Question, modifier: Modifier = Modifier) {
         }
         // Set up is handled here; dibs's own button for it (if it sent one) isn't drawn twice.
         for (a in q.actions.filter { !(setup && it.label.equals("Set up", ignoreCase = true)) }) {
-            ActButton(a.label, a.style) { Dibs.answer("q${q.id}", a.label, a.id) }
+            // A root step is never taken back, however long dibs takes with the helper.
+            ActButton(a.label, a.style) { Dibs.answer("q${q.id}", a.label, a.id, rollback = false) }
         }
     }
 }

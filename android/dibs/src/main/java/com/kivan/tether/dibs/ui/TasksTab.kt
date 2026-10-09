@@ -48,6 +48,7 @@ import com.kivan.tether.dibs.DibsView
 import com.kivan.tether.dibs.Page
 import com.kivan.tether.dibs.Progress
 import com.kivan.tether.dibs.R
+import com.kivan.tether.dibs.TapState
 import com.kivan.tether.dibs.YourTask
 import com.kivan.tether.dibs.barFill
 import com.kivan.tether.dibs.dayOf
@@ -226,8 +227,10 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
     // The primary action is the button on the card's face, so the menu lists the rest.
     val primary = c.primary?.takeIf { it in ACT_WORDS }
     val acts = c.actions.filter { it in ACT_WORDS && it != primary && (it != "story" || tid != null) }
+    // A tap on this card's button or menu shows at once, until dibs's next view.
+    val busyTap = rememberTapState("card:${c.key}") == TapState.BUSY
     val openMenu = {
-        if (acts.isNotEmpty()) {
+        if (acts.isNotEmpty() && !busyTap) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             menu = true
         }
@@ -250,8 +253,14 @@ private fun BoardCardRow(c: BoardCard, view: DibsView, armed: Armed, modifier: M
                 if (primary != null) {
                     TextButton(
                         onClick = { Dibs.taskAct(c.key, primary) },
+                        enabled = !busyTap,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    ) { Text(ACT_WORDS.getValue(primary), style = AppType.body, color = Palette.Accent) }
+                    ) {
+                        if (busyTap) Spinner(Modifier.padding(end = 6.dp))
+                        Text(ACT_WORDS.getValue(primary), style = AppType.body, color = Palette.Accent)
+                    }
+                } else if (busyTap) {
+                    Spinner(Modifier.padding(end = 10.dp), size = 16.dp)
                 }
             }
             if (c.stateWords.isNotBlank()) CardState(c.stateWords, busy = t?.busy == true)

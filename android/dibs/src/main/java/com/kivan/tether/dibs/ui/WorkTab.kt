@@ -134,8 +134,8 @@ private fun TaskButtons(t: Task, armed: Armed) {
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
         val stopKey = "stop${t.id}"
-        ActButton(if (armed.key == stopKey) "Stop it?" else "Stop", "danger") {
-            armed.press(stopKey) { Dibs.host.act("stop", JSONObject().put("task", t.id)) }
+        ActButton(if (armed.key == stopKey) "Stop it?" else "Stop", "danger", tap = "stop:${t.id}", pressTap = false) {
+            armed.press(stopKey) { Dibs.stop(t.id) }
         }
     }
 }

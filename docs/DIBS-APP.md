@@ -94,7 +94,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -805,3 +805,20 @@ ring loudly. dibs decides what is loud; the phone only obeys the flag.
 - **Behaviour.** A loud post is shown even while its channel's screen is up (`Channels.post`), and always alerts, even
   when it reuses a `--tag` (`Notifier.alertOnce`). Same tag, buttons and tap target as a normal card.
 - **Tests.** `LoudTest` (`channelFor`, `alertOnce`); the daemon's `posts_and_thread_lines` covers `--loud`.
+
+## Instant feedback on taps (task #124, app 0.12.1)
+
+Every button shows at once that the tap registered; nothing waits for dibs's round trip to look pressed.
+`Taps.kt` is the one place:
+
+- A button that changes nothing on screen by itself (Start dibs, Take it back, Stop, a board card's Start or Park
+  and its menu) presses a key in `Taps`: `ActButton(tap = key)` shows a spinner in place of its icon, disabled, for at
+  least 0.6 s and until dibs's next view arrives. A card shows the spinner on its face.
+- A menu item has no place for a spinner (Open on laptop): its tap has `progress` words and a line over the tabs says
+  "Opening on the laptop…".
+- A tap whose result already shows (a question answered, a task ticked: `Dibs.answered`) is a *time-only* tap: the
+  view that still lists the question does not answer it. If the link has been up 20 s since the tap and the view
+  still lists it, `Dibs.sweep` takes the answer back (the question shows again) and a note says "dibs didn't answer …".
+- With no link the action is queued (it goes when the link is back); after 2.5 s the note says so instead of spinning.
+- Notes (`TapNotes`, over the tabs and over a page) dismiss with a tap. Pure logic: `Taps.judge`, `TapsTest`.
+- Root steps (the Root page and the root cards' buttons) and Undo are never taken back (`answer(rollback = false)`): dibs may take longer than 20 s, and a repeat would double the action.

@@ -47,6 +47,7 @@ class AskScreensTest {
 
     @Before
     fun reset() {
+        Taps.reset()
         Dibs.pages.clear()
         Dibs.open.clear()
         Dibs.answered.clear()

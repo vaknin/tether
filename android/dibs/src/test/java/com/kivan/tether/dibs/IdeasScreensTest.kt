@@ -45,6 +45,7 @@ class IdeasScreensTest {
 
     @Before
     fun reset() {
+        Taps.reset()
         Dibs.pages.clear()
         Dibs.fields.clear()
         Dibs.open.clear()

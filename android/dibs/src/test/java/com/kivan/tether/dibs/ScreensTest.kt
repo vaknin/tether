@@ -95,6 +95,7 @@ class ScreensTest {
 
     @Before
     fun reset() {
+        Taps.reset()
         Dibs.pages.clear()
         Dibs.answered.clear()
         Dibs.fields.clear()

@@ -23,8 +23,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -33,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -40,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
@@ -50,11 +54,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kivan.tether.dibs.Dibs
 import com.kivan.tether.dibs.R
+import com.kivan.tether.dibs.TapState
+import com.kivan.tether.dibs.Taps
 import com.kivan.tether.dibs.dayWords
 import com.kivan.tether.dibs.ui.theme.AppShapes
 import com.kivan.tether.dibs.ui.theme.AppType
@@ -77,34 +84,107 @@ import kotlin.math.min
 
 /**
  * A button named for what it does. primary: filled accent; plain: quiet text; danger: red outline; else outlined.
- * [icon] (a drawable) goes before its words.
+ * [icon] (a drawable) goes before its words. [tap] (the button's identity in [Taps]): the press shows at
+ * once as a spinner in place of the icon, and the button waits for dibs's next view; a note over the
+ * screen ([TapNotes]) says so when dibs stays silent or the link is down. [pressTap] false: the caller
+ * presses [tap] itself (a button that first only arms), the button only shows its state.
  */
 @Composable
-internal fun ActButton(label: String, style: String, modifier: Modifier = Modifier, enabled: Boolean = true, icon: Int? = null, onClick: () -> Unit) {
+internal fun ActButton(label: String, style: String, modifier: Modifier = Modifier, enabled: Boolean = true, icon: Int? = null, tap: String? = null, pressTap: Boolean = true, onClick: () -> Unit) {
     val pad = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
     val mod = modifier.heightIn(min = 36.dp)
     val shape = MaterialTheme.shapes.medium
+    val busy = rememberTapState(tap) == TapState.BUSY
+    val go = if (tap == null || !pressTap) onClick else ({
+        Taps.press(tap, label)
+        onClick()
+    })
+    val on = enabled && !busy
     val text: @Composable () -> Unit = {
-        if (icon != null) Icon(painterResource(icon), null, Modifier.padding(end = 8.dp).size(18.dp))
+        if (busy) Spinner(Modifier.padding(end = 8.dp)) else if (icon != null) Icon(painterResource(icon), null, Modifier.padding(end = 8.dp).size(18.dp))
         Text(label, style = AppType.label)
     }
     when (style) {
         "primary" -> Button(
-            onClick, mod, enabled, shape = shape, contentPadding = pad,
-            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Palette.OnAccent),
+            go, mod, on, shape = shape, contentPadding = pad,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Palette.Accent, contentColor = Palette.OnAccent,
+                disabledContainerColor = if (busy) Palette.Accent.copy(alpha = 0.6f) else Palette.SurfaceHigh,
+                disabledContentColor = if (busy) Palette.OnAccent else Palette.Muted,
+            ),
         ) { text() }
-        "plain" -> TextButton(onClick, mod, enabled, shape = shape, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)) {
+        "plain" -> TextButton(go, mod, on, shape = shape, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)) {
+            if (busy) Spinner(Modifier.padding(end = 6.dp), color = Palette.Muted)
             Text(label, style = AppType.label, color = Palette.Muted)
         }
         "danger" -> OutlinedButton(
-            onClick, mod, enabled, shape = shape, contentPadding = pad,
+            go, mod, on, shape = shape, contentPadding = pad,
             border = ButtonDefaults.outlinedButtonBorder(enabled).copy(brush = SolidColor(Palette.Danger)),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Palette.Danger),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Palette.Danger, disabledContentColor = if (busy) Palette.Danger else Palette.Muted),
         ) { text() }
         else -> OutlinedButton(
-            onClick, mod, enabled, shape = shape, contentPadding = pad,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Palette.Text),
+            go, mod, on, shape = shape, contentPadding = pad,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Palette.Text, disabledContentColor = if (busy) Palette.Text else Palette.Muted),
         ) { text() }
+    }
+}
+
+/** A small spinner in the colour of the text it sits in: the tap registered, dibs hasn't answered yet. */
+@Composable
+internal fun Spinner(modifier: Modifier = Modifier, size: Dp = 14.dp, color: Color = LocalContentColor.current) {
+    CircularProgressIndicator(modifier.size(size), color = color, strokeWidth = 2.dp)
+}
+
+/**
+ * The state of the tap [key] in [Taps]: it moves on by itself (busy for at least 0.6 s, then answered,
+ * queued or failed). A null key is no tap.
+ */
+@Composable
+internal fun rememberTapState(key: String?): TapState {
+    if (key == null) return TapState.IDLE
+    val tap = Taps.tap(key) ?: return TapState.IDLE
+    var now by remember(tap) { mutableLongStateOf(Dibs.now()) }
+    // The clock runs only while the tap is busy; a later view or the link changing re-reads the state.
+    val views = Taps.views
+    val up = Taps.upSince
+    LaunchedEffect(tap, views, up) {
+        now = Dibs.now()
+        while (Taps.judge(tap, views, up, now) == TapState.BUSY) {
+            delay(200)
+            now = Dibs.now()
+        }
+    }
+    return Taps.judge(tap, views, up, now)
+}
+
+/** The notes of taps dibs didn't answer or that wait for the link, one line each over the tabs; a tap on one dismisses it. */
+@Composable
+internal fun TapNotes(modifier: Modifier = Modifier) {
+    if (!Taps.any()) return
+    val views = Taps.views
+    val up = Taps.upSince
+    val now by produceState(Dibs.now(), views, up, Taps.notes(Dibs.now()).size) {
+        while (true) {
+            value = Dibs.now()
+            delay(1_000)
+        }
+    }
+    val notes = Taps.notes(now)
+    if (notes.isEmpty()) return
+    Column(modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for ((key, st) in notes) {
+            val tap = Taps.tap(key) ?: continue
+            val busy = st == TapState.BUSY
+            Row(
+                Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).background(if (busy) Palette.SurfaceHigh else Palette.Warning.copy(alpha = 0.16f))
+                    .clickable { Taps.dismiss(key) }.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (busy) Spinner(size = 16.dp) else Icon(painterResource(R.drawable.lucide_triangle_alert), null, Modifier.size(16.dp), tint = Palette.Warning)
+                Text(if (busy) tap.progress.orEmpty() else Taps.noteText(tap.what, st), Modifier.weight(1f), style = AppType.small, color = Palette.Text)
+            }
+        }
     }
 }
 
