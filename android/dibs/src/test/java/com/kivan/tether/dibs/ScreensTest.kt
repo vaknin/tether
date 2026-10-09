@@ -334,10 +334,15 @@ class ScreensTest {
         compose.onNodeWithText(LONG_TITLE).assertIsDisplayed()
         noEllipsis()
         shot("tasks-long")
-        // The usage windows and the laptop's lend card live on the dibs page now.
-        Dibs.pages += Page.Status
+        // The usage windows are the bar's rings; their reset times are in the card a tap opens.
+        compose.onNodeWithContentDescription("Claude usage", substring = true).performClick()
         compose.waitForIdle()
         compose.onAllNodes(hasText("resets", substring = true), useUnmergedTree = true).assertCountEquals(2)
+        noEllipsis()
+        shot("bar-usage-card-long")
+        // The laptop's lend card lives on the dibs page.
+        Dibs.pages += Page.Status
+        compose.waitForIdle()
         noEllipsis()
         shot("dibs-page-long")
         Dibs.pages.clear()
