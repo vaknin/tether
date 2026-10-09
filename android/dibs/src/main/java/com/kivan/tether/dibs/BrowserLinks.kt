@@ -26,8 +26,9 @@ fun isClaudeLink(url: String): Boolean {
 private class BrowserLinks(private val context: Context, private val plain: UriHandler) : UriHandler {
     override fun openUri(uri: String) {
         if (!isClaudeLink(uri)) return plain.openUri(uri)
+        // setSelector returns nothing (void), so it can't be chained.
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-            .setSelector(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER))
+            .apply { selector = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER) }
         if (context.findActivity() == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(intent)
