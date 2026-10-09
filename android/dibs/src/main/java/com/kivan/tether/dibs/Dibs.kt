@@ -129,6 +129,7 @@ class Composer(val task: Long?, val thread: String? = null) {
      */
     fun typed(v: String) {
         draft = v
+        if (v.isBlank()) spoken = false
         if (task == null && thread == null) Dibs.typing.edited(v, System.currentTimeMillis())
     }
     /** Files picked for the next message. */
@@ -137,6 +138,8 @@ class Composer(val task: Long?, val thread: String? = null) {
     var about by mutableStateOf<About?>(null)
     /** The line the next message answers (a swipe or Reply), shown as a chip over the box; the dibs chat's only. */
     var replyTo by mutableStateOf<TalkLine?>(null)
+    /** Some of the box's words were said aloud ([Dictation]): its `say` or `task-say` carries `spoken`. */
+    var spoken by mutableStateOf(false)
 
     /** The next message is about [a] (or nothing): one at a time, so it replaces a reply. */
     fun aboutIs(a: About?) {
@@ -168,6 +171,7 @@ class Composer(val task: Long?, val thread: String? = null) {
         if (thread != null) {
             Dibs.askSay(thread, draft.trim())
             draft = ""
+            spoken = false
             return
         }
         val text = draft.trim()
@@ -183,14 +187,16 @@ class Composer(val task: Long?, val thread: String? = null) {
         picked.clear()
         val on = about?.takeIf { task == null }?.json()
         val answers = replyTo?.takeIf { task == null }
+        val said = spoken
         about = null
         replyTo = null
+        spoken = false
         val action = if (task == null) "say" else "task-say"
         val extra = {
-            if (task == null) JSONObject().apply {
+            (if (task == null) JSONObject().apply {
                 on?.let { put("about", it) }
                 answers?.let { put("reply", JSONObject().put("n", it.n)) }
-            } else JSONObject().put("task", task)
+            } else JSONObject().put("task", task)).apply { if (said) put("spoken", true) }
         }
         if (files.isEmpty()) {
             Dibs.host.act(action, extra().put("text", text), uid)

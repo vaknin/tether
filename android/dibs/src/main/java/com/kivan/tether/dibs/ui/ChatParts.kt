@@ -1,6 +1,14 @@
 package com.kivan.tether.dibs.ui
 
 import android.net.Uri
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
+import com.kivan.tether.dibs.Dictation
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.animation.core.animateFloatAsState
+import android.content.pm.PackageManager
+import android.Manifest
 import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -1116,7 +1124,7 @@ internal fun Typing(line: String?, dots: Boolean = true) {
 
 /**
  * The box: what the next message is about (a full story) and what's picked wait above it; 📎
- * offers Photos, Camera and Files.
+ * offers Photos, Camera and Files; 🎤 puts spoken words in it ([Dictation]).
  */
 @Composable
 internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = true, enabled: Boolean = true) {
@@ -1133,7 +1141,27 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
     var closed by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(query?.start) { closed = null }
     val index = Dibs.index
+    val ctx = LocalContext.current
+    val talk = remember(box) { Dictation(ctx) }
+    // Leaving the screen or the app, or the box turning off, stops listening; what was said stays in the draft.
+    val life = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(talk, life) {
+        val stop = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_STOP) talk.cancel() }
+        life.addObserver(stop)
+        onDispose {
+            life.removeObserver(stop)
+            talk.cancel()
+        }
+    }
+    LaunchedEffect(enabled) { if (!enabled) talk.cancel() }
     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        talk.note?.let { n ->
+            LaunchedEffect(n) {
+                delay(NOTE_MS)
+                talk.note = null
+            }
+            Text(n, Modifier.padding(horizontal = 12.dp), style = AppType.small, color = Palette.Muted)
+        }
         box.about?.let { AboutChip(it) }
         box.replyTo?.let { ReplyChip(it, box) }
         if (box.picked.isNotEmpty()) Strip(box)
@@ -1152,6 +1180,8 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
             BasicTextField(
                 value = tf,
                 onValueChange = {
+                    // Typing while listening stops listening: the keyboard wins.
+                    if (it.text != tf.text) talk.cancel()
                     held = it
                     box.typed(it.text)
                 },
@@ -1163,13 +1193,17 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
                 modifier = Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 9.dp).focusRequester(focus),
                 decorationBox = { inner ->
                     Box {
-                        if (draft.isEmpty()) Text(placeholder, style = AppType.body, color = if (enabled) Palette.Muted else Palette.Muted.copy(alpha = 0.6f))
+                        if (draft.isEmpty()) Text(if (talk.listening) "Listening…" else placeholder, style = AppType.body, color = if (enabled) Palette.Muted else Palette.Muted.copy(alpha = 0.6f))
                         inner()
                     }
                 },
             )
+            if (enabled) Talk(talk, box)
             FilledIconButton(
-                onClick = { box.send() },
+                onClick = {
+                    talk.cancel()
+                    box.send()
+                },
                 enabled = canSend,
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledIconButtonColors(
@@ -1183,6 +1217,39 @@ internal fun InputArea(box: Composer, placeholder: String, attach: Boolean = tru
         }
     }
 }
+
+/**
+ * 🎤: listens into the box, asking for the microphone first (once Android stops asking, the app's
+ * settings open instead); while listening it's a square that pulses with the voice, and a tap stops.
+ */
+@Composable
+private fun Talk(talk: Dictation, box: Composer) {
+    val ctx = LocalContext.current
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) talk.start(box) else talk.note = "Allow the microphone to talk to dibs"
+    }
+    val ring by animateFloatAsState(if (talk.listening) 0.35f + 0.65f * talk.level else 0f, label = "voice")
+    IconButton(
+        onClick = {
+            when {
+                talk.listening -> talk.stop()
+                ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> talk.start(box)
+                micAsked && !shouldAsk(ctx) -> openAppSettings(ctx)
+                else -> {
+                    micAsked = true
+                    ask.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+        },
+        modifier = Modifier.size(40.dp).background(Palette.Accent.copy(alpha = 0.3f * ring), CircleShape),
+    ) {
+        if (talk.listening) Icon(painterResource(R.drawable.lucide_square), "Stop listening", Modifier.size(16.dp), tint = Palette.Accent)
+        else Icon(painterResource(R.drawable.lucide_mic), "Talk", Modifier.size(20.dp), tint = Palette.Muted)
+    }
+}
+
+/** How long a note under the box ("The microphone is busy") stays. */
+private const val NOTE_MS = 4_000L
 
 /** "Replying to dibs" over the box, with two lines of that message and ✕; the next message answers it. */
 @Composable

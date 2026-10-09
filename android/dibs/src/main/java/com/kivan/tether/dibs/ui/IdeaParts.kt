@@ -99,12 +99,12 @@ internal fun rememberRecord(onDenied: () -> Unit = {}, drop: String? = null): (S
 }
 
 /** Android has been asked for the microphone once in this process: a second "no" means its settings. */
-private var micAsked = false
+internal var micAsked = false
 
-private fun shouldAsk(context: Context): Boolean =
+internal fun shouldAsk(context: Context): Boolean =
     (context as? android.app.Activity)?.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) ?: true
 
-private fun openAppSettings(context: Context) {
+internal fun openAppSettings(context: Context) {
     context.startActivity(
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

@@ -56,6 +56,25 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - "dibs is on it" is three calm dots under the newest line while dibs works. Scrolled up, a small
   "↓ 2 new" pill brings you back.
 
+## Talking into the box (task #377, 2026-10-09: the first step of "talk to dibs by voice")
+
+The user dictates with Gboard and wanted less typing; the research (`~/Tasks/2026-10-09-dibs-tether-research-a-new-way-of/REPORT.md`)
+picked a talk button wherever dibs needs words. Every box (the chat, a task's chat, Ask about) has a 🎤 between the
+text and Send (`Dictation.kt`, `Talk` in `ui/ChatParts.kt`):
+- **Local only** (the user's rule): Android's on-device recognizer (`createOnDeviceSpeechRecognizer`, the engine
+  Gboard's voice typing uses). No fallback to a network service: without it the box says "This phone can't recognise
+  speech offline".
+- Words appear live (partial results) after what's already in the box, a capital where a sentence starts
+  (`joinSpoken`), and count as typing (the Wait pings hold dibs's answer). The user reads them and taps Send; nothing
+  sends by itself yet.
+- One segmented session across pauses until the user taps the square, sends, types (the keyboard wins), leaves the
+  screen, or stays quiet 6 s. A recognizer that ignores segmentation gives one phrase; tap 🎤 again.
+- **Words to expect** (`EXTRA_BIASING_STRINGS`, `biasWords`): dibs's own ("dibs", "Tether", "worktree", …) and the
+  projects in the task index, busiest first, at most 40. Whether the on-device engine honours them is the open test
+  (motoparty found it ignored them for "motoparty").
+- A message with spoken words carries `"spoken": true` in its `say` / `task-say` value (not `thread-say`). dibs
+  ignores it today; it's there so its brain can allow for a misheard word.
+
 ## Look (the user's call; asked with a mockup page before the screens are built)
 
 - The shared design language (`~/Projects/design`): dark only, Rubik + Geist Mono, Lucide icons, one big
@@ -94,7 +113,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). The Recap's To look over section (task #336) is 0.13.0 (46). The drop box (Ideas v2, task #267) is 0.14.0 (47). dibs's pick on question buttons (task #360) is 0.14.1 (48). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). The Recap's To look over section (task #336) is 0.13.0 (46). The drop box (Ideas v2, task #267) is 0.14.0 (47). dibs's pick on question buttons (task #360) is 0.14.1 (48). Talking into the box (🎤, task #377) is 0.15.0 (49). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
