@@ -309,14 +309,15 @@ private fun BacklogBox(placeholder: String) {
     val rec by IdeaRecording.state.collectAsStateWithLifecycle()
     val record = rememberRecord(drop = BACKLOG_DROP)
     val recording = rec.takeIf { it is RecorderState.Recording || it is RecorderState.Starting }
-    val mine = recording != null && (recording as? RecorderState.Recording)?.drop.let { it == null || it == BACKLOG_DROP }
+    // Only a recording started here: one adding to a note or from the Ideas tab keeps its own panel there.
+    val mine = recording == RecorderState.Starting || (recording as? RecorderState.Recording)?.let { it.note == null && it.drop == BACKLOG_DROP } == true
     Column(Modifier.padding(bottom = Space.XS), verticalArrangement = Arrangement.spacedBy(Space.S)) {
         if (recording != null && mine) {
             RecordPanel(recording, "Recording for the Backlog")
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.S), verticalAlignment = Alignment.Top) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.S), verticalAlignment = Alignment.CenterVertically) {
                 IdeaTextBox(BACKLOG_FIELD, placeholder, Modifier.weight(1f)) { t -> later { Drafts.typed(context, t, drop = BACKLOG_DROP) } }
-                RoundAction(R.drawable.lucide_mic, "Say it", accent = false) { record(null) }
+                RoundAction(R.drawable.lucide_mic, "Say it", accent = false, compact = true) { record(null) }
             }
             FinishedLine(rec)
         }

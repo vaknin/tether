@@ -23,7 +23,12 @@
             "primary": "park",
             "lane": "running",
             "goal": null,
-            "activity": "working"
+            "activity": "working",
+            "progress": {
+              "stage": "plan",
+              "words": "working",
+              "from": 5
+            }
           },
           {
             "key": "task:2",
@@ -42,7 +47,12 @@
             "primary": "park",
             "lane": "running",
             "goal": null,
-            "activity": "you"
+            "activity": "you",
+            "progress": {
+              "stage": "plan",
+              "words": "working",
+              "from": 5
+            }
           },
           {
             "key": "task:3",

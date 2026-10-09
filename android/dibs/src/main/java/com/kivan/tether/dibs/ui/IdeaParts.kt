@@ -257,17 +257,17 @@ internal fun IdeaTextBox(
     }
 }
 
-/** A big round button with a Lucide icon and a word under it: Record, on the tab. */
+/** A big round button with a Lucide icon and a word under it: Record, on the tab. [compact]: smaller, the word only spoken. */
 @Composable
-internal fun RoundAction(icon: Int, label: String, modifier: Modifier = Modifier, accent: Boolean = true, onClick: () -> Unit) {
+internal fun RoundAction(icon: Int, label: String, modifier: Modifier = Modifier, accent: Boolean = true, compact: Boolean = false, onClick: () -> Unit) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(
-            Modifier.size(72.dp).clip(Pill).background(if (accent) Palette.Accent else Palette.SurfaceHigh).clickable(onClickLabel = label, onClick = onClick),
+            Modifier.size(if (compact) 52.dp else 72.dp).clip(Pill).background(if (accent) Palette.Accent else Palette.SurfaceHigh).clickable(onClickLabel = label, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(painterResource(icon), null, Modifier.size(30.dp), tint = if (accent) Palette.OnAccent else Palette.Text)
+            Icon(painterResource(icon), if (compact) label else null, Modifier.size(if (compact) 24.dp else 30.dp), tint = if (accent) Palette.OnAccent else Palette.Text)
         }
-        Text(label, style = AppType.label, color = Palette.Text)
+        if (!compact) Text(label, style = AppType.label, color = Palette.Text)
     }
 }
 

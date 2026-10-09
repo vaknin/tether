@@ -94,7 +94,7 @@ screens in their own Gradle module, fed by a structured payload on the `dibs` ch
 - Tether's side: the Dibs entry in the channel list, `tether://channel/dibs` intents, dibs's shortcut
   and its notifications open `DibsActivity` when the view carries the payload (else today's screen).
 - Version **0.4.0** (versionCode 14; task #19 takes 0.3.9); the Recap rework is 0.4.3 (17); Your tasks is
-  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). The Recap's To look over section (task #336) is 0.13.0 (46). Never uninstall:
+  0.5.0 (19); the lend toggles are 0.5.1 (20; 18 went unused); task #64's fixes are 0.5.4 (23; 0.5.2 and 0.5.3 went to parallel tasks); task #66's questions, plain decisions and talking only to dibs are 0.5.5 (24); phone presence (`_presence`, task #59) is 0.5.6 (25); the brain's state in the header (`doing`/`words`) is 0.5.10 (29); Ideas is 0.6.0 (31); Ask about (task #102) is 0.7.0 (32); root steps (task #145) are 0.8.0 (33); notifications that never cut a long title (task #131) are 0.8.1 (34); one slim bar and the dibs page (task #137) are 0.9.0 (35); the morning recap (unread list, merged story screen) is 0.10.0 (36); the board's Active and Backlog lists with a Start or Park button on each card are 0.10.5 (41); task and idea links (task #261) are 0.11.0 (42). Question cards with tappable addresses and a Copy button for sign-in codes (task #303) are 0.11.1 (43). instant feedback on taps (task #124) is 0.12.1 (45). The Recap's To look over section (task #336) is 0.13.0 (46). The drop box (Ideas v2, task #267) is 0.14.0 (47). Never uninstall:
   `adb install -r`.
 
 ### The payload (dibs → phone, in the `dibs` channel's view)
@@ -839,3 +839,31 @@ Every button shows at once that the tap registered; nothing waits for dibs's rou
 - With no link the action is queued (it goes when the link is back); after 2.5 s the note says so instead of spinning.
 - Notes (`TapNotes`, over the tabs and over a page) dismiss with a tap. Pure logic: `Taps.judge`, `TapsTest`.
 - Root steps (the Root page and the root cards' buttons) and Undo are never taken back (`answer(rollback = false)`): dibs may take longer than 20 s, and a repeat would double the action.
+
+## Ideas v2: the drop box (task #267, app 0.14.0, versionCode 47)
+
+The user drops a rough idea, problem or task, typed or spoken; dibs reads it, asks at most two short questions,
+and files it as a parked Backlog task linked to the note (dibs side: `docs/plan/ideas.md` in dibs, "Ideas v2").
+
+### Data (dibs → phone)
+- `ideas.notes[].group`: `asks`, `reading`, `notes` or `filed` (Trash stays as before). No `group` (an older dibs):
+  every note is in Notes, as before.
+- `ideas.notes[].answer`: the key of the note's inline answer box, present while dibs asks; its text is sent as an
+  addition to the note (`idea-add`). The status line and buttons already say the question and the state.
+- `ideas.box` `{placeholder, hint}`: the drop box's words; absent, the old words show.
+- Board: the `backlog` column has `box` (`{placeholder}`, the Backlog box) and starts with one `drop:<note id>` card
+  per drop dibs hasn't filed yet: `n` null, no actions, `state_words` ("dibs is reading it", "dibs asks: …") and
+  `open` (`idea:<num>`, the idea's page). Once filed, the real `task:N` card takes its place.
+
+### Actions (phone → dibs)
+- `idea-new` gets `drop`: `"ideas"` (the Ideas tab's box) or `"backlog"` (the Backlog box: always filed or asked
+  about, never kept as a plain note). Drafts keep the field, so a queued or recorded drop keeps it too.
+- `drop-answer {note, choice: "file" | "drop"}`: File it as it is, Drop it. `drop-file {note}`: File it anyway (a
+  covered or kept note). `drop-retry {note}`: Try again after dibs couldn't read it. All come as the note's buttons.
+
+### What the user sees
+- Ideas tab, top to bottom: the drop box (text and mic), then Asks you (each question with an answer box and its
+  two buttons), Being read, Notes, and the folds Filed and Ticked off. Filed rows link their task.
+- Tasks tab: a one-line box and a mic at the top of the Backlog column; a draft on its way shows "Sending…" under
+  it; drop cards show with no number and open the idea's page.
+- The idea's page: an Answer box while dibs asks; the Add to it box otherwise.
