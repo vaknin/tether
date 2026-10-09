@@ -245,16 +245,18 @@ object Channels {
      * [view] is the channel's newest (dibs's names what an `ask:<id>` tag's tap opens).
      */
     private fun post(c: ChannelInfo, data: String, view: JSONObject?) {
-        if (!c.notify || showing(c.name)) return
         val d = parse(data) ?: return
         val p = d.optJSONObject("post")
+        // A loud post is shown even while its screen is up: an urgent alert must not be swallowed.
+        val loud = p?.optBoolean("loud", false) ?: false
+        if (!c.notify || (showing(c.name) && !loud)) return
         val text = p?.optString("text") ?: d.optString("text")
         val title = p?.optString("title").orEmpty().ifEmpty { c.title }
         val tag = p?.optString("tag")?.takeIf { it.isNotEmpty() }
         val actions = p?.optJSONArray("actions")?.let { a ->
             (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { it.optString("id") to it.optString("label") }
         }.orEmpty()
-        if (text.isNotBlank()) Notifier.app(app, c, title, text, actions, tag, view)
+        if (text.isNotBlank()) Notifier.app(app, c, title, text, actions, tag, view, loud)
     }
 
     // A live `{"patch":{"<block id>":{…}}}` replaces those fields until the next view.

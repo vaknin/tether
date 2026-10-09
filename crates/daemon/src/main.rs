@@ -149,6 +149,9 @@ enum Cmd {
         /// A button under the post; the phone's tap comes back to the channel as that action.
         #[arg(long = "action", value_name = "ID:LABEL")]
         actions: Vec<String>,
+        /// Loud: the phone's urgent channel, with the alarm sound (an old phone app shows it normally).
+        #[arg(long)]
+        loud: bool,
     },
     /// The app channels: manifests in ~/.config/tether/apps and channels that only have posts.
     Channels {
@@ -436,8 +439,8 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Post { channel, text, title, tag, actions } => {
-            let data = post(text.join(" "), title.as_deref(), tag.as_deref(), &actions)?.to_string();
+        Cmd::Post { channel, text, title, tag, actions, loud } => {
+            let data = post(text.join(" "), title.as_deref(), tag.as_deref(), &actions, loud)?.to_string();
             call(&sock, &Request::AppSend { channel, data, live: false, replace: false }).await?;
             println!("queued");
             Ok(())
@@ -524,7 +527,7 @@ async fn run(cmd: Cmd, sock: PathBuf) -> Result<()> {
 }
 
 /// A thread post: `{"post":{"text","actions":[{"id","label"}]?}}` from `ID:LABEL` pairs.
-fn post(text: String, title: Option<&str>, tag: Option<&str>, actions: &[String]) -> Result<Value> {
+fn post(text: String, title: Option<&str>, tag: Option<&str>, actions: &[String], loud: bool) -> Result<Value> {
     let mut p = serde_json::json!({ "text": text });
     for (k, v) in [("title", title), ("tag", tag)] {
         if let Some(v) = v.filter(|v| !v.is_empty()) {
@@ -542,6 +545,9 @@ fn post(text: String, title: Option<&str>, tag: Option<&str>, actions: &[String]
             })
             .collect::<Result<Vec<_>>>()?;
         p["actions"] = Value::Array(list);
+    }
+    if loud {
+        p["loud"] = true.into();
     }
     Ok(serde_json::json!({ "post": p }))
 }
@@ -730,16 +736,19 @@ mod tests {
 
     #[test]
     fn posts_and_thread_lines() {
-        let p = post("hi".into(), None, None, &["ok:OK".into(), "no:Not now".into()]).unwrap();
+        let p = post("hi".into(), None, None, &["ok:OK".into(), "no:Not now".into()], false).unwrap();
         assert_eq!(p, json!({"post": {"text": "hi", "actions": [{"id": "ok", "label": "OK"}, {"id": "no", "label": "Not now"}]}}));
-        assert_eq!(post("hi".into(), None, None, &[]).unwrap(), json!({"post": {"text": "hi"}}));
-        assert!(post("hi".into(), None, None, &["nolabel".into()]).is_err());
-        let q = post("Merge now?".into(), Some("dibs: web"), Some("q-12"), &["yes:Merge".into()]).unwrap();
+        assert_eq!(post("hi".into(), None, None, &[], false).unwrap(), json!({"post": {"text": "hi"}}));
+        assert!(post("hi".into(), None, None, &["nolabel".into()], false).is_err());
+        let q = post("Merge now?".into(), Some("dibs: web"), Some("q-12"), &["yes:Merge".into()], false).unwrap();
         assert_eq!(
             q,
             json!({"post": {"text": "Merge now?", "title": "dibs: web", "tag": "q-12", "actions": [{"id": "yes", "label": "Merge"}]}})
         );
-        assert_eq!(post("hi".into(), Some(""), Some(""), &[]).unwrap(), json!({"post": {"text": "hi"}}), "empty flags are left out");
+        assert_eq!(post("hi".into(), Some(""), Some(""), &[], false).unwrap(), json!({"post": {"text": "hi"}}), "empty flags are left out");
+
+        let l = post("Done".into(), None, Some("task:7"), &[], true).unwrap();
+        assert_eq!(l, json!({"post": {"text": "Done", "tag": "task:7", "loud": true}}));
 
         assert_eq!(thread_line(&json!({"from_me": true, "data": p})), "laptop: hi");
         assert_eq!(thread_line(&json!({"from_me": false, "data": {"text": "yes"}})), "phone: yes");

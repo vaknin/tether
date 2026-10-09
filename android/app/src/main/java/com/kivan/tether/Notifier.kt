@@ -7,6 +7,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -38,6 +40,8 @@ object Notifier {
     private const val TRANSFERS = "transfers"
     private const val RING = "ring"
     private const val PROBLEMS = "problems"
+    /** What the user asked to hear about at once (a dibs post with `loud`). Not under [APP_PREFIX]: [appChannels] deletes those it doesn't want. */
+    const val LOUD = "loud"
     /** About the longest title the Pixel's notification shows on its one line uncut. */
     const val TITLE_FITS = 34
     /** The transfer batch, also [TransferService]'s foreground notification. */
@@ -80,6 +84,25 @@ object Notifier {
                 NotificationChannel(STATUS, "Status", NotificationManager.IMPORTANCE_LOW).apply {
                     description = "Ongoing states from the laptop, like dibs having your phone"
                     setSound(null, null)
+                },
+                // Plays the default alarm sound once, on the alarm stream (audible in silent mode), and
+                // vibrates long. Sound and vibration are frozen once the channel exists: a change
+                // needs a new id.
+                NotificationChannel(LOUD, "Urgent from dibs", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Things you asked to hear about at once"
+                    val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    setSound(
+                        uri,
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build(),
+                    )
+                    enableVibration(true)
+                    vibrationPattern = longArrayOf(0, 800, 300, 800, 300, 800)
+                    enableLights(true)
+                    setBypassDnd(true)
                 },
                 NotificationChannel(PROBLEMS, "Problems", NotificationManager.IMPORTANCE_DEFAULT).apply {
                     description = "Messages stuck on the phone, a file that couldn't be sent, or the laptop no longer paired"
@@ -389,6 +412,15 @@ object Notifier {
         if (title.length <= TITLE_FITS) null to text
         else channel to if (text.isBlank()) title else "$title\n$text"
 
+    /** The notification channel for a Tether channel's post: the urgent one when it is [loud]. */
+    internal fun channelFor(app: String, loud: Boolean): String = if (loud) LOUD else APP_PREFIX + app
+
+    /**
+     * Whether a replaced notification stays quiet: a tagged post updated in place doesn't alert
+     * again, but a [loud] one always does, even when it reuses a tag.
+     */
+    internal fun alertOnce(tag: String?, loud: Boolean): Boolean = tag != null && !loud
+
     private fun expanded(channel: String, title: String, text: String): NotificationCompat.BigTextStyle {
         val (big, body) = expandedParts(channel, title, text)
         return NotificationCompat.BigTextStyle().bigText(body).also { if (big != null) it.setBigContentTitle(big) }
@@ -408,6 +440,7 @@ object Notifier {
         actions: List<Pair<String, String>> = emptyList(),
         tag: String? = null,
         view: JSONObject? = null,
+        loud: Boolean = false,
     ) {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) return
@@ -416,7 +449,7 @@ object Notifier {
         // Request codes differ per notification and button, so one's buttons never replace another's.
         val code = (if (tag != null) noteTag else "$APP_TAG:${c.name}").hashCode()
         val dibs = c.name == Channels.DIBS
-        val b = NotificationCompat.Builder(context, APP_PREFIX + c.name)
+        val b = NotificationCompat.Builder(context, channelFor(c.name, loud))
             .setSmallIcon(if (dibs) com.kivan.tether.dibs.R.drawable.ic_dibs_notification else R.drawable.ic_notification)
             .setLargeIcon(glyph(c, 192))
             .setContentTitle(title)
@@ -428,7 +461,8 @@ object Notifier {
             .setAutoCancel(true)
             // A tagged post updated in place doesn't alert again; a new untagged post (it replaces
             // the channel's one) does, as before.
-            .setOnlyAlertOnce(tag != null)
+            .setOnlyAlertOnce(alertOnce(tag, loud))
+        if (loud) b.setPriority(NotificationCompat.PRIORITY_MAX)
         // Buttons run in the background, so they work from the lock screen without unlocking. A tap
         // clears only its own notification.
         for ((i, a) in actions.take(3).withIndex()) {

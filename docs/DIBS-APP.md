@@ -790,3 +790,18 @@ links where it knows the task or idea, opens them on a tap, and offers them whil
 `links-cases.json` (`android/dibs/src/test/resources/`, a copy of dibs's `docs/links-cases.json`) holds the rule for
 what is a link: `RefsTest` runs it here, dibs's `refs::find` and the desktop app's `refs.ts` run the same file, so the
 three agree. Screen tests: `ScreensTest` (`links-chat`, `links-card`, `links-task-page`, `links-picker`).
+
+## Urgent notifications (task #306; app 0.12.0, versionCode 44)
+
+Things the user asked to hear about at once (a task they called urgent, done or stuck; a promise to tell them urgently)
+ring loudly. dibs decides what is loud; the phone only obeys the flag.
+
+- **The flag.** A thread post with `"loud": true` (`tether post --loud`, `dibs-phone post --loud`). An older app ignores
+  the field and shows a normal notification.
+- **The channel.** `loud`, shown in Android's settings as "Urgent from dibs": high importance, the default alarm sound on
+  the alarm stream (so it is heard in silent mode), a long vibration, played once (no looping, no volume change, no
+  full-screen intent). It is not under the `app.` prefix, so `appChannels()` never deletes it. The user can tune it in
+  Android's notification settings. Channel sound and vibration are frozen once created: a change needs a new id.
+- **Behaviour.** A loud post is shown even while its channel's screen is up (`Channels.post`), and always alerts, even
+  when it reuses a `--tag` (`Notifier.alertOnce`). Same tag, buttons and tap target as a normal card.
+- **Tests.** `LoudTest` (`channelFor`, `alertOnce`); the daemon's `posts_and_thread_lines` covers `--loud`.

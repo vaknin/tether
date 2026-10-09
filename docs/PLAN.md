@@ -307,7 +307,7 @@ request, a CLI group, an arm in `apps::run`).
   `channels` (manifests + newest view + badge each), `channels_reload`, `thread{channel,limit}`.
   `watch` also streams `{"type":"app","channel","view":bool}` change notices (no data) for views and
   thread items, so the panel can re-read.
-- CLI: `tether post <ch> <text…> [--title T] [--tag K] [--action id:label]…`, `tether channels [--json] [--reload]`,
+- CLI: `tether post <ch> <text…> [--title T] [--tag K] [--action id:label]… [--loud]`, `tether channels [--json] [--reload]`,
   `tether view <ch> [<file>|-]` (publish a view), `tether action <ch> <json>`, `tether thread <ch> [--json]`,
   `tether channel add|set|rm|ls`, `tether list <ch> …` (built-in `list` kind, above).
 - Panel (QML): **built 2026-10-02 and live** (checked end to end with teen-app, below).
@@ -380,6 +380,7 @@ Research write-up: https://claude.ai/artifact/KEF8NckdLpSGJagxA14wWC. The plan i
 - **Stage 1 notifications (built 2026-10-04):**
   - `Notifier.app` alerts once per change.
   - One dibs question need not remove another's lock-screen buttons: a post with `--tag` gets its own notification, and a view's `open_tags` clears the answered ones. dibs uses both on its side.
+  - Loud posts (2026-10-09, dibs app 0.12.0): `tether post --loud` sets `"loud": true`; the phone puts it on its own channel "Urgent from dibs" (alarm sound once, long vibration) and shows it even while the channel is on screen. See `docs/DIBS-APP.md` "Urgent notifications".
   - Short cards, also for dibs: a list item's `details` (behind a toggle) and `reply` (a free-text answer box); a post's `--title`.
 - **Stage 2:** `tether view --check` validates a view against the blocks `ChannelScreen.kt` and `Channel.qml` draw. Fixture views, dibs's included, are tested here.
 - **Stage 3:**
