@@ -122,7 +122,7 @@ no blocks except the lend card (old screens aren't shown any more); older apps k
                  "hint": "Answer in your own words…"?,
                  "read": {"label": "Read it in full", "task": 42, "url": "https://…" | null}?}],
   "looks": [{"id": 7, "kind": "plan|design|research|answer|page", "title": "…", "pick": "what dibs picked and why, or found",
-             "link": "https://…"?, "task": 210?, "follow": 211?, "follow_state": "queued|running|done"?,
+             "link": "https://…"?, "task": 210?, "follow": 211?, "follow_state": "queued|running|done|ended"?,
              "ts": …, "read": false}],              // "To look over" in Recap (0.12.0), newest first, at most 30
   "decided": [{"id": 250, "text": "…", "why": "…", "from": "…", "ts": …}],
   "tasks": [{"id": 16, "name": "…", "state": "running", "repo": "dibs", "minutes": 46,
