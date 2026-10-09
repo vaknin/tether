@@ -80,14 +80,14 @@ fun limitName(name: String): String = when (name) {
     else -> name
 }
 
-/** At this percent a window's line turns amber. */
+/** At this percent a usage ring turns amber. */
 const val LIMIT_WARN = 80.0
 
-/** One line of the header's usage: its words, and whether it's near the end ([LIMIT_WARN]). */
+/** One line of a usage window: its words, and whether it's near the end ([LIMIT_WARN]). */
 data class LimitLine(val text: String, val warn: Boolean)
 
 /**
- * The header's usage lines, one per window still running at [now]: "5h 87% · resets 12:20",
+ * The dibs page's usage lines, one per window still running at [now]: "5h 87% · resets 12:20",
  * "7d 63% · resets Thu 09:00" (the day when it's more than 20 hours off). [clock] says a time as
  * the phone does; [day] its weekday.
  */
@@ -96,6 +96,35 @@ fun limitWords(limits: List<Limit>, now: Long, clock: (Long) -> String, day: (Lo
         val at = if (l.resets - now > 20 * 3600) "${day(l.resets)} ${clock(l.resets)}" else clock(l.resets)
         LimitLine("${limitName(l.name)} ${kotlin.math.round(l.pct).toInt()}% · resets $at", l.pct >= LIMIT_WARN)
     }
+
+/** One ring in the bar: [label] under it, [number] inside (0..100), filled by [pct] (0..100), amber when [warn]; [words] for the card. */
+data class UsageRing(val label: String, val pct: Double, val number: Int, val warn: Boolean, val words: String)
+
+/**
+ * The bar's rings: the 5-hour window, then the weekly one (whatever order dibs sent them; spend_limit has
+ * no ring). A window past its reset ([Limit.resets] in 1..[now]) counts as 0 and says it started over.
+ * [clock] says a time as the phone does; [day] its weekday, added when the reset is more than 20 hours off.
+ */
+fun usageRings(limits: List<Limit>, now: Long, clock: (Long) -> String, day: (Long) -> String): List<UsageRing> =
+    listOf("five_hour" to "5-hour window", "seven_day" to "Weekly").mapNotNull { (name, title) ->
+        val l = limits.firstOrNull { it.name == name } ?: return@mapNotNull null
+        val over = l.resets in 1..now
+        val pct = if (over) 0.0 else l.pct
+        val at = if (l.resets - now > 20 * 3600) "${day(l.resets)} ${clock(l.resets)}" else clock(l.resets)
+        val number = kotlin.math.round(pct).toInt().coerceIn(0, 100)
+        val words = when {
+            over -> "$title: started over at ${clock(l.resets)}"
+            l.resets <= 0 -> "$title: $number% used"
+            else -> "$title: $number% used, resets $at"
+        }
+        UsageRing(limitName(name), pct.coerceIn(0.0, 100.0), number, pct >= LIMIT_WARN, words)
+    }
+
+/** "Numbers from 10:05" when the newest reading of the rings' windows is more than 15 minutes old at [now]; else null. */
+fun usageStale(limits: List<Limit>, now: Long, clock: (Long) -> String): String? {
+    val newest = limits.filter { it.name == "five_hour" || it.name == "seven_day" }.maxOfOrNull { it.asof } ?: return null
+    return if (newest > 0 && now - newest > 15 * 60) "Numbers from ${clock(newest)}" else null
+}
 
 /**
  * The laptop in one line: "11.2 of 15.6 GB used · load 6.2 on 16 cores · 2 building, 11 waiting

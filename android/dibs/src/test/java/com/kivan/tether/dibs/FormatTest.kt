@@ -84,6 +84,67 @@ class FormatTest {
     }
 
     @Test
+    fun theRingsComeFiveHourFirstAndDropTheSpendLine() {
+        val now = 1_000_000L
+        val clock: (Long) -> String = { "t${it - now}" }
+        val day: (Long) -> String = { "Thu" }
+        val rings = usageRings(
+            listOf(Limit("spend_limit", 10.0, now + 60), Limit("seven_day", 63.0, now + 3 * 86400), Limit("five_hour", 87.6, now + 3600)),
+            now, clock, day,
+        )
+        assertEquals(listOf("5h", "7d"), rings.map { it.label })
+        assertEquals(listOf(88, 63), rings.map { it.number })
+        assertEquals(listOf(true, false), rings.map { it.warn })
+        assertEquals("5-hour window: 88% used, resets t3600", rings[0].words)
+        assertEquals("Weekly: 63% used, resets Thu t259200", rings[1].words)
+        assertEquals(emptyList<UsageRing>(), usageRings(listOf(Limit("spend_limit", 10.0, now + 60)), now, clock, day))
+        assertEquals(1, usageRings(listOf(Limit("seven_day", 5.0, now + 60)), now, clock, day).size)
+    }
+
+    @Test
+    fun aRingPastItsResetIsEmptyAndSaysItStartedOver() {
+        val now = 1_000_000L
+        val clock: (Long) -> String = { "t${it - now}" }
+        val r = usageRings(listOf(Limit("five_hour", 95.0, now - 30)), now, clock) { "Thu" }.single()
+        assertEquals(0, r.number)
+        assertEquals(0.0, r.pct, 0.0)
+        assertEquals(false, r.warn)
+        assertEquals("5-hour window: started over at t-30", r.words)
+        // Reset time unknown (0): treated as running, with no time in the words.
+        val u = usageRings(listOf(Limit("five_hour", 42.0, 0)), now, clock) { "Thu" }.single()
+        assertEquals(42, u.number)
+        assertEquals("5-hour window: 42% used", u.words)
+    }
+
+    @Test
+    fun theRingNumberIsClampedAndWarnsByPercentNotByTheRoundedNumber() {
+        val now = 1_000_000L
+        val one = { p: Double -> usageRings(listOf(Limit("five_hour", p, now + 60)), now, { "t" }, { "Thu" }).single() }
+        val over = one(103.0)
+        assertEquals(100, over.number)
+        assertEquals(100.0, over.pct, 0.0)
+        assertEquals(true, over.warn)
+        val near = one(79.6)
+        assertEquals(80, near.number)
+        assertEquals(false, near.warn)
+        assertEquals(true, one(80.0).warn)
+        assertEquals(0, one(-3.0).number)
+    }
+
+    @Test
+    fun oldNumbersSayWhenTheyAreFrom() {
+        val now = 1_000_000L
+        val clock: (Long) -> String = { "t${it - now}" }
+        assertEquals("Numbers from t-1000", usageStale(listOf(Limit("five_hour", 5.0, now + 60, asof = now - 1000)), now, clock))
+        assertNull(usageStale(listOf(Limit("five_hour", 5.0, now + 60, asof = now - 600)), now, clock))
+        assertNull(usageStale(listOf(Limit("five_hour", 5.0, now + 60, asof = 0)), now, clock))
+        // The newest reading counts; the spend line is not a ring.
+        val mixed = listOf(Limit("five_hour", 5.0, now + 60, asof = now - 5000), Limit("seven_day", 5.0, now + 60, asof = now - 10), Limit("spend_limit", 1.0, 0, asof = now - 9000))
+        assertNull(usageStale(mixed, now, clock))
+        assertNull(usageStale(emptyList(), now, clock))
+    }
+
+    @Test
     fun theLaptopInOneLine() {
         val gb = 1_073_741_824L
         assertEquals(

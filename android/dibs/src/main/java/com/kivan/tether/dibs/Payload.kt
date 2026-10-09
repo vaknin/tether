@@ -229,7 +229,7 @@ data class LendToggle(val lent: Boolean, val text: String, val action: String, v
 data class Lends(val phone: LendToggle?, val laptop: LendToggle?, val compute: LendToggle? = null)
 
 /** One Claude usage window as dibs last read it: five_hour, seven_day or spend_limit, its percent, when it resets. */
-data class Limit(val name: String, val pct: Double, val resets: Long)
+data class Limit(val name: String, val pct: Double, val resets: Long, val asof: Long = 0)
 
 /** The laptop as dibs last saw it; any part may be missing. Memory in bytes, [load] the 1-minute load average. */
 data class Laptop(
@@ -573,7 +573,7 @@ data class DibsView(
                 now = o.optLong("now"),
                 state = State(
                     st.str("brain"), st.optBoolean("busy"), st.str("line"), st.str("usage"),
-                    st.optJSONObject("limits")?.optJSONArray("windows").objects().map { Limit(it.optString("name"), it.optDouble("pct", 0.0), it.optLong("resets")) },
+                    st.optJSONObject("limits")?.optJSONArray("windows").objects().map { Limit(it.optString("name"), it.optDouble("pct", 0.0), it.optLong("resets"), it.optLong("asof")) },
                     st.optJSONObject("laptop")?.let { l ->
                         Laptop(l.long("mem_used"), l.long("mem_total"), l.double("load"), l.long("cores")?.toInt(), l.long("builds")?.toInt(), l.long("waiting")?.toInt(), l.long("agents")?.toInt(), l.str("name"))
                     },
