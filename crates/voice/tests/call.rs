@@ -261,7 +261,7 @@ async fn hangup_sends_hangup_and_ends_with_the_earcon() {
 async fn a_close_from_the_server_ends_the_call_without_resuming() {
     let (_call, s, mut accept, _r, log) = up().await;
     let _ = s.to_phone.send(Ok(Frame::Close));
-    wait_for(&log, r#"status Ended("Jarvis ended the call")"#).await;
+    wait_for(&log, r#"status Ended("Jarvis ended it")"#).await;
     tokio::time::sleep(Duration::from_secs(30)).await;
     assert!(accept.try_recv().is_err(), "no reconnect after a close");
 }
@@ -892,7 +892,7 @@ async fn a_server_going_away_is_a_drop_not_the_end() {
     });
     let log = Arc::new(Log::default());
     let _call = Call::start(websocket(format!("ws://127.0.0.1:{port}/call")), log.clone(), Timing::default());
-    wait_for(&log, r#"status Ended("Jarvis ended the call")"#).await;
+    wait_for(&log, r#"status Ended("Jarvis ended it")"#).await;
     assert!(!log.has("status Reconnecting"), "back within the grace");
     assert_eq!(server.await.unwrap()[1], r#"{"type":"hello","version":1,"resume":"x","have":0,"queued_ms":0}"#);
 }

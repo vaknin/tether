@@ -93,6 +93,8 @@ fun ReplyPage(
     answer: Entry.Answer,
     draft: ReplyDraft,
     muted: Boolean,
+    heard: String = "",
+    onTaken: () -> Unit = {},
     onDraft: (ReplyDraft) -> Unit,
     onSend: (ReplyDraft, List<Quoted>, String) -> Unit,
     onBack: () -> Unit,
@@ -106,6 +108,15 @@ fun ReplyPage(
     val write = { i: Int ->
         if (draft.notes[i] == null) onDraft(draft.copy(notes = draft.notes + (i to Note("", ""))))
         writing = i
+    }
+    // With the box open his words write into it: under the highlighted paragraph, else at the end.
+    LaunchedEffect(heard) {
+        if (heard.isBlank()) return@LaunchedEffect
+        fun more(was: String) = if (was.isBlank()) heard else "$was $heard"
+        val at = writing
+        val note = at?.let { draft.notes[it] }
+        onDraft(if (at != null && note != null) draft.copy(notes = draft.notes + (at to note.copy(text = more(note.text)))) else draft.copy(end = more(draft.end)))
+        onTaken()
     }
     val quoteFor = { i: Int, n: Note -> n.quote.ifEmpty { blocks.getOrNull(i)?.plain.orEmpty() } }
     val send = {

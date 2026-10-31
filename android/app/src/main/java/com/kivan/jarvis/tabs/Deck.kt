@@ -12,7 +12,6 @@ data class TileView(
     val needs: Boolean = false,
     val unread: Boolean = false,
     val working: Boolean = false,
-    val readOnly: Boolean = false,
 )
 
 enum class Sending { Sent, Sending, Refused }
@@ -91,6 +90,8 @@ data class DeckState(
     val closed: List<ClosedTab> = emptyList(),
     val online: Boolean = true,
     val muted: Boolean = false,
+    /** What he said that waits for a tap, a jump or Send; with the reply box open it goes into the box. */
+    val heard: String = "",
     /** The box's words per tab, so a typed line survives a swipe or a restart. */
     val typed: Map<String, String> = emptyMap(),
     /** Files fetched so far, "tab/name" to a path; an empty path means the server doesn't have it. */
@@ -116,6 +117,12 @@ interface Deck {
     fun reopen(id: String)
     fun move(id: String, to: Int)
     fun mute(on: Boolean)
+    /** He's on this tab now, or at the wall (null). A jump sends what waits. */
+    fun here(id: String?)
+    /** What he said on screen: `send` sends it, otherwise it was taken into a box. */
+    fun words(send: Boolean)
+    /** Stops what the tab is writing; what's written stays. */
+    fun stop(id: String)
     /** Asks for a file beside the record; it lands in [DeckState.files]. */
     fun file(id: String, name: String)
     fun openedDone()

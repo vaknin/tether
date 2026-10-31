@@ -138,7 +138,7 @@ fun HomeScreen() {
                             if (setupLeft(ctx)) DropdownMenuItem(text = { Text("Finish setting up") }, onClick = { menu = false; Move.guide() })
                             // The AirPods' stem double-press ("next track") calls Jarvis.
                             DropdownMenuItem(
-                                text = { Text("Double-press to call Jarvis") },
+                                text = { Text("Double-press to talk to Jarvis") },
                                 trailingIcon = { Switch(checked = doublePress, onCheckedChange = null) },
                                 onClick = { doublePress = !doublePress; MediaKeys.setEnabled(ctx, doublePress) },
                             )
@@ -165,7 +165,7 @@ fun HomeScreen() {
                     items(lines) { l -> Card(l) }
                 }
                 Box(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 40.dp), contentAlignment = Alignment.Center) {
-                    Round(R.drawable.lucide_phone, if (ui.live) Voice.label(ui) else "Call Jarvis", Go, Color.White, 144.dp, {
+                    Round(R.drawable.lucide_phone, if (ui.live) Voice.label(ui) else "Talk to Jarvis", Go, Color.White, 144.dp, {
                         ctx.startActivity(CallActivity.intent(ctx, start = true))
                     })
                 }

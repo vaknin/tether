@@ -2,6 +2,7 @@ package com.kivan.jarvis.tabs
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.kivan.jarvis.Voice
 import com.kivan.jarvis.core.ClosedRec
 import com.kivan.jarvis.core.EntryRec
 import com.kivan.jarvis.core.Landing
@@ -19,14 +20,17 @@ import com.kivan.jarvis.core.tabsSay
 import com.kivan.jarvis.core.tabsSeen
 import com.kivan.jarvis.core.tabsShow
 import com.kivan.jarvis.core.tabsStart
+import com.kivan.jarvis.core.tabsStop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -40,7 +44,11 @@ import java.io.File
  * there; this keeps only what is the phone's own: his unsent words, his drafts, the mute, and the last
  * wall, so the screen opens full and a restart loses no typing. Calls arrive on Rust's threads.
  */
-class RealDeck private constructor(private val prefs: SharedPreferences, private val files: File) : Deck, TabsListener {
+class RealDeck private constructor(
+    private val app: Context,
+    private val prefs: SharedPreferences,
+    private val files: File,
+) : Deck, TabsListener {
     private val flow = MutableStateFlow(Saved.read(prefs))
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     override val state: StateFlow<DeckState> = flow
@@ -48,6 +56,15 @@ class RealDeck private constructor(private val prefs: SharedPreferences, private
     init {
         @OptIn(FlowPreview::class)
         flow.map(Saved::of).distinctUntilChanged().debounce(400).onEach { it.write(prefs) }.launchIn(scope)
+        // The mute shows whatever set it: this button, the notification, his voice.
+        Voice.loadMute(app)
+        Voice.ui.combine(Voice.saved) { ui, saved -> if (ui.live) ui.micOff else saved }
+            .distinctUntilChanged().onEach { on -> flow.update { it.copy(muted = on) } }.launchIn(scope)
+        Voice.heard.onEach { words -> flow.update { it.copy(heard = words) } }.launchIn(scope)
+        Voice.movedTo.filterNotNull().onEach {
+            landed(it)
+            Voice.movedTo.value = null
+        }.launchIn(scope)
     }
 
     fun up() = tabsAttach(this)
@@ -100,8 +117,25 @@ class RealDeck private constructor(private val prefs: SharedPreferences, private
         tabsMove(id, to.toUInt())
     }
 
-    // The mic is step 5: until then the mute is only the button's state.
-    override fun mute(on: Boolean) = flow.update { it.copy(muted = on) }
+    override fun mute(on: Boolean) = Voice.mute(app, on)
+
+    override fun here(id: String?) {
+        val at = Voice.place.value
+        if (!at.stay && at.tab == id) return
+        // They go to the tab they were said on, ahead of the jump.
+        if (Voice.heard.value.isNotEmpty()) words(true)
+        val tile = flow.value.tiles.firstOrNull { it.id == id }
+        Voice.place.value = Voice.Place(id, tile?.let { it.name.ifBlank { "Tab ${it.n}" } }.orEmpty(), stay = false)
+    }
+
+    override fun words(send: Boolean) {
+        Voice.call?.sendWords(send)
+    }
+
+    override fun stop(id: String) = tabsStop(id)
+
+    /** Opens this tab, now or when Tabs next comes up. */
+    fun landed(id: String) = flow.update { it.copy(opened = id) }
 
     override fun file(id: String, name: String) = tabsFile(id, name)
 
@@ -119,7 +153,7 @@ class RealDeck private constructor(private val prefs: SharedPreferences, private
 
         fun get(context: Context): RealDeck = one ?: synchronized(this) {
             val app = context.applicationContext
-            one ?: RealDeck(app.getSharedPreferences("tabs", Context.MODE_PRIVATE), File(app.cacheDir, TAB_FILES)).also { one = it }
+            one ?: RealDeck(app, app.getSharedPreferences("tabs", Context.MODE_PRIVATE), File(app.cacheDir, TAB_FILES)).also { one = it }
         }
     }
 }
@@ -162,7 +196,7 @@ internal fun DeckState.typedBack(id: String, text: String): DeckState {
     return copy(typed = typed + (id to if (now.isBlank()) text else "$text\n\n$now"))
 }
 
-private fun view(t: TileRec) = TileView(t.id, t.n.toInt(), t.name, t.needs, t.unread, t.working, t.readOnly)
+private fun view(t: TileRec) = TileView(t.id, t.n.toInt(), t.name, t.needs, t.unread, t.working)
 
 private fun entry(e: EntryRec): Entry = when (e) {
     is EntryRec.Yours -> Entry.Yours(
@@ -194,7 +228,7 @@ internal data class Saved(
     fun json(): String = JSONObject().apply {
         put("tiles", tiles.fold(org.json.JSONArray()) { a, t ->
             a.put(JSONObject().put("id", t.id).put("n", t.n).put("name", t.name).put("needs", t.needs)
-                .put("unread", t.unread).put("readOnly", t.readOnly))
+                .put("unread", t.unread))
         })
         put("typed", JSONObject(typed))
         put("drafts", JSONObject().also { all ->
@@ -226,7 +260,7 @@ internal data class Saved(
                 tiles = (0 until tiles.length()).map { i ->
                     val t = tiles.getJSONObject(i)
                     // A saved tile never shows work: it would glide with nothing behind it.
-                    TileView(t.getString("id"), t.getInt("n"), t.getString("name"), t.getBoolean("needs"), t.getBoolean("unread"), false, t.getBoolean("readOnly"))
+                    TileView(t.getString("id"), t.getInt("n"), t.getString("name"), t.getBoolean("needs"), t.getBoolean("unread"), false)
                 },
                 typed = typed.keys().asSequence().associateWith { typed.getString(it) },
                 drafts = drafts.keys().asSequence().associateWith { id ->

@@ -85,7 +85,7 @@ fun MoveInScreen(allowed: Boolean, allow: () -> Unit) {
                 }
                 !Move.ready() -> Text("Update the old Jarvis app first, then come back here.", color = Muted, textAlign = TextAlign.Center)
                 !allowed -> {
-                    Text("Calls need the microphone and notifications. Allow both, then everything comes over by itself.", color = Muted, textAlign = TextAlign.Center)
+                    Text("Talking to Jarvis needs the microphone and notifications. Allow both, then everything comes over by itself.", color = Muted, textAlign = TextAlign.Center)
                     Button(onClick = allow) { Text("Allow") }
                 }
                 Move.yielded() -> {
@@ -133,20 +133,20 @@ private fun flag(name: String): (Context) -> Boolean =
 
 /** What Android won't let move, each one tap, in the order that matters for calls. */
 private val setups = listOf(
-    Setup("Digital assistant", "Hold the power button to call Jarvis. Pick Jarvis on the next screen.", { c ->
+    Setup("Digital assistant", "Hold the power button to talk to Jarvis. Pick Jarvis on the next screen.", { c ->
         c.getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_ASSISTANT)
     }, { settings(it, Settings.ACTION_VOICE_INPUT_SETTINGS) }),
-    Setup("Stay on in the background", "So calls and notifications always reach you.", { c ->
+    Setup("Stay on in the background", "So Jarvis and notifications always reach you.", { c ->
         c.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(c.packageName)
     }, { settings(it, Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg(it)) }),
     Setup("Updates", "So Jarvis can install its own updates.", { c ->
         c.packageManager.canRequestPackageInstalls()
     }, { settings(it, Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, pkg(it)) }),
-    Setup("Full-screen calls", "So a call from Jarvis rings over the lock screen.", { c ->
+    Setup("Full-screen ringing", "So Jarvis can ring over the lock screen.", { c ->
         Build.VERSION.SDK_INT < 34 || c.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
     }, { settings(it, Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg(it)) }),
     Setup("Quick Settings tile", "The Jarvis tile, one swipe from anywhere.", flag("tile"), ::addTile),
-    Setup("Home screen shortcut", "One tap to call Jarvis.", flag("shortcut"), ::addShortcut),
+    Setup("Home screen shortcut", "One tap to talk to Jarvis.", flag("shortcut"), ::addShortcut),
 )
 
 /** Is something from the guide still to do? Home's ⋮ offers it until nothing is. */

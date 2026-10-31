@@ -37,7 +37,7 @@ class Alerts private constructor(private val context: Context) : AlertListener {
         val why = when {
             url.startsWith(CALLBACK) -> callBack(url.removePrefix(CALLBACK), title, text)
             // Jarvis calls him (reach, thread #36): a regular incoming call from "Jarvis".
-            url.startsWith(RING) -> Callback.ring(context, null, "Jarvis", text.ifEmpty { "Incoming call" }, reach = url.removePrefix(RING))
+            url.startsWith(RING) -> Callback.ring(context, null, "Jarvis", text.ifEmpty { "Jarvis wants to talk" }, reach = url.removePrefix(RING))
             // Jarvis needs him (reach's "wants to talk"): it rings, if the phone may.
             url == "/call" -> Callback.ring(context, null, title, text)
             // A tracked task landed or needs him: quiet, and the call is his to place.

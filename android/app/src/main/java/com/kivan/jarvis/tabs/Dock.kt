@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kivan.jarvis.R
 
@@ -65,17 +67,33 @@ fun Dock(
     leading: (@Composable RowScope.() -> Unit)? = null,
     focus: FocusRequester? = null,
     showSend: Boolean = true,
+    heard: String = "",
+    onHeard: () -> Unit = {},
+    onStop: (() -> Unit)? = null,
 ) {
-    Row(
-        modifier
-            .overKeyboard()
-            .padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        leading?.invoke(this)
-        WordsBox(hint, text, onText, onSend, Modifier.weight(1f), focus, showSend)
-        MuteButton(muted, onMute)
+    Column(modifier.overKeyboard().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 8.dp)) {
+        if (heard.isNotBlank()) {
+            // What he said waits here; a tap sends it.
+            Text(
+                heard,
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClickLabel = "Send what you said", onClick = onHeard)
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                look.soft,
+                style = Words.yours,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            leading?.invoke(this)
+            WordsBox(hint, text, onText, onSend, Modifier.weight(1f), focus, showSend, heard, onHeard, onStop)
+            MuteButton(muted, onMute)
+        }
     }
 }
 
@@ -88,9 +106,13 @@ private fun WordsBox(
     modifier: Modifier,
     focus: FocusRequester?,
     showSend: Boolean,
+    heard: String,
+    onHeard: () -> Unit,
+    onStop: (() -> Unit)?,
 ) {
     val ink = look.ink
-    val canSend = showSend && text.isNotBlank()
+    val hasWords = text.isNotBlank() || heard.isNotBlank()
+    val canSend = showSend && hasWords
     Row(
         modifier
             .heightIn(min = Space.target)
@@ -122,7 +144,24 @@ private fun WordsBox(
             enter = fadeIn(tween(Curves.QUICK)) + scaleIn(tween(Curves.QUICK), 0.6f),
             exit = fadeOut(tween(Curves.QUICK)) + scaleOut(tween(Curves.QUICK), 0.6f),
         ) {
-            Round(R.drawable.lucide_arrow_up, "Send", onSend, fill = ink, tint = look.canvas, size = 38.dp)
+            Round(
+                R.drawable.lucide_arrow_up,
+                "Send",
+                {
+                    if (heard.isNotBlank()) onHeard()
+                    if (text.isNotBlank()) onSend()
+                },
+                fill = ink,
+                tint = look.canvas,
+                size = 38.dp,
+            )
+        }
+        AnimatedVisibility(
+            !hasWords && onStop != null,
+            enter = fadeIn(tween(Curves.QUICK)) + scaleIn(tween(Curves.QUICK), 0.6f),
+            exit = fadeOut(tween(Curves.QUICK)) + scaleOut(tween(Curves.QUICK), 0.6f),
+        ) {
+            Round(R.drawable.lucide_square, "Stop", { onStop?.invoke() }, fill = ink, tint = look.canvas, size = 38.dp)
         }
     }
 }

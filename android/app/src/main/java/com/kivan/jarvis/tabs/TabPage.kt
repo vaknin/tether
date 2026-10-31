@@ -78,6 +78,9 @@ fun TabPage(
     onReopen: () -> Unit,
     onMute: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    heard: String = "",
+    onHeard: () -> Unit = {},
+    onStop: () -> Unit = {},
 ) {
     val rows = remember(tab.entries) { tab.entries.asReversed() }
     val list = rememberLazyListState()
@@ -145,7 +148,7 @@ fun TabPage(
                         EntryView(
                             tab.tile.id,
                             entry,
-                            canReply = !tab.closed && !tab.tile.readOnly && !(question != null && entry.key == lastAnswer),
+                            canReply = !tab.closed && !(question != null && entry.key == lastAnswer),
                             newest = entry.key == lastAnswer,
                             drafted = draft != null && entry is Entry.Answer && draft.to == entry.offset && !draft.empty,
                             onReply = onReply,
@@ -180,7 +183,6 @@ fun TabPage(
         }
         when {
             tab.closed -> ClosedBar(onReopen, muted, onMute)
-            tab.tile.readOnly -> Note("Read only, this came from a voice call", muted, onMute)
             else -> Dock(
                 hint = if (question != null) "Type your answer to this" else "Message ${tab.tile.name}",
                 text = typed,
@@ -195,6 +197,9 @@ fun TabPage(
                 },
                 muted = muted,
                 onMute = onMute,
+                heard = heard,
+                onHeard = onHeard,
+                onStop = onStop.takeIf { tab.work != null },
             )
         }
     }
@@ -463,17 +468,6 @@ private fun ClosedBar(onReopen: () -> Unit, muted: Boolean, onMute: (Boolean) ->
                 .padding(horizontal = 20.dp),
             Alignment.Center,
         ) { Text("Reopen", color = look.ink, style = Words.label) }
-        MuteButton(muted, onMute)
-    }
-}
-
-@Composable
-private fun Note(text: String, muted: Boolean, onMute: (Boolean) -> Unit) {
-    Row(
-        Modifier.overKeyboard().padding(start = Space.margin, end = 10.dp, top = 6.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text, Modifier.weight(1f), look.faint, style = Words.label)
         MuteButton(muted, onMute)
     }
 }

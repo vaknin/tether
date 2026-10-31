@@ -24,32 +24,46 @@ import android.net.Network
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.PowerManager
+import android.os.SystemClock
 import android.telecom.DisconnectCause
 import android.util.Log
 import androidx.core.telecom.CallAttributesCompat
 import androidx.core.telecom.CallsManager
 import com.kivan.jarvis.core.CallState
+import com.kivan.jarvis.core.LarkFilter
+import com.kivan.jarvis.core.MicPick
+import com.kivan.jarvis.core.Route
+import com.kivan.jarvis.core.Sensed
 import com.kivan.jarvis.core.VoiceCall
 import com.kivan.jarvis.core.VoiceListener
 import com.kivan.jarvis.core.micNote
+import com.kivan.jarvis.core.pickRoute
+import com.kivan.jarvis.tabs.TabsActivity
 import com.kivan.jarvis.core.sendCallLog
 import com.kivan.jarvis.core.forumNetworkChanged
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * One call with Jarvis, kept up with the screen locked (foreground service, types phoneCall and
- * microphone). It is a self-managed Telecom call (androidx core-telecom), so Android routes it like
- * a real call: AirPods switch to their call profile, a press on them hangs up, and another call
- * coming in puts it on hold. If Telecom refuses, the call still runs, with the audio routed by hand
- * (communication mode, the Bluetooth headset when there is one).
+ * One conversation with Jarvis, kept up with the screen locked and behind other apps (foreground
+ * service, types phoneCall and microphone). The two rules (`crates/voice/src/rules.rs`, fed by
+ * [Senses]) say which mic hears him and whether Jarvis speaks or writes, and they change as he moves.
+ *
+ * Only what truly needs it is a self-managed Telecom call (androidx core-telecom; a "leg", see [leg]),
+ * so Android routes it like a real call: AirPods switch to their call profile, a press on them hangs
+ * up, and another call coming in puts it on hold. If Telecom refuses, it still runs, with the audio
+ * routed by hand (communication mode, the Bluetooth headset when there is one). The phone's mic with
+ * the screen on and the Lark never take that route, so the AirPods keep their music quality.
  *
  * Audio: the mic (VOICE_COMMUNICATION, so the phone cancels Jarvis's voice out of it) goes out in
  * 20 ms frames. It is reopened on the new route whenever the call's audio device changes: an
@@ -71,13 +85,27 @@ class CallService : Service() {
     private var wake: PowerManager.WakeLock? = null
     private var wifi: WifiManager.WifiLock? = null
     private var telecom = false
+    /** The two rules' last word, and what they were given. */
+    @Volatile private var route = Route(MicPick.PHONE, true, true, "")
+    private var sense: Sensed? = null
+    private var senses: Senses? = null
+    /** Ends the Telecom call that's up; null with none. */
+    private var legEnd: CompletableDeferred<Unit>? = null
+    private var legJob: Job? = null
+    /** This leg opened because his music stopped: a press brings the music back, it doesn't hang up. */
+    private var stemLeg = false
+    private val audio by lazy { getSystemService(AudioManager::class.java) }
+    private val duck by lazy {
+        android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(MEDIA_SPEECH).setWillPauseWhenDucked(false).build()
+    }
     /** Muted by another call taking the line, not by Aviv. */
     @Volatile private var heldMute = false
     private val routes by lazy { AudioRoutes(this) }
     /** When this call started: its pieces in [CallLog] share it. */
     private var started = 0L
-    /** The notification's last text, so a state that reads the same isn't posted again. */
-    private var shown: Pair<String, Boolean>? = null
+    /** The notification's last content, so a state that reads the same isn't posted again. */
+    private var shown: List<Any?>? = null
     /** The call's audio device changed: the mic reopens on it. */
     @Volatile private var reroute = false
     /** When the headset's mic reopens; a new one for each stretch on a headset. */
@@ -142,8 +170,6 @@ class CallService : Service() {
             micLater = true
         }
         runCatching { Forum.start() }
-        keys?.release()
-        keys = MediaKeys.session(this)
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         over = CompletableDeferred()
         heldMute = false
@@ -166,12 +192,23 @@ class CallService : Service() {
         }
         stt?.call = c
         call = c
+        Voice.call = c
         MicLevel.source = c::micLevel
+        // Muted stays muted across a restart; any other start is him wanting to talk.
+        if (auto && Voice.saved.value) setMuted(true) else Voice.saveMute(this, false)
         running = true
         locks()
         watchNetwork(c)
         watchRoute()
-        scope.launch { telecom(c) }
+        val s = Senses(this, ::sensed)
+        senses = s
+        sense = s.sensed().also { route = pickRoute(it) }
+        logRoute()
+        s.start()
+        scope.launch { Voice.place.collect { tell(c); launch(Dispatchers.Main) { notify(Voice.ui.value.state) } } }
+        scope.launch { Voice.line.drop(1).collect { launch(Dispatchers.Main) { notify(Voice.ui.value.state) } } }
+        watchMuted(c)
+        leg(c)
         Thread(::speaker, "jarvis-speaker").apply { priority = Thread.MAX_PRIORITY }.start()
         Thread(::mic, "jarvis-mic").apply { priority = Thread.MAX_PRIORITY }.start()
     }
@@ -179,7 +216,99 @@ class CallService : Service() {
     private fun setMuted(on: Boolean) {
         call?.setMuted(on)
         Voice.update(this) { it.copy(muted = on, voiceMuted = false) }
+        if (!heldMute) Voice.saveMute(this, on)
         notify(Voice.ui.value.state)
+    }
+
+    /** Where he is and how Jarvis reaches him, for the server. */
+    private fun tell(c: VoiceCall) {
+        val at = Voice.place.value
+        c.setWhere(at.tab, route.speak, at.stay)
+    }
+
+    /** One line for one change, so a real run says which rule picked the mic (thread #125 reads these). */
+    private fun logRoute() {
+        val r = route
+        val s = sense
+        micNote("rule: ${r.rule}: mic ${r.mic}, ${if (r.speak) "speaks" else "writes"}, call route ${r.telecom}; lark ${s?.lark}, headset ${s?.airpods}, screen ${s?.screen}, music ${s?.music}, muted ${s?.muted}")
+    }
+
+    /** Something he changed: the rules look again, and the mic, the speaker and the call route follow. */
+    private fun sensed(s: Sensed) {
+        val c = call ?: return
+        val was = route
+        val r = pickRoute(s)
+        val musicStopped = sense?.music == true && !s.music
+        sense = s
+        if (r == was) return
+        route = r
+        logRoute()
+        if (r.mic != was.mic || r.telecom != was.telecom) reroute = true
+        if (r.speak != was.speak) tell(c)
+        stemLeg = r.mic == MicPick.AIR_PODS && (stemLeg || musicStopped && was.mic == MicPick.SHUT)
+        if (stemLeg && musicStopped) micNote("music stopped: the headset's mic opens")
+        leg(c)
+        notify(Voice.ui.value.state)
+    }
+
+    /**
+     * The call route, up only while the rules ask for it. Each stretch is its own Telecom call, and a
+     * new one waits for the last to end. Held through another call on the line (its end brings him
+     * back) and while a start from the background waits for Telecom's mic. On the main thread.
+     */
+    private fun leg(c: VoiceCall) {
+        val want = route.telecom || heldMute || micLater
+        val end = legEnd
+        if (want && end == null) {
+            val e = CompletableDeferred<Unit>()
+            legEnd = e
+            firstOpen = true
+            keys?.release()
+            keys = MediaKeys.session(this)
+            val last = legJob
+            legJob = scope.launch {
+                last?.join()
+                telecom(c, e)
+            }
+        } else if (!want && end != null) {
+            legEnd = null
+            keys?.release()
+            keys = null
+            end.complete(Unit)
+        }
+    }
+
+    /** The headset's press, or the system ending the call. */
+    private fun pressed(c: VoiceCall, end: CompletableDeferred<Unit>) {
+        if (end.isCompleted || legEnd !== end) return
+        if (!stemLeg) {
+            c.hangup()
+            return
+        }
+        // He pressed to have the music back: the mic shuts, then the music plays at full quality.
+        micNote("press on the headset: the mic shuts, the music comes back")
+        stemLeg = false
+        senses?.holdMusic(MUSIC_BACK_MS)
+        android.os.Handler(mainLooper).postDelayed({
+            for (a in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP)) {
+                audio.dispatchMediaKeyEvent(android.view.KeyEvent(a, android.view.KeyEvent.KEYCODE_MEDIA_PLAY))
+            }
+        }, MUSIC_PLAY_AFTER_MS)
+    }
+
+    /** Muted and out of sight there's nothing to hold up; Tabs picks it up from the mute when he comes back. */
+    private fun watchMuted(c: VoiceCall) = scope.launch {
+        var since: Long? = null
+        while (true) {
+            delay(MUTED_LOOK_MS)
+            val idle = Voice.ui.value.muted && !Voice.tabsUp && !Voice.conversation.value
+            since = if (idle) since ?: SystemClock.elapsedRealtime() else null
+            if (since != null && SystemClock.elapsedRealtime() - since > MUTED_END_MS) {
+                micNote("muted and out of sight for 10 minutes: ending")
+                c.hangup()
+                return@launch
+            }
+        }
     }
 
     /** Shown at once; the server's `paused` then keeps it true (it may say there was nothing to pause). */
@@ -247,6 +376,20 @@ class CallService : Service() {
             notify(Voice.ui.value.state)
         }
 
+        override fun onWords(text: String) {
+            // Behind another app there's nothing to tap: they go as soon as he pauses.
+            if (text.isNotEmpty() && !Voice.tabsUp) call?.sendWords(true) else Voice.heard.value = text
+        }
+
+        override fun onTab(id: String, n: UInt) {
+            Log.i(TAG, "words moved him to tab $n")
+            Voice.moved(id, n.toInt())
+        }
+
+        override fun onLine(text: String) {
+            Voice.line.value = text
+        }
+
         override fun onSttOpen(id: ULong) {
             stt?.open(id.toLong())
         }
@@ -264,46 +407,88 @@ class CallService : Service() {
     private fun speaker() {
         val c = call ?: return
         val (over, scope) = over to scope
+        try {
+            while (if (route.speak) speakOn(c, !route.telecom) else unheard(c)) Unit
+        } catch (e: Exception) {
+            Log.w(TAG, "speaker", e)
+        } finally {
+            over.complete(Unit)
+            scope.launch(Dispatchers.Main) { finish() }
+        }
+    }
+
+    /** Jarvis writes: nothing reaches the speaker, and the clock goes on. False once the call is over. */
+    private fun unheard(c: VoiceCall): Boolean {
+        while (!route.speak) {
+            if (c.pullAudio((FRAME_SAMPLES * 5).toUInt()).isEmpty()) return false
+            flushTrack = false
+            Thread.sleep(100)
+        }
+        return true
+    }
+
+    /**
+     * One stretch of speaking: on the call route, or as media, which leaves the AirPods their music
+     * quality. A media track sleeps through a silence, so it doesn't hold the AirPods awake, and music
+     * ducks under Jarvis while it plays. True if the route changed, false once the call is over.
+     */
+    private fun speakOn(c: VoiceCall, media: Boolean): Boolean {
         val min = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
-            )
+            .setAudioAttributes(if (media) MEDIA_SPEECH else CALL_SPEECH)
             .setAudioFormat(
                 AudioFormat.Builder().setSampleRate(RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build(),
             )
-            .setBufferSizeInBytes(maxOf(min, FRAME_BYTES * 2))
-            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            .setBufferSizeInBytes(maxOf(min, FRAME_BYTES * if (media) 8 else 2))
+            .setPerformanceMode(if (media) AudioTrack.PERFORMANCE_MODE_NONE else AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+        var playing = false
+        fun play(on: Boolean) {
+            if (on == playing) return
+            playing = on
+            if (media) {
+                senses?.ownTrack = on
+                if (on) audio.requestAudioFocus(duck) else audio.abandonAudioFocusRequest(duck)
+            }
+            if (on) track.play() else track.pause()
+        }
         try {
-            track.play()
-            while (true) {
+            if (!media) play(true)
+            var silent = 0
+            while (route.speak && route.telecom != media) {
                 val pcm = c.pullAudio(FRAME_SAMPLES.toUInt())
-                if (pcm.isEmpty()) break
-                if (peakOf(pcm) > 0) Voice.soundAt = android.os.SystemClock.elapsedRealtime()
+                if (pcm.isEmpty()) {
+                    // Let the last earcon drain out of the track before the route goes back.
+                    Thread.sleep(150)
+                    return false
+                }
+                val sound = peakOf(pcm) > 0
+                if (sound) Voice.soundAt = SystemClock.elapsedRealtime()
                 if (flushTrack) {
                     // Jarvis was talked over: what the track still holds goes too.
                     flushTrack = false
-                    track.pause()
-                    track.flush()
-                    track.play()
+                    if (playing) {
+                        track.pause()
+                        track.flush()
+                        track.play()
+                    }
                 }
-                if (track.write(pcm, 0, pcm.size) < 0) break
+                if (media) {
+                    silent = if (sound) 0 else silent + 1
+                    if (sound) play(true) else if (silent >= MEDIA_IDLE_FRAMES) play(false)
+                    if (!playing) {
+                        Thread.sleep(20)
+                        continue
+                    }
+                }
+                if (track.write(pcm, 0, pcm.size) < 0) return false
             }
-            // Let the last earcon drain out of the track before the route goes back.
-            Thread.sleep(150)
-        } catch (e: Exception) {
-            Log.w(TAG, "speaker", e)
+            return true
         } finally {
-            runCatching { track.stop() }
+            runCatching { if (media) play(false) else track.stop() }
             track.release()
-            over.complete(Unit)
-            scope.launch(Dispatchers.Main) { finish() }
         }
     }
 
@@ -314,7 +499,14 @@ class CallService : Service() {
         val c = call ?: return
         var failures = 0
         loop@ while (running) {
-            when (micOnce(c)) {
+            val r = route
+            val got = when {
+                r.mic == MicPick.SHUT -> micShut(c)
+                r.mic == MicPick.LARK -> micLark(c)
+                r.mic == MicPick.PHONE && !r.telecom -> micPlain(c)
+                else -> micOnce(c)
+            }
+            when (got) {
                 Mic.OVER -> break@loop
                 Mic.REROUTE -> failures = 0
                 Mic.FAILED -> {
@@ -338,6 +530,101 @@ class CallService : Service() {
     @Volatile private var firstOpen = true
     /** The call's device when the mic last opened. */
     @Volatile private var openedOn: Int? = null
+
+    /** Off a headset's mic, by the rules: its lines go now, as when the call leaves it (thread #125). */
+    private fun leftHeadset() {
+        watch = MicWatch()
+        if (headsetFrames > 0) sendCallLog("left a headset")
+        headsetFrames = 0
+    }
+
+    /** No mic at all: muted, or the AirPods' left to their music. Open to nothing until the rules say. */
+    private fun micShut(c: VoiceCall): Mic {
+        leftHeadset()
+        reroute = false
+        c.micShut()
+        micNote("open: nothing, ${route.rule}")
+        while (running && !reroute) Thread.sleep(50)
+        return if (running) Mic.REROUTE else Mic.OVER
+    }
+
+    /** The phone's own mic, with nothing of the call route: for Jarvis's writing, so there's no echo to cancel. */
+    private fun micPlain(c: VoiceCall): Mic {
+        val phone = audio.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+        return record(c, RATE, AudioFormat.CHANNEL_IN_MONO, phone, FRAME_BYTES) { it }
+    }
+
+    /** The path motoparty proved (its research/MIC.md): 48 kHz stereo from the USB device, no effects, normal mode. */
+    private fun micLark(c: VoiceCall): Mic {
+        val lark = senses?.lark()
+        if (lark == null && Senses.fake?.lark != true) {
+            // Just unplugged: the rules are about to say so.
+            Thread.sleep(200)
+            return Mic.REROUTE
+        }
+        val filter = LarkFilter()
+        return try {
+            record(c, LARK_RATE, AudioFormat.CHANNEL_IN_STEREO, lark, LARK_FRAME_BYTES, filter::feed)
+        } finally {
+            filter.close()
+        }
+    }
+
+    /** A mic off the call route, in 16 kHz frames after [convert]. */
+    private fun record(c: VoiceCall, rate: Int, channels: Int, want: AudioDeviceInfo?, size: Int, convert: (ByteArray) -> ByteArray): Mic {
+        leftHeadset()
+        reroute = false
+        val min = AudioRecord.getMinBufferSize(rate, channels, AudioFormat.ENCODING_PCM_16BIT)
+        val rec = try {
+            @Suppress("MissingPermission")
+            AudioRecord(MediaRecorder.AudioSource.MIC, rate, channels, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, size * 4))
+        } catch (e: Exception) {
+            Log.w(TAG, "mic", e)
+            return Mic.FAILED
+        }
+        if (want != null && !rec.setPreferredDevice(want)) Log.w(TAG, "mic: ${name(want)} refused as the preferred input")
+        try {
+            rec.startRecording()
+            micNote("open: ${route.rule}: wanted ${name(want)}, on ${name(rec.routedDevice)}, $rate Hz")
+            val buf = ByteArray(size)
+            var reads = 0L
+            var loudest = 0
+            var quiet = 0
+            while (running && !reroute) {
+                var got = 0
+                while (got < size && running) {
+                    val n = rec.read(buf, got, size - got)
+                    if (n < 0) throw IllegalStateException("read $n")
+                    got += n
+                }
+                if (got != size) continue
+                val out = convert(buf.copyOf())
+                if (out.isNotEmpty()) c.sendAudio(out)
+                val p = peakOf(out)
+                if (p > VOICE_PEAK) Voice.voiceAt = SystemClock.elapsedRealtime()
+                loudest = maxOf(loudest, p)
+                quiet = if (p < SILENT_PEAK) quiet + 1 else 0
+                if (++reads % 100 == 0L) {
+                    micNote("peak $loudest on ${name(rec.routedDevice)}")
+                    loudest = 0
+                    if (want != null && rec.routedDevice?.id != want.id && System.nanoTime() - lastWatchReopen > 10_000_000_000L) {
+                        lastWatchReopen = System.nanoTime()
+                        micNote("not on ${name(want)}; reopening")
+                        return Mic.REROUTE
+                    }
+                }
+                // The Lark's receiver gives exact zeros with its transmitter off: worth a line, not a reopen.
+                if (quiet == QUIET_NOTE_READS) micNote("silent for 10 s on ${name(rec.routedDevice)}")
+            }
+            return if (running) Mic.REROUTE else Mic.OVER
+        } catch (e: Exception) {
+            Log.w(TAG, "mic", e)
+            return Mic.FAILED
+        } finally {
+            runCatching { rec.stop() }
+            rec.release()
+        }
+    }
 
     private fun micOnce(c: VoiceCall): Mic {
         val am = getSystemService(AudioManager::class.java)
@@ -386,7 +673,7 @@ class CallService : Service() {
             rec.startRecording()
             aec?.enabled = !bluetooth
             ns?.enabled = !bluetooth
-            micNote("open: wanted ${name(want)}, on ${name(rec.routedDevice)}, call on ${name(am.communicationDevice)}")
+            micNote("open: ${route.rule}: wanted ${name(want)}, on ${name(rec.routedDevice)}, call on ${name(am.communicationDevice)}")
             val buf = ByteArray(FRAME_BYTES)
             var frames = 0L
             var peak = 0
@@ -502,8 +789,9 @@ class CallService : Service() {
         routeWatch = l
     }
 
-    /** The call as Android's own call, so the headset and the system treat it as one. */
-    private suspend fun telecom(c: VoiceCall) {
+    /** The call as Android's own call, so the headset and the system treat it as one, until [end]. */
+    private suspend fun telecom(c: VoiceCall, end: CompletableDeferred<Unit>) {
+        val job = currentCoroutineContext()[Job]
         try {
             val cm = CallsManager(this)
             cm.registerAppWithTelecom(CallsManager.CAPABILITY_BASELINE)
@@ -519,7 +807,7 @@ class CallService : Service() {
                 attrs,
                 onAnswer = {},
                 // The headset's button, or the system ending it.
-                onDisconnect = { c.hangup() },
+                onDisconnect = { mainExecutor.execute { pressed(c, end) } },
                 // Back from the other call: unmuted again, unless Aviv had muted it himself.
                 onSetActive = { if (heldMute) { heldMute = false; setMuted(false) } },
                 // Another call came in and Aviv took it: Jarvis stops hearing him meanwhile.
@@ -536,15 +824,32 @@ class CallService : Service() {
                 launch { routes.follow(this@addCall) }
                 val over = over
                 launch {
-                    over.await()
+                    select<Unit> {
+                        over.onAwait {}
+                        end.onAwait {}
+                    }
                     disconnect(DisconnectCause(DisconnectCause.LOCAL))
+                    // The leg's watchers end with it, so the next leg starts clean.
+                    job?.cancel()
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "telecom refused the call; routing by hand", e)
-            if (!telecom) { routeByHand(); routes.followByHand() }
+            if (!telecom) {
+                routeByHand()
+                routes.followByHand()
+                val over = over
+                select<Unit> {
+                    over.onAwait {}
+                    end.onAwait {}
+                }
+                unroute()
+            }
+        } finally {
+            telecom = false
+            routes.release()
         }
     }
 
@@ -564,6 +869,7 @@ class CallService : Service() {
             if (got) {
                 micLater = false
                 Log.i(TAG, "mic back after ${System.currentTimeMillis() - since} ms of Telecom's call")
+                mainExecutor.execute { call?.let(::leg) }
                 return
             }
             delay(250)
@@ -586,6 +892,14 @@ class CallService : Service() {
         }
         headset?.let { am.setCommunicationDevice(it) }
         routed = true
+    }
+
+    private fun unroute() {
+        if (!routed) return
+        val am = getSystemService(AudioManager::class.java)
+        am.clearCommunicationDevice()
+        am.mode = AudioManager.MODE_NORMAL
+        routed = false
     }
 
     private fun watchNetwork(c: VoiceCall) {
@@ -620,8 +934,19 @@ class CallService : Service() {
     }
 
     private fun locks() {
+        val hold = 4 * 60 * 60 * 1000L
         wake = getSystemService(PowerManager::class.java)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "jarvis:call").apply { acquire(4 * 60 * 60 * 1000L) }
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "jarvis:call").apply {
+                setReferenceCounted(false)
+                acquire(hold)
+            }
+        // It's up until he mutes or hangs up, however long that is; the limit only catches a dead process.
+        scope.launch {
+            while (true) {
+                delay(hold / 2)
+                wake?.acquire(hold)
+            }
+        }
         @Suppress("DEPRECATION")
         wifi = getSystemService(WifiManager::class.java)
             .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "jarvis:call").apply { acquire() }
@@ -630,19 +955,21 @@ class CallService : Service() {
     private fun finish() {
         if (call == null) return
         call = null
+        Voice.call = null
         MicLevel.source = null
         net?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         wake?.let { if (it.isHeld) it.release() }
         wifi?.let { if (it.isHeld) it.release() }
         routeWatch?.let { runCatching { getSystemService(AudioManager::class.java).removeOnCommunicationDeviceChangedListener(it) } }
         routeWatch = null
-        if (routed) {
-            val am = getSystemService(AudioManager::class.java)
-            am.clearCommunicationDevice()
-            am.mode = AudioManager.MODE_NORMAL
-            routed = false
-        }
+        unroute()
         telecom = false
+        senses?.stop()
+        senses = null
+        legEnd?.complete(Unit)
+        legEnd = null
+        Voice.line.value = ""
+        Voice.heard.value = ""
         stt?.stop()
         stt = null
         PhoneStt.check(this)
@@ -669,6 +996,7 @@ class CallService : Service() {
         running = false
         call?.hangup()
         keys?.release()
+        senses?.stop()
         super.onDestroy()
     }
 
@@ -681,17 +1009,29 @@ class CallService : Service() {
 
     private fun label(state: CallState) = Voice.line(Voice.ui.value.copy(state = state))
 
-    /** What the notification shows: its text, and whether it has the pause action. */
-    private fun key(state: CallState) = label(state) to Voice.ui.value.copy(state = state).pausable
+    /** What the notification shows; it's posted again only when this changes. */
+    private fun key(state: CallState) = listOf(
+        title(), text(state), Voice.ui.value.copy(state = state).pausable, legEnd != null, Voice.place.value.tab,
+    )
+
+    private fun title() = Voice.place.value.name.ifEmpty { "Jarvis" }
+
+    /** The state on the call route; while Jarvis writes, the answer's last line. */
+    private fun text(state: CallState) =
+        Voice.line.value.takeIf { it.isNotEmpty() && legEnd == null && !Voice.ui.value.micOff } ?: label(state)
 
     private fun notification(state: CallState, muted: Boolean): Notification {
         fun pending(action: String, code: Int) = PendingIntent.getService(
             this, code, Intent(this, CallService::class.java).setAction(action), PendingIntent.FLAG_IMMUTABLE,
         )
+        val tab = Voice.place.value.tab
+        // On a tab it opens that tab; the same request code, so the extra has to be updated.
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE,
+            this, 0,
+            if (tab != null) TabsActivity.opening(this, tab) else Intent(this, CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val jarvis = Person.Builder().setName("Jarvis").setImportant(true).build()
+        val jarvis = Person.Builder().setName(title()).setImportant(true).build()
         val mute = Notification.Action.Builder(
             Icon.createWithResource(this, if (muted) R.drawable.lucide_mic else R.drawable.lucide_mic_off),
             if (muted) "Unmute" else "Mute",
@@ -704,17 +1044,21 @@ class CallService : Service() {
             if (ui.paused) "Continue" else "Pause",
             pending(PAUSE, 3),
         ).build() else null
+        val onCallRoute = legEnd != null
         return Notification.Builder(this, Notifier.CALLS)
             .setSmallIcon(R.drawable.lucide_phone)
-            .setContentText(label(state).also { shown = key(state) })
+            .setContentText(text(state).also { shown = key(state) })
             // Updated at every turn: only the first post may alert, or each one can wake the screen.
             .setOnlyAlertOnce(true)
             // The call's length from when it connected; without this each update started it again.
             .apply { Voice.ui.value.connectedAt?.let { setWhen(it).setShowWhen(true).setUsesChronometer(true) } }
             .setContentIntent(open)
             .setOngoing(true)
-            .setCategory(Notification.CATEGORY_CALL)
-            .setStyle(Notification.CallStyle.forOngoingCall(jarvis, pending(HANGUP, 1)))
+            .apply {
+                // Android wants a real call behind this style; the rest of the time it's a plain ongoing line.
+                if (onCallRoute) setCategory(Notification.CATEGORY_CALL).setStyle(Notification.CallStyle.forOngoingCall(jarvis, pending(HANGUP, 1)))
+                else setContentTitle(title())
+            }
             .apply { pause?.let { addAction(it) } }
             .addAction(mute)
             .build()
@@ -734,9 +1078,27 @@ class CallService : Service() {
         private const val VOICE_PEAK = 2000
         /** How long a call started in the background waits for Telecom to lend it the mic. */
         private const val MIC_WAIT_MS = 5_000L
+        /** How long his press stands for music: long enough for the player to start again. */
+        private const val MUSIC_BACK_MS = 4_000L
+        /** The call route needs this long to let the AirPods go before the music asks for them. */
+        private const val MUSIC_PLAY_AFTER_MS = 500L
+        private const val MEDIA_IDLE_FRAMES = 25
+        private const val MUTED_LOOK_MS = 30_000L
+        private const val MUTED_END_MS = 10 * 60_000L
+        private const val LARK_RATE = 48_000
+        /** 20 ms of the Lark's stereo: `crates/voice/src/lark.rs`. */
+        private const val LARK_FRAME_BYTES = 3840
+        /** Under this a read holds nothing (motoparty's `SILENT_PEAK`). */
+        private const val SILENT_PEAK = 32
+        /** 10 s of reads at 20 ms. */
+        private const val QUIET_NOTE_READS = 500
+        private val CALL_SPEECH = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+        private val MEDIA_SPEECH = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
 
         fun ringBack(context: Context, id: String) =
-            Callback.ring(context, id, "Jarvis calling back", "Our call dropped. Answer to go on where we were.")
+            Callback.ring(context, id, "Jarvis wants to go on", "The line dropped. Answer to go on where we were.")
         private const val TAG = "JarvisCall"
         private const val ID = 20
         private const val RATE = 16_000

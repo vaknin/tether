@@ -115,6 +115,12 @@ class FakeDeck(start: DeckState = Fake.deck()) : Deck {
 
     override fun show(ids: List<String>) {}
 
+    override fun here(id: String?) {}
+
+    override fun words(send: Boolean) = flow.update { it.copy(heard = "") }
+
+    override fun stop(id: String) {}
+
     override fun file(id: String, name: String) {}
 
     override fun start(text: String) {

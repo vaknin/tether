@@ -98,7 +98,7 @@ fun CallScreen(onCall: () -> Unit, onMute: () -> Unit, onHangup: () -> Unit, onR
                 Text("Jarvis", style = MaterialTheme.typography.displaySmall)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    if (ui.live) Voice.line(ui) else if (ui.ringing) "Jarvis calling" else Voice.label(ui.state),
+                    if (ui.live) Voice.line(ui) else if (ui.ringing) "Jarvis wants to talk" else Voice.label(ui.state),
                     color = if (ui.live) Accent else Muted,
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
@@ -130,7 +130,7 @@ fun CallScreen(onCall: () -> Unit, onMute: () -> Unit, onHangup: () -> Unit, onR
                             // Grey under a voice mute: only "unmute" gets through, so it shows that can be heard, not that Jarvis hears.
                             Modifier.micHalo(mic, if (ui.voiceMuted) Muted else Accent),
                         )
-                        Round(R.drawable.lucide_phone_off, "Hang up", Stop, Color.White, 112.dp, onHangup)
+                        Round(R.drawable.lucide_phone_off, "End", Stop, Color.White, 112.dp, onHangup)
                         // Where the call sounds; a tap moves it on, as a phone's own call screen does.
                         val route = ui.route ?: AudioRoute(AudioRoute.Kind.Earpiece, "Earpiece")
                         val loud = route.kind == AudioRoute.Kind.Speaker
@@ -149,7 +149,7 @@ fun CallScreen(onCall: () -> Unit, onMute: () -> Unit, onHangup: () -> Unit, onR
                         )
                     }
                 } else {
-                    Round(R.drawable.lucide_phone, if (ui.ringing) "Answer" else "Call", Go, Color.White, 144.dp, onCall)
+                    Round(R.drawable.lucide_phone, if (ui.ringing) "Answer" else "Talk", Go, Color.White, 144.dp, onCall)
                 }
                 Spacer(Modifier.height(40.dp))
             }
@@ -165,7 +165,7 @@ private fun Incoming(onAnswer: () -> Unit, onDecline: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(48.dp))
-        Text("Incoming call", color = Muted, style = MaterialTheme.typography.titleMedium)
+        Text("Jarvis wants to talk", color = Muted, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(28.dp))
         Box(Modifier.size(120.dp).clip(CircleShape).background(Mine), contentAlignment = Alignment.Center) {
             Text("J", color = Accent, style = MaterialTheme.typography.displayMedium)

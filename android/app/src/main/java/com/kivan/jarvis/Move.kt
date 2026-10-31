@@ -187,7 +187,7 @@ object Move {
                 val why = answer.getString("why").orEmpty()
                 if (why != "a call is on") error(why)
                 setState(State.STANDBY)
-                _step.value = "Waiting for your call to end"
+                _step.value = "Waiting until you finish talking"
                 Thread.sleep(5_000)
             }
             paused = true

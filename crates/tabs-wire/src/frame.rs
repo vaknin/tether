@@ -75,6 +75,13 @@ pub enum Ask {
         #[serde(default)]
         closed: bool,
     },
+    /// A helper's report for this tab: on the record, for the session's next wake and for his eyes.
+    Report {
+        id: String,
+        from: String,
+        line: String,
+        text: String,
+    },
     /// Overwrite a secret in every record, in place: answered by `Scrubbed`. `word`: only as a whole
     /// word, for one group of a value with spaces, which could be any four letters.
     Scrub {
@@ -86,12 +93,37 @@ pub enum Ask {
     Other,
 }
 
+/// What a voice asks for on `tap.sock`, after the two pipe ends in one message: its end of the pipe
+/// into the tab, and its end of the pipe out. From then on the two speak Claude Code's own stream
+/// lines, so a conversation can't tell a tab from a process of its own, and its pipes move through a
+/// hot swap like any others. A closed pipe unbinds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Bind {
+    pub id: String,
+    /// What the session's commands get as `JARVIS_VOICE` while he hears this tab.
+    pub key: String,
+    /// How to talk when he hears the reply: goes once per session, with the first spoken message.
+    pub rules: String,
+    /// He hears this tab now.
+    #[serde(default)]
+    pub speak: bool,
+}
+
+/// The answer to `Bind`, then the socket closes. `why` empty: bound.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Bound {
+    #[serde(default)]
+    pub n: u32,
+    #[serde(default)]
+    pub why: String,
+}
+
 /// One tab in a listing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Info {
     pub n: u32,
     pub id: String,
-    /// A voice workspace: it can be read and followed, not typed into yet.
+    /// Always false since the workspaces moved in; an old client still reads it.
     #[serde(default)]
     pub mirrored: bool,
     pub tile: Tile,

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.service.quicksettings.TileService
 import android.content.ComponentName
 import com.kivan.jarvis.core.CallState
+import com.kivan.jarvis.core.VoiceCall
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -46,6 +47,62 @@ object Voice {
     private val _ui = MutableStateFlow(Ui())
     val ui: StateFlow<Ui> = _ui
 
+    /**
+     * Where he is: a tab, none at the wall. `name`: how the notification calls it. `stay`: Tabs hasn't
+     * said since this began, so the server keeps him where he was.
+     */
+    data class Place(val tab: String? = null, val name: String = "", val stay: Boolean = true)
+
+    val place = MutableStateFlow(Place())
+    /** What he said that waits on screen for a tap, a jump or Send. */
+    val heard = MutableStateFlow("")
+    /** The last line of the last written answer: the notification's. */
+    val line = MutableStateFlow("")
+    /** The conversation screen is up ([Senses]). */
+    val conversation = MutableStateFlow(false)
+    /** Tabs is on screen. */
+    @Volatile var tabsUp = false
+    /** He opened the conversation screen in this conversation: back from Tabs goes to it. */
+    @Volatile var spoke = false
+    /** The mute he left: it stays through a restart, and Tabs doesn't open the mic on it. */
+    val saved = MutableStateFlow(false)
+    /** The conversation that's up, for what isn't the service. */
+    @Volatile var call: VoiceCall? = null
+    /** Words moved him to a tab; Tabs follows when it's up, or when he comes back. */
+    val movedTo = MutableStateFlow<String?>(null)
+
+    private fun prefs(context: Context) = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+
+    fun loadMute(context: Context) {
+        saved.value = prefs(context).getBoolean("muted", false)
+    }
+
+    internal fun saveMute(context: Context, on: Boolean) {
+        if (saved.value == on) return
+        saved.value = on
+        prefs(context).edit().putBoolean("muted", on).apply()
+    }
+
+    /** The mute button in Tabs, with or without a conversation up. */
+    fun mute(context: Context, on: Boolean) {
+        if (_ui.value.live) {
+            if (_ui.value.micOff != on) toggleMute(context)
+            return
+        }
+        saveMute(context, on)
+        if (!on) listen(context)
+    }
+
+    /** Tabs is up and he isn't muted: the mic is on, and his words go where he is. */
+    fun listen(context: Context) {
+        if (!_ui.value.live && !saved.value && tabsUp && CallService.micGranted(context) && !Move.off()) start(context)
+    }
+
+    internal fun moved(id: String, n: Int) {
+        place.value = Place(id, "Tab $n", stay = false)
+        movedTo.value = id
+    }
+
     internal fun update(context: Context, f: (Ui) -> Ui) {
         val before = _ui.value.live
         _ui.update(f)
@@ -54,17 +111,20 @@ object Voice {
         }
     }
 
-    /** Starts a call (the mic permission must be granted already), or continues the dropped call
+    /** Starts a conversation (the mic permission must be granted already), or continues the dropped call
      *  `rejoin`. Does nothing while one is up. */
     fun start(context: Context, rejoin: String? = null, task: String? = null) {
         if (_ui.value.live) {
-            if (task != null) android.widget.Toast.makeText(context, "You're on a call: just say the task's name", android.widget.Toast.LENGTH_LONG).show()
+            if (task != null) android.widget.Toast.makeText(context, "Jarvis is listening: just say the task's name", android.widget.Toast.LENGTH_LONG).show()
             return
         }
         if (Move.off()) {
             android.widget.Toast.makeText(context, "One moment: Jarvis is moving here", android.widget.Toast.LENGTH_LONG).show()
             return
         }
+        // Started away from Tabs he's wherever he last was, for the server to say.
+        if (!tabsUp) place.value = Place()
+        spoke = false
         update(context) { Ui(state = CallState.Connecting) }
         context.startForegroundService(Intent(context, CallService::class.java).putExtra(CallService.REJOIN, rejoin).putExtra(CallService.TASK, task))
     }
@@ -140,12 +200,12 @@ object Voice {
     }
 
     fun label(s: CallState?): String = when (s) {
-        null -> "Call Jarvis"
-        CallState.Connecting -> "Calling…"
+        null -> "Talk to Jarvis"
+        CallState.Connecting -> "Connecting…"
         CallState.Listening -> "Listening"
         CallState.Thinking -> "Thinking"
         CallState.Speaking -> "Speaking"
         CallState.Reconnecting -> "Reconnecting…"
-        is CallState.Ended -> "Call ended: ${s.why}"
+        is CallState.Ended -> "Ended: ${s.why}"
     }
 }

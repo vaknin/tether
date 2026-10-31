@@ -5,6 +5,10 @@
         <receiver
             android:name=".UpdaterTest"
             android:exported="true" />
+        <!-- Tests: what the emulator hasn't got (SenseFeed). Debug builds only. -->
+        <receiver
+            android:name=".SenseFeed"
+            android:exported="true" />
         <!-- Tests: a voice for the call screen's mic halo, the emulator's mic being silent (MicFeed). Debug builds only. -->
         <receiver
             android:name=".MicFeed"

@@ -73,6 +73,12 @@ class ScreensTest {
     }
 
     @Test fun muted() = shot("wall-muted") { Stage(FakeDeck(Fake.deck(9, muted = true))) }
+    private val spoken = "Make the piano louder when the room is noisy, and show me the level while it plays"
+    @Test fun heardWall() = shot("wall-heard") { Stage(FakeDeck(Fake.deck(9).copy(heard = spoken))) }
+    @Test fun heardTab() = shot("tab-heard") { Stage(FakeDeck(Fake.deck(9).copy(heard = spoken)), Opening(tab = "t1")) }
+    @Test fun heardReply() = shot("reply-heard") {
+        Stage(FakeDeck(Fake.deck(9, drafts = mapOf("t1" to Fake.draft)).copy(heard = spoken)), Opening(tab = "t1", reply = "a1"))
+    }
     @Test fun offline() = shot("tab-offline") { Stage(FakeDeck(Fake.deck(9, online = false)), Opening(tab = "t1")) }
     @Test fun readNew() = shot("tab-new-long") { Stage(FakeDeck(Fake.deck(9)), Opening(tab = "t4")) }
 

@@ -125,7 +125,7 @@ private fun TaskList(onRead: (String) -> Unit) {
                     Spacer(Modifier.width(12.dp))
                     Text(t.name, Modifier.weight(1f).padding(vertical = 14.dp), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     IconButton(onClick = { call(ctx, t.slug) }) {
-                        Icon(painterResource(R.drawable.lucide_phone), "Call Jarvis about ${t.name}", tint = Go)
+                        Icon(painterResource(R.drawable.lucide_phone), "Talk to Jarvis about ${t.name}", tint = Go)
                     }
                 }
             }
@@ -162,7 +162,7 @@ private fun Read(slug: String, onBack: () -> Unit) {
         }
         if (t != null) {
             Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 28.dp), contentAlignment = Alignment.Center) {
-                Round(R.drawable.lucide_phone, "Call Jarvis", Go, Color.White, 72.dp, { call(ctx, t.slug) })
+                Round(R.drawable.lucide_phone, "Talk to Jarvis", Go, Color.White, 72.dp, { call(ctx, t.slug) })
             }
         }
     }

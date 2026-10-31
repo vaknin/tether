@@ -208,7 +208,7 @@ private fun Chat(peer: String, queued: ULong) {
                 Text(line, style = MaterialTheme.typography.bodySmall, color = if (refused) MaterialTheme.colorScheme.error else Muted)
             }
             IconButton(onClick = { ctx.startActivity(CallActivity.intent(ctx, start = false)) }) {
-                Icon(painterResource(R.drawable.lucide_phone), "Call Jarvis", tint = Accent)
+                Icon(painterResource(R.drawable.lucide_phone), "Talk to Jarvis", tint = Accent)
             }
             TextButton(onClick = { Forum.open(ctx) }) { Text("Forum") }
             Box {

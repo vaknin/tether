@@ -28,7 +28,7 @@ class JarvisTile : TileService() {
         qsTile?.apply {
             state = if (ui.live) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
             label = "Jarvis"
-            subtitle = if (ui.live) Voice.label(ui) else "Call"
+            subtitle = if (ui.live) Voice.label(ui) else "Talk"
             icon = Icon.createWithResource(this@JarvisTile, R.drawable.lucide_phone)
             updateTile()
         }

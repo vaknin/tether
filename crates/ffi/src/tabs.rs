@@ -47,7 +47,6 @@ pub struct TileRec {
     pub needs: bool,
     pub unread: bool,
     pub working: bool,
-    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -126,7 +125,6 @@ struct Pending {
 #[derive(Default)]
 struct Hold {
     n: u32,
-    mirrored: bool,
     tile: Tile,
     closed: bool,
     /// Its record is here, or on its way.
@@ -411,7 +409,7 @@ impl Desk {
             self.order.push(info.id.clone());
             let new = !self.tabs.contains_key(&info.id);
             let t = self.tabs.entry(info.id.clone()).or_default();
-            (t.n, t.mirrored, t.closed) = (info.n, info.mirrored, false);
+            (t.n, t.closed) = (info.n, false);
             if new || info.tile.end >= t.tile.end {
                 t.tile = info.tile;
             }
@@ -438,7 +436,7 @@ impl Desk {
         let words = self.opening.pop_front().flatten();
         self.relist = true;
         let t = self.tabs.entry(id.clone()).or_default();
-        (t.n, t.mirrored, t.closed, t.tile) = (info.n, info.mirrored, false, info.tile);
+        (t.n, t.closed, t.tile) = (info.n, false, info.tile);
         if !self.order.contains(&id) {
             self.order.push(id.clone());
         }
@@ -529,12 +527,7 @@ impl Desk {
     fn seen(&mut self, id: String) {
         let Some(t) = self.tabs.get_mut(&id).filter(|t| t.loaded && t.tile.blue()) else { return };
         let upto = t.end;
-        if t.mirrored {
-            // Only the voice server could record this: it clears here, for this phone.
-            t.tile.apply(&Event { offset: 0, at: 0, body: Body::Seen { upto } });
-            t.touched = true;
-            self.wall_touched = true;
-        } else if upto > t.seen_sent && t.tile.seen_moves(upto) {
+        if upto > t.seen_sent && t.tile.seen_moves(upto) {
             t.seen_sent = upto;
             self.out.push(Ask::Seen { id, upto });
         }
@@ -548,7 +541,6 @@ impl Desk {
             needs: t.tile.amber,
             unread: t.tile.blue(),
             working: t.tile.working(),
-            read_only: t.mirrored,
         }
     }
 
@@ -799,6 +791,12 @@ pub fn tabs_reopen(id: String) {
 #[uniffi::export]
 pub fn tabs_file(id: String, name: String) {
     with_desk(|d| d.out.push(Ask::File { id, name }));
+}
+
+/// Stops the turn being written; what's written stays.
+#[uniffi::export]
+pub fn tabs_stop(id: String) {
+    with_desk(|d| d.out.push(Ask::Stop { id }));
 }
 
 #[uniffi::export]

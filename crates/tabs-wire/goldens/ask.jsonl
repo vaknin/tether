@@ -11,3 +11,4 @@
 {"ask":"unfollow","id":"t1"}
 {"ask":"seen","id":"t1","upto":120}
 {"ask":"file","id":"t1","name":"chord.png"}
+{"ask":"report","id":"t1","from":"job-x","line":"Done.","text":"Done, tested."}

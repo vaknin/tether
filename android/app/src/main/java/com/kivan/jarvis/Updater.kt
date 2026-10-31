@@ -199,7 +199,7 @@ object Updater {
             val pi = PendingIntent.getBroadcast(context, id, status, PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             // The process dies with the install: never while Jarvis speaks or Aviv talks.
             if (!Voice.quiet()) {
-                _state.value = "${u.versionName} installs in the call's next pause"
+                _state.value = "${u.versionName} installs in the next pause"
                 while (!Voice.quiet()) delay(PAUSE_POLL_MS)
             }
             Log.i(TAG, "update: installing ${u.versionName} in a pause (call ${if (Voice.ui.value.live) "on" else "off"}) at ${System.currentTimeMillis()}")

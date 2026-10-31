@@ -126,6 +126,7 @@ fun Wall(
     onClose: (String) -> Unit,
     onMove: (String, Int) -> Unit,
     onClosedTabs: () -> Unit,
+    onHeard: () -> Unit,
     onMute: (Boolean) -> Unit,
     undo: ClosedTab?,
     onUndo: () -> Unit,
@@ -159,6 +160,8 @@ fun Wall(
             onSend = onStart,
             muted = state.muted,
             onMute = onMute,
+            heard = state.heard,
+            onHeard = onHeard,
             leading = if (state.closed.isEmpty()) null else {
                 { Round(R.drawable.lucide_search, "Search closed tabs", onClosedTabs, fill = look.surface, size = 48.dp) }
             },

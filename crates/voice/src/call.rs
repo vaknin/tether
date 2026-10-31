@@ -123,7 +123,7 @@ pub enum Status {
     Speaking,
     /// The line dropped; trying to get back into the same call.
     Reconnecting,
-    /// Over, with why ("hung up", "Jarvis ended the call", "couldn't reach Jarvis", ...).
+    /// Over, with why ("hung up", "Jarvis ended it", "couldn't reach Jarvis", ...).
     Ended(String),
 }
 
@@ -337,6 +337,11 @@ impl Call {
         self.meter.set(if self.mic.try_send(pcm).is_ok() { heard } else { 0.0 });
     }
 
+    /// The mic is closed, so no frame will come to bring the ring down.
+    pub fn mic_shut(&self) {
+        self.meter.set(0.0);
+    }
+
     /// How well Jarvis hears the mic right now, 0 to 1 ([`crate::meter`]). Never waits.
     pub fn mic_level(&self) -> f32 {
         self.meter.get()
@@ -526,7 +531,7 @@ fn dial(connector: &Connector, sh: Arc<Shared>, t: &Timing, resume: Option<Strin
                     Some(Down::Error { text }) => sh.events.error(&text),
                     _ => {}
                 },
-                Ok(Some(Ok(Frame::Close))) => return Dialed::Ended("Jarvis ended the call".into()),
+                Ok(Some(Ok(Frame::Close))) => return Dialed::Ended("Jarvis ended it".into()),
                 Ok(Some(Ok(_))) => {}
                 Ok(Some(Err(e))) => return Dialed::Failed(format!("{e:#}")),
                 Ok(None) => return Dialed::Failed("closed before ready".into()),
@@ -849,7 +854,7 @@ impl Run {
                 self.broke("taken over by the resume");
                 return None;
             }
-            Some(Ok(Frame::Close)) => return Some("Jarvis ended the call".into()),
+            Some(Ok(Frame::Close)) => return Some("Jarvis ended it".into()),
             Some(Err(e)) => {
                 self.broke(&format!("{e:#}"));
                 return None;

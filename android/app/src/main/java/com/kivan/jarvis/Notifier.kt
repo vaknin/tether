@@ -11,6 +11,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.graphics.drawable.IconCompat
+import com.kivan.jarvis.tabs.TabsActivity
 import com.kivan.jarvis.core.ChatMessage
 
 /** The app's notifications: messages from the laptop (with Reply), received files, and failures. */
@@ -22,6 +23,7 @@ object Notifier {
     private const val FILES = "files"
     private const val ALERTS = "alerts"
     private const val TASKS = "tasks"
+    private const val TAB = "/tab/"
 
     private const val MESSAGE_ID = 10
     private const val FAILED_ID = 11
@@ -36,8 +38,8 @@ object Notifier {
                     setShowBadge(false)
                 },
                 // Low: quiet and never peeking or lighting the screen (an app may lower a channel it made).
-                NotificationChannel(CALLS, "Calls with Jarvis", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "The ongoing call, with Hang up and Mute"
+                NotificationChannel(CALLS, "Talking with Jarvis", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "While you talk with Jarvis: the tab, the last line and Mute"
                     setSound(null, null)
                 },
                 NotificationChannel(MESSAGES, "Messages", NotificationManager.IMPORTANCE_HIGH),
@@ -46,7 +48,7 @@ object Notifier {
                 },
                 // Low, as calls: no sound and no peek. A tracked task's end waits in the shade.
                 NotificationChannel(TASKS, "Tracked tasks", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "A task you named is on your phone, with Call Jarvis"
+                    description = "A task you named is on your phone, with Talk to Jarvis"
                     setSound(null, null)
                 },
                 NotificationChannel(FILES, "Files", NotificationManager.IMPORTANCE_DEFAULT),
@@ -144,9 +146,14 @@ object Notifier {
         val callIntent = PendingIntent.getActivity(
             context, tag, CallActivity.intent(context, start = true), PendingIntent.FLAG_IMMUTABLE,
         )
-        val open = if (call) callIntent else PendingIntent.getActivity(
-            context, tag, Forum.view(context, url.ifEmpty { "/" }), PendingIntent.FLAG_IMMUTABLE,
-        )
+        val open = when {
+            call -> callIntent
+            // A tab's: opens that tab.
+            url.startsWith(TAB) -> PendingIntent.getActivity(
+                context, tag, TabsActivity.opening(context, url.removePrefix(TAB)), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            else -> PendingIntent.getActivity(context, tag, Forum.view(context, url.ifEmpty { "/" }), PendingIntent.FLAG_IMMUTABLE)
+        }
         val n = NotificationCompat.Builder(context, JARVIS)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title.ifEmpty { "Jarvis" })
@@ -156,7 +163,7 @@ object Notifier {
             .setAutoCancel(true)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
-            .apply { if (call) addAction(R.drawable.lucide_phone, "Call", callIntent).setCategory(NotificationCompat.CATEGORY_CALL) }
+            .apply { if (call) addAction(R.drawable.lucide_phone, "Talk", callIntent).setCategory(NotificationCompat.CATEGORY_CALL) }
             .build()
         return runCatching { nm.notify("jarvis", tag, n) }.exceptionOrNull()?.let { Alerts.threw(it) }
     }
@@ -183,7 +190,7 @@ object Notifier {
             .setSilent(true)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
-            .addAction(R.drawable.lucide_phone, "Call Jarvis", call)
+            .addAction(R.drawable.lucide_phone, "Talk to Jarvis", call)
             .build()
         return runCatching { nm.notify("task:$slug", 0, n) }.exceptionOrNull()?.let { Alerts.threw(it) }
     }

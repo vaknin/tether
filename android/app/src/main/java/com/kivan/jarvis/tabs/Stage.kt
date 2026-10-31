@@ -144,6 +144,7 @@ fun Stage(deck: Deck, opening: Opening = Opening()) {
     val glide = rememberGlide((anyWork || anyLoading) && state.online)
 
     val covered = replying != null || closedPage || closedTab != null
+    LaunchedEffect(open == null) { if (open == null) deck.here(null) }
 
     CompositionLocalProvider(LocalGlide provides glide, LocalDeck provides deck) {
         Box(Modifier.fillMaxSize().background(look.canvas)) {
@@ -168,6 +169,7 @@ fun Stage(deck: Deck, opening: Opening = Opening()) {
                 },
                 onMove = deck::move,
                 onClosedTabs = { closedPage = true },
+                onHeard = { deck.words(true) },
                 onMute = deck::mute,
                 undo = undo,
                 onUndo = {
@@ -252,6 +254,8 @@ fun Stage(deck: Deck, opening: Opening = Opening()) {
                     answer = answer,
                     draft = draft,
                     muted = state.muted,
+                    heard = state.heard,
+                    onTaken = { deck.words(false) },
                     onDraft = { deck.draft(id, it) },
                     onSend = { _, quotes, end ->
                         deck.say(id, end, quotes)
@@ -305,6 +309,7 @@ private fun TabLayer(
     val settled = open.order.getOrNull(page)
     val unread = settled?.let { state.tabs[it]?.tile?.unread } == true
     LaunchedEffect(settled, unread) { if (settled != null) deck.seen(settled) }
+    LaunchedEffect(settled) { if (settled != null) deck.here(settled) }
 
     // With the keyboard up, back is the keyboard's, even when it was up before this page came.
     PredictiveBackHandler(!WindowInsets.isImeVisible) { flow ->
@@ -404,6 +409,9 @@ private fun TabLayer(
                     onClose = { onClose(tabId) },
                     onReopen = { deck.reopen(tabId) },
                     onMute = deck::mute,
+                    heard = state.heard,
+                    onHeard = { deck.words(true) },
+                    onStop = { deck.stop(tabId) },
                 )
             }
         }

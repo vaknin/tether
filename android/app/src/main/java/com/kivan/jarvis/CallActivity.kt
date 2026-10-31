@@ -83,8 +83,15 @@ class CallActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        Voice.conversation.value = true
+        Voice.spoke = true
+    }
+
     override fun onStop() {
         pocket(false)
+        Voice.conversation.value = false
         super.onStop()
     }
 

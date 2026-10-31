@@ -57,8 +57,8 @@ object Callback {
 
     fun channel(nm: NotificationManager) {
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Jarvis calling", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Jarvis calling you back after a call dropped, or when he needs you"
+            NotificationChannel(CHANNEL, "Jarvis wants to talk", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Jarvis ringing you when the line dropped, or when he needs you"
                 setSound(
                     RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
                     AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
@@ -164,13 +164,13 @@ object Callback {
         // On the quiet channel: the ringing was the alert.
         val n = Notification.Builder(context, Notifier.CALLS)
             .setSmallIcon(R.drawable.lucide_phone)
-            .setContentTitle("Missed call from Jarvis")
-            .setContentText(if (call != null) "Call back to go on where you were." else "He wanted to talk. Call back when you can.")
+            .setContentTitle("Jarvis wanted to talk")
+            .setContentText(if (call != null) "Talk to go on where you were." else "Talk to him when you can.")
             .setCategory(Notification.CATEGORY_MISSED_CALL)
             .setContentIntent(back)
             .setAutoCancel(true)
             .setShowWhen(true)
-            .addAction(Notification.Action.Builder(Icon.createWithResource(context, R.drawable.lucide_phone), "Call back", back).build())
+            .addAction(Notification.Action.Builder(Icon.createWithResource(context, R.drawable.lucide_phone), "Talk", back).build())
             // Swiping a missed callback away hangs that call up: the server keeps it until then.
             .apply {
                 if (call != null) setDeleteIntent(

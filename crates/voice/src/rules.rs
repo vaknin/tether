@@ -39,7 +39,6 @@ pub struct Pick {
 }
 
 pub fn pick(s: Sense) -> Pick {
-    let speak = !s.screen || s.lark && s.airpods;
     let (mic, rule) = match () {
         _ if s.muted => (Mic::Shut, "muted"),
         _ if s.lark => (Mic::Lark, "lark plugged in"),
@@ -48,6 +47,8 @@ pub fn pick(s: Sense) -> Pick {
         _ if s.airpods => (Mic::AirPods, "screen off: airpods mic"),
         _ => (Mic::Phone, "screen off, no airpods: phone mic"),
     };
+    // Muted with nothing in his ears: the phone in a room doesn't start talking to it.
+    let speak = (!s.screen || s.lark && s.airpods) && (s.airpods || mic != Mic::Shut);
     let telecom = match mic {
         Mic::AirPods => true,
         Mic::Phone => speak,
@@ -113,5 +114,11 @@ mod tests {
             assert_eq!((p.mic, p.telecom), (Mic::Shut, false));
             assert_eq!(p.speak, at(lark, airpods, screen, music).speak);
         }
+    }
+
+    #[test]
+    fn muted_in_a_pocket_with_nothing_in_his_ears_the_phone_keeps_quiet() {
+        let p = pick(Sense { screen: false, airpods: false, muted: true, ..Sense::default() });
+        assert_eq!((p.mic, p.speak, p.telecom), (Mic::Shut, false, false));
     }
 }

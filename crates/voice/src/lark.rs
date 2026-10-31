@@ -104,11 +104,6 @@ impl Lark {
     }
 }
 
-/// Whether a read holds anything: the Lark's receiver gives exact zeros with its transmitter off.
-pub fn silent(stereo: &[u8]) -> bool {
-    stereo.chunks_exact(2).all(|b| i16::from_le_bytes([b[0], b[1]]).unsigned_abs() < 32)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -339,6 +339,11 @@ impl VoiceCall {
         self.0.set_muted(on);
     }
 
+    /// The mic is closed: the ring goes to zero.
+    pub fn mic_shut(&self) {
+        self.0.mic_shut();
+    }
+
     /// Pause Jarvis mid-reply (true), or let him go on (false).
     pub fn set_paused(&self, on: bool) {
         self.0.set_paused(on);
