@@ -24,6 +24,9 @@ class TabsActivity : ComponentActivity() {
     private lateinit var deck: Deck
     private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { Voice.listen(this) }
 
+    /** Closing the prompt resumes this screen: a no stays a no until he comes back to it. */
+    private var askedMic = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -57,11 +60,17 @@ class TabsActivity : ComponentActivity() {
         super.onResume()
         if (deck !is RealDeck) return
         Voice.tabsUp = true
-        if (CallService.micGranted(this)) Voice.listen(this) else if (!Voice.saved.value) askMic.launch(Manifest.permission.RECORD_AUDIO)
+        if (CallService.micGranted(this)) {
+            Voice.listen(this)
+        } else if (!Voice.saved.value && !askedMic) {
+            askedMic = true
+            askMic.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     override fun onStop() {
         super.onStop()
+        askedMic = false
         Voice.tabsUp = false
         if (!isChangingConfigurations) (deck as? RealDeck)?.down()
     }

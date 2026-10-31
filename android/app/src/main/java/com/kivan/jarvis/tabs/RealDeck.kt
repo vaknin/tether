@@ -2,6 +2,7 @@ package com.kivan.jarvis.tabs
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.kivan.jarvis.Forum
 import com.kivan.jarvis.Voice
 import com.kivan.jarvis.core.ClosedRec
 import com.kivan.jarvis.core.EntryRec
@@ -67,7 +68,11 @@ class RealDeck private constructor(
         }.launchIn(scope)
     }
 
-    fun up() = tabsAttach(this)
+    fun up() {
+        // Opened from a notification with nothing else running, muted or without the mic.
+        runCatching { Forum.start() }
+        tabsAttach(this)
+    }
 
     fun down() {
         tabsDetach()
