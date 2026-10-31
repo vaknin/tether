@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.kivan.jarvis.CallActivity
 import com.kivan.jarvis.CallService
@@ -22,7 +21,6 @@ import kotlinx.coroutines.flow.onEach
  */
 class TabsActivity : ComponentActivity() {
     private lateinit var deck: Deck
-    private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { Voice.listen(this) }
 
     /** Closing the prompt resumes this screen: a no stays a no until he comes back to it. */
     private var askedMic = false
@@ -64,7 +62,7 @@ class TabsActivity : ComponentActivity() {
             Voice.listen(this)
         } else if (!Voice.saved.value && !askedMic) {
             askedMic = true
-            askMic.launch(Manifest.permission.RECORD_AUDIO)
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
         }
     }
 
