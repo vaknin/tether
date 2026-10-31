@@ -151,6 +151,12 @@ pub trait Events: Send + Sync + 'static {
     fn kick(&self) {}
     /// The call is back on a new socket after the line went down (the server may have lost it).
     fn resumed(&self) {}
+    /// What he said on screen and hasn't sent; empty once it's gone.
+    fn words(&self, _text: &str) {}
+    /// His words opened tab `n`, or a word moved him there.
+    fn tab(&self, _id: &str, _n: u32) {}
+    /// One line for the ongoing notification.
+    fn line(&self, _text: &str) {}
     /// The server has this call as `id` (on the first `ready`, and if a resume became a new call):
     /// the app keeps it, so a call its process dies in can be rejoined.
     fn joined(&self, _id: &str) {}
@@ -208,6 +214,8 @@ impl Default for Timing {
 enum Cmd {
     Mute(bool),
     Pause(bool),
+    Where(Option<String>, bool, bool),
+    Words(bool),
     Hangup,
     NetworkChanged,
     Online(bool),
@@ -227,6 +235,10 @@ struct Shared {
     pausing: AtomicBool,
     /// Paused, as last tapped or as the server last said: a resume tells the server again.
     paused: AtomicBool,
+    /// Where he is, as last set: every `ready` tells the server again.
+    place: Mutex<Option<(Option<String>, bool, bool)>>,
+    /// He reads: Jarvis's earcons don't sound.
+    quiet: AtomicBool,
 }
 
 impl Shared {
@@ -255,6 +267,10 @@ impl Shared {
     }
 
     fn earcon(&self, e: Earcon) {
+        // He reads: nothing sounds, and nothing waits to sound when he stops reading.
+        if self.quiet.load(Ordering::SeqCst) {
+            return;
+        }
         self.player.lock().unwrap().earcon(e);
     }
 }
@@ -299,6 +315,8 @@ impl Call {
             live: AtomicBool::new(false),
             muted: AtomicBool::new(false),
             voice_muted: AtomicBool::new(false),
+            place: Mutex::new(None),
+            quiet: AtomicBool::new(false),
             pausing: AtomicBool::new(false),
             paused: AtomicBool::new(false),
         });
@@ -337,6 +355,18 @@ impl Call {
         if self.shared.muted.swap(on, Ordering::SeqCst) != on || voice {
             let _ = self.cmd.send(Cmd::Mute(on));
         }
+    }
+
+    /// Where he is and how Jarvis reaches him; the line going down loses nothing, `ready` sends it again.
+    pub fn set_where(&self, tab: Option<String>, speak: bool, stay: bool) {
+        *self.shared.place.lock().unwrap() = Some((tab.clone(), speak, stay));
+        self.shared.quiet.store(!speak, Ordering::SeqCst);
+        let _ = self.cmd.send(Cmd::Where(tab, speak, stay));
+    }
+
+    /// He sent what he said on screen, or the phone took it into a box.
+    pub fn send_words(&self, send: bool) {
+        let _ = self.cmd.send(Cmd::Words(send));
     }
 
     /// Aviv tapped pause or play. Pause silences Jarvis here at once (the server pauses his reply,
@@ -599,6 +629,14 @@ async fn run(
                     r.send(Frame::Text(Up::Pause { on }.json())).await;
                     None
                 }
+                Some(Cmd::Where(tab, speak, stay)) => {
+                    r.send(Frame::Text(Up::Where { tab, speak, stay }.json())).await;
+                    None
+                }
+                Some(Cmd::Words(send)) => {
+                    r.send(Frame::Text(Up::Words { send }.json())).await;
+                    None
+                }
                 Some(Cmd::NetworkChanged) => {
                     r.network_changed().await;
                     None
@@ -858,6 +896,9 @@ impl Run {
                     sh.events.voice_muted(on);
                 }
                 Some(Down::Error { text }) => sh.events.error(&text),
+                Some(Down::Words { text }) => sh.events.words(&text),
+                Some(Down::Tab { id, n }) => sh.events.tab(&id, n),
+                Some(Down::Line { text }) => sh.events.line(&text),
                 Some(Down::Cut { id, from, to }) => {
                     let d = self.stt.as_mut().map(|s| s.cut(id, from, to, now)).unwrap_or_default();
                     self.stt_do(d);
@@ -943,6 +984,10 @@ impl Run {
         // the button and Jarvis agree whatever the server kept.
         if resumed && self.sh.paused.load(Ordering::SeqCst) {
             self.send(Frame::Text(Up::Pause { on: true }.json())).await;
+        }
+        let place = self.sh.place.lock().unwrap().clone();
+        if let Some((tab, speak, stay)) = place {
+            self.send(Frame::Text(Up::Where { tab, speak, stay }.json())).await;
         }
         if self.shown {
             self.shown = false;

@@ -9,13 +9,13 @@
 
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 
-use jarvis_voice::{Call, Events, Status, Timing, Word, websocket};
+use jarvis_voice::{Call, Events, Lark, Status, Timing, Word, rules, websocket};
 
 use crate::RT;
 
@@ -63,6 +63,12 @@ pub trait VoiceListener: Send + Sync {
     fn on_stt_audio(&self, id: u64, pcm: Vec<u8>);
     /// No more audio for session `id`: the recognizer finishes it.
     fn on_stt_close(&self, id: u64);
+    /// All Aviv has said on screen and hasn't sent; empty once it's gone.
+    fn on_words(&self, text: String);
+    /// His words opened tab `n`, or a word moved him there.
+    fn on_tab(&self, id: String, n: u32);
+    /// One line for the ongoing notification: the answer's last, or what needs him.
+    fn on_line(&self, text: String);
     /// The server has this call as `id`: keep it, so a call the app dies in can be rejoined.
     fn on_joined(&self, id: String);
     /// Aviv hung up but the server may not have heard: deliver it later with [`voice_end`].
@@ -122,6 +128,62 @@ fn upload(why: String, after: Duration) {
 const UPLOAD_WAITS: [Duration; 4] =
     [Duration::ZERO, Duration::from_secs(5), Duration::from_secs(30), Duration::from_secs(120)];
 
+/// What his senses say, for the app's mic and speaker.
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct Sensed {
+    pub lark: bool,
+    pub airpods: bool,
+    pub screen: bool,
+    pub music: bool,
+    pub muted: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MicPick {
+    Lark,
+    Phone,
+    AirPods,
+    Shut,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Route {
+    pub mic: MicPick,
+    pub speak: bool,
+    pub telecom: bool,
+    pub rule: String,
+}
+
+/// The two rules: which mic, and whether Jarvis speaks.
+#[uniffi::export]
+pub fn pick_route(s: Sensed) -> Route {
+    let p = rules::pick(rules::Sense { lark: s.lark, airpods: s.airpods, screen: s.screen, music: s.music, muted: s.muted });
+    let mic = match p.mic {
+        rules::Mic::Lark => MicPick::Lark,
+        rules::Mic::Phone => MicPick::Phone,
+        rules::Mic::AirPods => MicPick::AirPods,
+        rules::Mic::Shut => MicPick::Shut,
+    };
+    Route { mic, speak: p.speak, telecom: p.telecom, rule: p.rule.into() }
+}
+
+/// The Lark's filters for one open of the mic.
+#[derive(uniffi::Object)]
+pub struct LarkFilter(Mutex<Lark>);
+
+#[uniffi::export]
+impl LarkFilter {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(LarkFilter(Default::default()))
+    }
+
+    /// 48 kHz interleaved stereo PCM16 in, 16 kHz mono out.
+    pub fn feed(&self, stereo: Vec<u8>) -> Vec<u8> {
+        self.0.lock().unwrap().feed(&stereo)
+    }
+}
+
 /// A line from the app's mic code, for the call's log.
 #[uniffi::export]
 pub fn mic_note(line: String) {
@@ -167,6 +229,15 @@ impl Events for Bridge {
     }
     fn stt_close(&self, id: u64) {
         self.0.on_stt_close(id);
+    }
+    fn words(&self, text: &str) {
+        self.0.on_words(text.into());
+    }
+    fn tab(&self, id: &str, n: u32) {
+        self.0.on_tab(id.into(), n);
+    }
+    fn line(&self, text: &str) {
+        self.0.on_line(text.into());
     }
     fn kick(&self) {
         self.1.went_down.store(true, Ordering::SeqCst);
@@ -271,6 +342,17 @@ impl VoiceCall {
     /// Pause Jarvis mid-reply (true), or let him go on (false).
     pub fn set_paused(&self, on: bool) {
         self.0.set_paused(on);
+    }
+
+    /// Where he is: `tab`'s id, none at the wall. `speak`: he hears Jarvis, else Jarvis writes.
+    /// `stay`: he never opened a tab this time, so the server keeps the one he was on.
+    pub fn set_where(&self, tab: Option<String>, speak: bool, stay: bool) {
+        self.0.set_where(tab, speak, stay);
+    }
+
+    /// His words on screen: `send` goes, otherwise it's dropped.
+    pub fn send_words(&self, send: bool) {
+        self.0.send_words(send);
     }
 
     /// The recognizer finished session `id`: its words, or null if it failed.

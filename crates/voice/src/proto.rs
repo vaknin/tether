@@ -37,6 +37,16 @@ pub enum Up {
     Mute { on: bool },
     /// Aviv tapped pause (Jarvis goes quiet, his reply kept) or play (it goes on).
     Pause { on: bool },
+    /// Where he is. `tab`: its id, none at the wall. `speak`: he hears Jarvis, else Jarvis writes.
+    /// `stay`: he never opened a tab this time: only `speak` counts, the server keeps the tab he was on.
+    Where {
+        tab: Option<String>,
+        speak: bool,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        stay: bool,
+    },
+    /// What he said on screen: `send` goes, otherwise it's dropped (the phone took it into a box).
+    Words { send: bool },
     Hangup,
 }
 
@@ -78,6 +88,12 @@ pub enum Down {
     Sentence { seq: u64 },
     /// Sentence `seq`'s last sample has been sent.
     Said { seq: u64 },
+    /// All he has said and not sent yet; empty once it's gone.
+    Words { text: String },
+    /// His words opened tab `n`, or a word moved him there.
+    Tab { id: String, n: u32 },
+    /// One line for the ongoing notification: no sound, no ping.
+    Line { text: String },
     #[serde(other)]
     Unknown,
 }
@@ -116,6 +132,9 @@ mod tests {
         assert_eq!(Up::Heard { id: 4, text: None, ms: 0 }.json(), r#"{"type":"heard","id":4,"text":null,"ms":0}"#);
         assert_eq!(Up::Mute { on: true }.json(), r#"{"type":"mute","on":true}"#);
         assert_eq!(Up::Pause { on: false }.json(), r#"{"type":"pause","on":false}"#);
+        assert_eq!(Up::Where { tab: Some("t3".into()), speak: false, stay: false }.json(), r#"{"type":"where","tab":"t3","speak":false}"#);
+        assert_eq!(Up::Where { tab: None, speak: true, stay: true }.json(), r#"{"type":"where","tab":null,"speak":true,"stay":true}"#);
+        assert_eq!(Up::Words { send: true }.json(), r#"{"type":"words","send":true}"#);
         assert_eq!(Up::Hangup.json(), r#"{"type":"hangup"}"#);
     }
 
@@ -134,6 +153,9 @@ mod tests {
         assert_eq!(Down::parse(r#"{"type":"cut","id":2,"from":16000,"to":48000}"#), Some(Down::Cut { id: 2, from: 16000, to: 48000 }));
         assert_eq!(Down::parse(r#"{"type":"sentence","seq":4}"#), Some(Down::Sentence { seq: 4 }));
         assert_eq!(Down::parse(r#"{"type":"said","seq":4}"#), Some(Down::Said { seq: 4 }));
+        assert_eq!(Down::parse(r#"{"type":"words","text":"so"}"#), Some(Down::Words { text: "so".into() }));
+        assert_eq!(Down::parse(r#"{"type":"tab","id":"t3","n":3}"#), Some(Down::Tab { id: "t3".into(), n: 3 }));
+        assert_eq!(Down::parse(r#"{"type":"line","text":"Done."}"#), Some(Down::Line { text: "Done.".into() }));
         assert_eq!(Down::parse(r#"{"type":"later","x":1}"#), Some(Down::Unknown));
         assert_eq!(Down::parse("not json"), None);
     }
