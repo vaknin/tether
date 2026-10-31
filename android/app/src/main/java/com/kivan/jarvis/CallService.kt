@@ -147,6 +147,7 @@ class CallService : Service() {
             return
         }
         micLater = false
+        shown = null
         try {
             startForeground(
                 ID, notification(CallState.Connecting, false),
@@ -177,7 +178,6 @@ class CallService : Service() {
         firstOpen = true
         watch = MicWatch()
         started = System.currentTimeMillis()
-        shown = null
         stt?.stop()
         stt = if (PhoneStt.available(this)) PhoneStt(this) else null
         val listener = Listener(stt, rejoin.takeIf { auto })
@@ -499,6 +499,8 @@ class CallService : Service() {
         val c = call ?: return
         var failures = 0
         loop@ while (running) {
+            // Before reading the route: a change while a mic opens must still count.
+            reroute = false
             val r = route
             val got = when {
                 r.mic == MicPick.SHUT -> micShut(c)
@@ -541,7 +543,6 @@ class CallService : Service() {
     /** No mic at all: muted, or the AirPods' left to their music. Open to nothing until the rules say. */
     private fun micShut(c: VoiceCall): Mic {
         leftHeadset()
-        reroute = false
         c.micShut()
         micNote("open: nothing, ${route.rule}")
         while (running && !reroute) Thread.sleep(50)
@@ -573,7 +574,6 @@ class CallService : Service() {
     /** A mic off the call route, in 16 kHz frames after [convert]. */
     private fun record(c: VoiceCall, rate: Int, channels: Int, want: AudioDeviceInfo?, size: Int, convert: (ByteArray) -> ByteArray): Mic {
         leftHeadset()
-        reroute = false
         val min = AudioRecord.getMinBufferSize(rate, channels, AudioFormat.ENCODING_PCM_16BIT)
         val rec = try {
             @Suppress("MissingPermission")
@@ -632,7 +632,6 @@ class CallService : Service() {
             firstOpen = false
             awaitHeadset(am)
         }
-        reroute = false
         // On the call's own device: the AirPods' mic while they carry the call, else the phone's.
         // The headset's input can show up a moment after the call moved to it.
         var device = am.communicationDevice
@@ -644,6 +643,8 @@ class CallService : Service() {
             want = headsetMic(am, device)
         }
         openedOn = device?.id
+        // The mic follows the call: the route button may have put it on the speaker. Thread #125 reads this.
+        if (route.mic == MicPick.AIR_PODS && want == null) micNote("the rule wants the headset's mic, but the call is on ${name(device)}")
         val onHeadset = headset(device)
         if (!onHeadset) {
             watch = MicWatch()
@@ -1011,7 +1012,7 @@ class CallService : Service() {
 
     /** What the notification shows; it's posted again only when this changes. */
     private fun key(state: CallState) = listOf(
-        title(), text(state), Voice.ui.value.copy(state = state).pausable, legEnd != null, Voice.place.value.tab,
+        title(), text(state), Voice.ui.value.copy(state = state).pausable, Voice.ui.value.paused, legEnd != null, Voice.place.value.tab,
     )
 
     private fun title() = Voice.place.value.name.ifEmpty { "Jarvis" }

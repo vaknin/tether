@@ -871,6 +871,23 @@ async fn an_unmute_while_the_line_is_down_reaches_the_server_on_resume() {
     assert_eq!(s.text().await, r#"{"type":"mute","on":false}"#);
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_send_while_the_line_is_down_reaches_the_server_on_resume() {
+    let (call, s, mut accept, refuse, log) = up().await;
+    refuse.store(true, Ordering::SeqCst);
+    drop(s);
+    wait_for(&log, "status Reconnecting").await;
+    call.send_words(false);
+    call.send_words(true);
+    refuse.store(false, Ordering::SeqCst);
+    let mut s = accept.recv().await.unwrap();
+    s.text().await;
+    s.send(r#"{"type":"ready","call":"c1"}"#);
+    assert_eq!(s.text().await, r#"{"type":"mute","on":false}"#);
+    assert_eq!(s.text().await, r#"{"type":"words","send":false}"#);
+    assert_eq!(s.text().await, r#"{"type":"words","send":true}"#);
+}
+
 /// A server restarting closes with "going away": the phone resumes instead of ending the call.
 #[tokio::test]
 async fn a_server_going_away_is_a_drop_not_the_end() {

@@ -567,6 +567,8 @@ struct Run {
     stt: Option<Stt>,
     /// Text frames to send once the frame that asked for them is handled.
     out: Vec<Up>,
+    /// Sends and takes of what he said, made while the line was down: the server still holds the words.
+    words_later: Vec<bool>,
     /// The phone has a network (as the app last said).
     online: bool,
     /// Back to a call the app had left: hellos say `rejoin` until the server has it.
@@ -608,6 +610,7 @@ async fn run(
         state: Status::Listening,
         stt: phone_stt.then(Stt::default),
         out: Vec::new(),
+        words_later: Vec::new(),
     };
     let mut tick = tokio::time::interval(Duration::from_millis(100));
     let why = loop {
@@ -639,7 +642,11 @@ async fn run(
                     None
                 }
                 Some(Cmd::Words(send)) => {
-                    r.send(Frame::Text(Up::Words { send }.json())).await;
+                    if r.line.is_some() {
+                        r.send(Frame::Text(Up::Words { send }.json())).await;
+                    } else {
+                        r.words_later.push(send);
+                    }
                     None
                 }
                 Some(Cmd::NetworkChanged) => {
@@ -993,6 +1000,9 @@ impl Run {
         let place = self.sh.place.lock().unwrap().clone();
         if let Some((tab, speak, stay)) = place {
             self.send(Frame::Text(Up::Where { tab, speak, stay }.json())).await;
+        }
+        for send in std::mem::take(&mut self.words_later) {
+            self.send(Frame::Text(Up::Words { send }.json())).await;
         }
         if self.shown {
             self.shown = false;

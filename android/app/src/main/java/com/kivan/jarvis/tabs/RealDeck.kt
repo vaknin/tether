@@ -121,11 +121,16 @@ class RealDeck private constructor(
 
     override fun here(id: String?) {
         val at = Voice.place.value
-        if (!at.stay && at.tab == id) return
+        val tile = flow.value.tiles.firstOrNull { it.id == id }
+        val name = tile?.let { it.name.ifBlank { "Tab ${it.n}" } }.orEmpty()
+        if (!at.stay && at.tab == id) {
+            // Words at the wall opened it: he's already there, and now it has its name.
+            if (name.isNotEmpty() && name != at.name) Voice.place.value = at.copy(name = name)
+            return
+        }
         // They go to the tab they were said on, ahead of the jump.
         if (Voice.heard.value.isNotEmpty()) words(true)
-        val tile = flow.value.tiles.firstOrNull { it.id == id }
-        Voice.place.value = Voice.Place(id, tile?.let { it.name.ifBlank { "Tab ${it.n}" } }.orEmpty(), stay = false)
+        Voice.place.value = Voice.Place(id, name, stay = false)
     }
 
     override fun words(send: Boolean) {
